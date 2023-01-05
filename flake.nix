@@ -30,7 +30,30 @@
 
         defaultPackage = pkgs.dockerTools.buildImage {
           name = "actions-service";
-          config = { Cmd = [ "${self.packages.${system}.${packageName}}/bin/actions-service" ]; };
+          
+          #runAsRoot = ''
+          #  #!${pkgs.runtimeShell}
+          #  mkdir -p /app
+          #'';
+
+          extraCommands = ''
+            mkdir ./app
+            chmod 755 ./app
+          '';
+
+          copyToRoot = pkgs.buildEnv {
+            name = "image-root";
+            paths = [ self.packages.${system}.${packageName} ];
+            pathsToLink = [ "/bin" ];
+          };
+
+          config = {
+            WorkingDir = "/app";
+            Cmd = [ "/bin/actions-service" ];
+            Volumes = {
+              "/app" = {};
+            };
+          };
         };
 
         devShell = pkgs.mkShell {
