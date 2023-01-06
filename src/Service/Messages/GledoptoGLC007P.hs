@@ -2,11 +2,13 @@
 
 module Service.Messages.GledoptoGLC007P
   ( Color(..)
+  , ColorXY(..)
   , Effect(..)
   , EffectMsg(..)
   , Hex(..)
   , RGB(..)
   , Transition(..)
+  , mkColorXY
   , mkEffectMsg
   , mkHex
   , mkRGB
@@ -64,6 +66,23 @@ instance FromJSON EffectMsg
 
 mkEffectMsg :: Effect -> EffectMsg
 mkEffectMsg = EffectMsg . effectToJson
+
+
+-- CIE 1931 color space
+
+data ColorXY = ColorXY
+  { x :: Double
+  , y :: Double
+  }
+  deriving (Generic, Show, Eq, Ord)
+
+instance ToJSON ColorXY where
+    toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON ColorXY
+
+mkColorXY :: Double -> Double -> Color ColorXY
+mkColorXY x y = Color $ ColorXY x y
 
 
 -- Hex format for color changes

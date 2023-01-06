@@ -41,6 +41,7 @@ import UnliftIO.STM
 -- I don't want to import these. I want these loaded elsewhere
 import Service.Actions.Chrizmaz (chrizmazAction)
 import Service.Actions.Gold (goldAction)
+import Service.Actions.Spaz (spazAction)
 --
 
 
@@ -61,7 +62,6 @@ run = do
     messagesChan' <- view messagesChan
 
     info "Initializing broadcast and duplicating for server channel"
-
     broadcastChan <- newBroadcastTChanIO
     serverChan <- atomically $ dupTChan broadcastChan 
 
@@ -88,6 +88,7 @@ run = do
     findAction = \case
       Gold -> goldAction
       Chrizmaz -> chrizmazAction
+      Spaz -> spazAction
       _ -> nullAction
 
     findThreadsByDeviceId ::
@@ -113,16 +114,23 @@ run = do
       threadMap' <- readTVarIO threadMap
       deviceMap' <- readTVarIO deviceMap
       let action = findAction actionName newId
-          stopDevices =
+          devicesToStop =
             findThreadsByDeviceId (wantsFullControlOver action) threadMap' deviceMap'
+
+      -- shut down devices this action wants a monopoly over, if any
+      -- TODO clean these out of the threadMap/deviceMap where they are stored? Or who cares? I can imagine that being costly at high volumes of actions, maybe never an issue...?
       mapM_
         (\(act, asyn) -> do
             debug $
               "Conflicting Device usage: Shutting down threads running action " <> (T.pack . show $ name act)
             cancel asyn)
-        stopDevices
+        devicesToStop
+
+      -- start the new action
       clientAsync <-
         async $ runAction (serializeActionName actionName) clientChan action
+
+      -- add new entry to ActionName -> (Action, Async ()) map
       atomically $ writeTVar threadMap $
         M.alter
           (\case
@@ -130,6 +138,8 @@ run = do
               Just actions -> Just (actions <> [(action, clientAsync)]))
           actionName
           threadMap'
+
+      -- add reference to newly started action in device -> [actionName] map
       mapM_
         (\deviceId -> atomically $ writeTVar deviceMap $
           M.alter
@@ -146,7 +156,10 @@ run = do
       TChan Action.Message ->
       Action (TChan Action.Message) ->
       ActionsService ()
-    runAction myName broadcastChan (Action.Action _name _id _devices _wantsFullControlOver initAction cleanupAction runAction') =
+    runAction
+      myName
+      broadcastChan
+      ( Action.Action _name _id _devices _wantsFullControlOver initAction cleanupAction runAction') =
       bracket
         (initAction myName broadcastChan)
         (cleanupAction myName)

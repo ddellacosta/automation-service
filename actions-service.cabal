@@ -59,6 +59,7 @@ library
                   -- Add Actions here
                   , Service.Actions.Gold
                   , Service.Actions.Chrizmaz
+                  , Service.Actions.Spaz
                   --
                   , Service.App
                   , Service.App.Daemon

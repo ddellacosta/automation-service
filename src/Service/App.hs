@@ -57,7 +57,7 @@ instance Logger ActionsService where
 logDefault :: (MonadIO m, MonadReader Env m) => LogLevel -> Text -> m ()
 logDefault level logStr = do
   setLevel <- view (config . logLevel)
-  when (setLevel < level) $
+  when (level >= setLevel) $
     view logger >>= \logger' -> liftIO $ log logger' level logStr
 
 log :: (ToLogStr s) => TimedFastLogger -> LogLevel -> s -> IO ()

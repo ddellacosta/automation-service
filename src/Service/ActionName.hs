@@ -10,7 +10,7 @@ import qualified Data.Text as T
 import Data.Text (Text)
 import GHC.Generics (Generic)
 
-data ActionName = Null | Gold | Chrizmaz
+data ActionName = Null | Gold | Chrizmaz | Spaz
   deriving (Generic, Show, Eq, Ord)
 
 instance ToJSON ActionName where
@@ -25,4 +25,5 @@ parseActionName :: Text -> Maybe ActionName
 parseActionName = \case
   "Gold" -> Just Gold
   "Chrizmaz" -> Just Chrizmaz
+  "Spaz" -> Just Spaz
   _ -> Nothing
