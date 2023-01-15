@@ -61,6 +61,7 @@
             haskellPackages.haskell-language-server # you must build it with your ghc to work
             ghcid
             cabal-install
+            zlib
           ];
           inputsFrom = builtins.attrValues self.packages.${system};
         };

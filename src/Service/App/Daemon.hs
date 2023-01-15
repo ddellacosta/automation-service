@@ -16,9 +16,9 @@ import Data.Text (Text)
 import qualified Data.UUID.V4 as UUID.V4
 import qualified Service.Action as Action
 -- TODO need to fix these messaging types to not be garbage
-import Service.Action (Action(name, devices, wantsFullControlOver), Message(..), MsgBody (..), nullAction)
--- I don't want to import ActionName values
-import Service.ActionName (ActionName(..), serializeActionName)
+import Service.Action (Action(name, devices, wantsFullControlOver), Message(..), MsgBody (..))
+import Service.ActionName (ActionName, serializeActionName)
+import Service.Actions (findAction)
 import Service.App (ActionsService, Logger(..))
 import Service.Device (DeviceId)
 import Service.Env (Env, config, loggerCleanup, messagesChan)
@@ -37,12 +37,6 @@ import UnliftIO.STM
   , writeTChan
   , writeTVar
   )
-
--- I don't want to import these. I want these loaded elsewhere
-import Service.Actions.Chrizmaz (chrizmazAction)
-import Service.Actions.Gold (goldAction)
-import Service.Actions.Spaz (spazAction)
---
 
 
 type ThreadMap = M.Map ActionName [(Action (TChan (Action.Message)), Async ())]
@@ -84,13 +78,6 @@ run = do
   where
     sendClientMsg serverChan = atomically . writeTChan serverChan . Client . MsgBody 
 
-    -- TODO THESE NEED TO GET LOADED SOME OTHER WAY
-    findAction = \case
-      Gold -> goldAction
-      Chrizmaz -> chrizmazAction
-      Spaz -> spazAction
-      _ -> nullAction
-
     findThreadsByDeviceId ::
       [DeviceId] ->
       ThreadMap ->
@@ -113,6 +100,7 @@ run = do
       newId <- liftIO UUID.V4.nextRandom
       threadMap' <- readTVarIO threadMap
       deviceMap' <- readTVarIO deviceMap
+
       let action = findAction actionName newId
           devicesToStop =
             findThreadsByDeviceId (wantsFullControlOver action) threadMap' deviceMap'
@@ -122,7 +110,8 @@ run = do
       mapM_
         (\(act, asyn) -> do
             debug $
-              "Conflicting Device usage: Shutting down threads running action " <> (T.pack . show $ name act)
+              "Conflicting Device usage: Shutting down threads running action " <>
+                (T.pack . show $ name act)
             cancel asyn)
         devicesToStop
 
@@ -130,26 +119,27 @@ run = do
       clientAsync <-
         async $ runAction (serializeActionName actionName) clientChan action
 
-      -- add new entry to ActionName -> (Action, Async ()) map
-      atomically $ writeTVar threadMap $
-        M.alter
-          (\case
-              Nothing -> Just [(action, clientAsync)]
-              Just actions -> Just (actions <> [(action, clientAsync)]))
-          actionName
-          threadMap'
-
-      -- add reference to newly started action in device -> [actionName] map
-      mapM_
-        (\deviceId -> atomically $ writeTVar deviceMap $
+      atomically $ do
+        -- add new entry to ActionName -> (Action, Async ()) map
+        writeTVar threadMap $
           M.alter
             (\case
-                Nothing -> Just [actionName]
-                Just actionNames -> Just (actionNames <> [actionName])
-            )
-            deviceId
-            deviceMap')
-        (devices action)
+                Nothing -> Just [(action, clientAsync)]
+                Just actions -> Just (actions <> [(action, clientAsync)]))
+            actionName
+            threadMap'
+
+        -- add reference to newly started action in device -> [actionName] map
+        mapM_
+          (\deviceId -> writeTVar deviceMap $
+            M.alter
+              (\case
+                  Nothing -> Just [actionName]
+                  Just actionNames -> Just (actionNames <> [actionName])
+              )
+              deviceId
+              deviceMap')
+          (devices action)
 
     runAction ::
       Text ->
@@ -168,12 +158,8 @@ run = do
     stopAction :: TVar ThreadMap -> ActionName -> ActionsService ()
     stopAction threadMap actionName = do
       threadMap' <- readTVarIO threadMap
-      -- for_ (M.lookup actionName threadMap') $ mapM_ cancel
-      let threadsMatchingName = M.foldMapWithKey
-            (\aName threads -> if (aName == actionName) then threads else [])
-            threadMap'
-
-      mapM_ (\(_, async') -> cancel async') threadsMatchingName
+      for_ (M.lookup actionName threadMap') $
+        mapM_ (\(_, async') -> cancel async')
 
     -- TODO I SHOULD PROBABLY STILL CLEAN THESE UP!
     -- atomically $ writeTVar threadMap $ M.delete actionName threadMap'

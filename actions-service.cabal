@@ -56,11 +56,10 @@ library
   hs-source-dirs:   src
   exposed-modules:  Service.Action
                   , Service.ActionName
-                  -- Add Actions here
-                  , Service.Actions.Gold
+                  , Service.Actions
                   , Service.Actions.Chrizmaz
+                  , Service.Actions.Gold
                   , Service.Actions.Spaz
-                  --
                   , Service.App
                   , Service.App.Daemon
                   , Service.App.Helpers
@@ -87,3 +86,5 @@ test-suite actions-service-test
   hs-source-dirs:   test
   main-is:          Main.hs
   build-depends:    actions-service
+                  , tasty ^>= 1.4.2.3
+                  , tasty-hunit ^>= 0.10.0.3

@@ -6,7 +6,7 @@ where
 
 import Control.Lens
 import Control.Monad (forever)
-import Control.Monad.Reader (MonadReader, liftIO)
+import Control.Monad.Reader (liftIO)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Data.Aeson (encode)
 import Data.Text (Text)
@@ -14,13 +14,13 @@ import Data.UUID (UUID)
 import qualified Network.MQTT.Client as MQTT
 import Service.App (Logger(..))
 import qualified Service.App.Helpers as Helpers
-import Service.Action (Action(..), Message(..), MsgBody(..))
+import Service.Action (Action(..), Message(..))
 import Service.ActionName (ActionName(..))
 import qualified Service.Device as Device
-import Service.Env (Env, mqttClient)
-import Service.Messages.GledoptoGLC007P (Effect(..), mkColorXY, mkEffectMsg, mkHex, withTransition)
+import Service.Env (mqttClient)
+import Service.Messages.GledoptoGLC007P (mkColorXY, mkEffectMsg, mkHex, withTransition)
 import UnliftIO.Concurrent (threadDelay)
-import UnliftIO.STM (TChan, atomically, tryReadTChan)
+import UnliftIO.STM (TChan)
 
 spazAction :: UUID -> Action (TChan Message)
 spazAction newId =
@@ -43,7 +43,7 @@ cleanupAction myName _broadcastChan = do
   liftIO $ MQTT.publish mc ledTopic "{\"state\": \"OFF\"}" False
 
 runAction :: (Logger m, MonadUnliftIO m) => Text -> TChan Message -> m ()
-runAction myName broadcastChan = do
+runAction myName _broadcastChan = do
   info $ "Running " <> myName
 
   mc <- view mqttClient
@@ -75,7 +75,7 @@ runAction myName broadcastChan = do
 
   where
     seconds n = n * 10000000
-    effect' = encode . mkEffectMsg
-    hex' = encode . mkHex
-    mkColorXY' x y = encode $ mkColorXY x y
+    _effect' = encode . mkEffectMsg
+    _hex' = encode . mkHex
+    _mkColorXY' x y = encode $ mkColorXY x y
     withTransition' s msg = encode $ withTransition s msg
