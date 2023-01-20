@@ -6,20 +6,20 @@ module Service.Env
   , LogLevel(..)
   , MQTTConfig(..)
   , actionsServiceTopicFilter
-  , caCertPath -- currently unused
-  , clientCertPath -- currently unused
-  , clientKeyPath -- currently unused
+  , caCertPath
+  , clientCertPath
+  , clientKeyPath
   , config
   , configDecoder
   , devices
   , logFilePath
-  , logLevel -- currently unused
+  , logLevel
   , logger
   , loggerCleanup
   , messagesChan
   , mqttClient
   , mqttConfig
-  , uri -- currently unused
+  , uri
   )
 where
 

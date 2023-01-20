@@ -67,5 +67,5 @@ initialize = do
     callback logLevelSet messagesChan' logger' =
       MQTT.SimpleCallback $ \_mc topic' msg _props -> do
         when (Debug >= logLevelSet) $
-          log logger' Debug $ "Received message " <> (show msg) <> " to " <> (show topic')
+          log logger' Debug $ "Received message " <> show msg <> " to " <> show topic'
         for_ (decode msg) $ atomically . writeTQueue messagesChan'
