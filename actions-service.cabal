@@ -48,6 +48,8 @@ common shared
     , x509-store ^>= 1.6.9
   default-extensions:
      OverloadedStrings
+   , DeriveGeneric
+   , FunctionalDependencies
    , LambdaCase
    , TupleSections
 
@@ -59,7 +61,7 @@ library
                   , Service.Actions
                   , Service.Actions.Chrizmaz
                   , Service.Actions.Gold
-                  , Service.Actions.Spaz
+                  , Service.Actions.Trinity
                   , Service.App
                   , Service.App.Daemon
                   , Service.App.Helpers

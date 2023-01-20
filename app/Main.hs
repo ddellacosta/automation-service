@@ -1,5 +1,3 @@
-{-# LANGUAGE GADTs #-}
-
 module Main where
 
 import Prelude hiding (log)

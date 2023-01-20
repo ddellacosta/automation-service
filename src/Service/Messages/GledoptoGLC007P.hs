@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveGeneric #-}
-
 module Service.Messages.GledoptoGLC007P
   ( Color(..)
   , ColorXY(..)
@@ -8,11 +6,16 @@ module Service.Messages.GledoptoGLC007P
   , Hex(..)
   , RGB(..)
   , Transition(..)
+  , colorXY
+  , effect'
+  , hex'
   , mkColorXY
   , mkEffectMsg
   , mkHex
   , mkRGB
+  , seconds
   , withTransition
+  , withTransition'
   )
 where
 
@@ -25,6 +28,7 @@ import Data.Aeson
   , encode
   , genericToEncoding
   )
+import Data.ByteString.Lazy (ByteString)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import GHC.Generics (Generic)
@@ -133,8 +137,8 @@ instance ToJSON Transition where
 instance FromJSON Transition
 
 withTransition :: (ToJSON msg, FromJSON msg) => Int -> msg -> Value
-withTransition seconds msg =
-  maybe Null (\v -> mergeObjects v $ transitionValue seconds) (decode (encode msg))
+withTransition seconds' msg =
+  maybe Null (\v -> mergeObjects v $ transitionValue seconds') (decode (encode msg))
   where
     mergeObjects obj1 obj2 =
       case (obj1, obj2) of
@@ -143,3 +147,23 @@ withTransition seconds msg =
 
     transitionValue :: Int -> Value
     transitionValue s = fromMaybe Null $ decode $ encode $ Transition s
+
+
+-- simple helpers
+
+-- this probably doesn't belong in here, but I'm using it in all the
+-- same places now, so meh
+seconds :: Int -> Int
+seconds n = n * 10000000
+
+effect' :: Effect -> ByteString
+effect' = encode . mkEffectMsg
+
+hex' :: Text -> ByteString
+hex' = encode . mkHex
+
+colorXY :: Double -> Double -> ByteString
+colorXY x y = encode $ mkColorXY x y
+
+withTransition' :: (ToJSON msg, FromJSON msg) => Int -> msg -> ByteString
+withTransition' s msg = encode $ withTransition s msg

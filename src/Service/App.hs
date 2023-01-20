@@ -1,8 +1,7 @@
-{-# LANGUAGE ImpredicativeTypes #-}
-
 module Service.App
   ( ActionsService
   , Logger(..)
+  , MonadMQTT(..)
   , log
   , runActionsService
   , loggerConfig
@@ -15,8 +14,20 @@ import Control.Lens ((^.), view)
 import Control.Monad (when)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Control.Monad.Reader (MonadIO, MonadReader(..), ReaderT, liftIO, runReaderT)
+import Data.ByteString.Lazy (ByteString)
 import Data.Text (Text)
-import Service.Env (Config, Env, LogLevel(..), config, logFilePath, logger, logLevel)
+import qualified Network.MQTT.Client as MQTT
+import Network.MQTT.Client (Topic)
+import Service.Env
+  ( Config
+  , Env
+  , LogLevel(..)
+  , config
+  , logFilePath
+  , logger
+  , logLevel
+  , mqttClient
+  )
 import System.Log.FastLogger
   ( FileLogSpec(..)
   , FormattedTime
@@ -41,6 +52,9 @@ newtype ActionsService a = ActionsService (ReaderT Env IO a)
 
 runActionsService :: Env -> ActionsService a -> IO a
 runActionsService env (ActionsService x) = runReaderT x env
+
+
+-- Logger
 
 class (MonadIO m, MonadReader Env m) => Logger m where
   debug :: Text -> m ()
@@ -79,7 +93,12 @@ loggerConfig config' = do
 
   pure (fmtTime, logType)
 
---
 
--- class MonadMQTT m where
---   publishMQTT :: Topic -> 
+-- MonadMQTT
+
+class (Monad m, MonadReader Env m) => MonadMQTT m where
+  publishMQTT :: Topic -> ByteString -> m ()
+
+instance MonadMQTT ActionsService where
+  publishMQTT topic msg =
+    view mqttClient >>= \mc -> liftIO $ MQTT.publish mc topic msg False

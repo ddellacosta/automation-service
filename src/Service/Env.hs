@@ -1,6 +1,3 @@
-{-# LANGUAGE ImpredicativeTypes #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Service.Env

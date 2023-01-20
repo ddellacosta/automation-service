@@ -4,20 +4,25 @@ module Service.Actions.Gold
   )
 where
 
-import Control.Lens
 import Control.Monad.Reader (MonadReader, liftIO)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
-import Data.Aeson (encode)
 import Data.Text (Text)
 import Data.UUID (UUID)
-import qualified Network.MQTT.Client as MQTT
-import Service.App (Logger(..))
+import Network.MQTT.Client (Topic)
+import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
 import Service.Action (Action(..), Message(..), MsgBody(..))
 import Service.ActionName (ActionName(..))
 import qualified Service.Device as Device
-import Service.Env (Env, mqttClient)
-import Service.Messages.GledoptoGLC007P (Effect(..), mkEffectMsg, mkHex, withTransition)
+import Service.Env (Env)
+import Service.Messages.GledoptoGLC007P
+  ( Effect(..)
+  , effect'
+  , hex'
+  , mkHex
+  , seconds
+  , withTransition'
+  )
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan, atomically, tryReadTChan)
 
@@ -28,57 +33,52 @@ goldAction newId =
 initAction :: (MonadUnliftIO m) => Text -> TChan Message -> m (TChan Message)
 initAction _myName = pure
 
-cleanupAction :: (Logger m, MonadUnliftIO m) => Text -> TChan Message -> m ()
+cleanupAction :: (Logger m, MonadMQTT m, MonadUnliftIO m) => Text -> TChan Message -> m ()
 cleanupAction myName _broadcastChan = do
   info $ "Shutting down " <> myName
-
-  mc <- view mqttClient
 
   -- TODO FAIL APPROPRIATELY, LOG IT, AND STOP THREAD IF WE CAN'T LOAD THE DEVICE
   -- if gledoptoLedStrip = nullDevice then throwException and quit
   (_gledoptoLedStrip, ledTopic) <- Helpers.findDeviceM Device.GledoptoGLC007P_1
 
   info "turning led strip off"
-  liftIO $ MQTT.publish mc ledTopic "{\"state\": \"OFF\"}" False
+  publishMQTT ledTopic "{\"state\": \"OFF\"}"
 
-runAction :: (Logger m, MonadUnliftIO m) => Text -> TChan Message -> m ()
+runAction :: (Logger m, MonadMQTT m, MonadUnliftIO m) => Text -> TChan Message -> m ()
 runAction myName broadcastChan = do
   info $ "Running " <> myName
-
-  mc <- view mqttClient
 
   -- TODO FAIL APPROPRIATELY, LOG IT, AND STOP THREAD IF WE CAN'T LOAD THE DEVICE
   (_gledoptoLedStrip, ledTopic) <- Helpers.findDeviceM Device.GledoptoGLC007P_1
 
-  info "turning on"
-  liftIO $ MQTT.publish mc ledTopic "{\"state\": \"ON\"}" False
+  debug "turning on"
+  publishMQTT ledTopic "{\"state\": \"ON\"}"
 
-  info "setting color to orange"
-  liftIO $ MQTT.publish mc ledTopic (hex' "be9fc1") False
+  debug "setting color to orange"
+  publishMQTT ledTopic (hex' "be9fc1")
+
   liftIO $ threadDelay (seconds 2)
 
-  info "setting color to pink with 3 second transition"
-  liftIO $ MQTT.publish mc ledTopic (withTransition' 3 $ mkHex "F97C00") False
+  debug "setting color to pink with 3 second transition"
+  publishMQTT ledTopic (withTransition' 3 $ mkHex "F97C00")
 
-  info "starting breathe loop"
+  debug "starting breathe loop"
   go ledTopic broadcastChan
 
   where
-    go :: (Logger m, MonadReader Env m, MonadUnliftIO m) => MQTT.Topic -> TChan Message -> m ()
+    go
+      :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m)
+      => Topic
+      -> TChan Message
+      -> m ()
     go ledTopic broadcastChan' = do
-      mc <- view mqttClient
       liftIO $ threadDelay (seconds 60)
-      info $ myName <> ": breathe"
-      liftIO $ MQTT.publish mc ledTopic (effect' Breathe) False
+      debug $ myName <> ": breathe"
+      publishMQTT ledTopic (effect' Breathe)
 
+      -- this bit is just a proto-PoC right now, doesn't really do anything
       maybeMsg <- atomically $ tryReadTChan broadcastChan'
       case maybeMsg of
         Just (Client (MsgBody msg')) ->
-          (info $ myName <> ", msg: " <> msg') >> go ledTopic broadcastChan'
+          (debug $ myName <> ", msg: " <> msg') >> go ledTopic broadcastChan'
         _ -> go ledTopic broadcastChan'
-
-    seconds n = n * 1000000
-    effect' = encode . mkEffectMsg
-    hex' = encode . mkHex
-    withTransition' s msg = encode $ withTransition s msg
-

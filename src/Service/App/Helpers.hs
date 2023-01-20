@@ -14,5 +14,4 @@ findDeviceM :: (MonadReader Env m) => DeviceId -> m (Device, MQTT.Topic)
 findDeviceM deviceId = do
   devices' <- view (config . devices)
   let device = findDevice deviceId devices'
-      topic' = device ^. topic
-  pure (device, topic')
+  pure (device, device ^. topic)
