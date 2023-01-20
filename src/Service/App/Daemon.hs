@@ -7,7 +7,7 @@ import Control.Lens (view)
 import Control.Monad (forever)
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
-import Data.Foldable (fold, for_)
+import Data.Foldable (for_)
 import Data.Functor ((<&>))
 import qualified Data.Map.Strict as M
 import Data.Maybe (catMaybes)
@@ -38,8 +38,9 @@ import UnliftIO.STM
   , writeTVar
   )
 
+type Action' = Action (TChan Action.Message)
 
-type ThreadMap = M.Map ActionName [(Action (TChan (Action.Message)), Async ())]
+type ThreadMap = M.Map ActionName [(Action', Async ())]
 
 type DeviceMap = M.Map DeviceId [ActionName]
 
@@ -78,15 +79,11 @@ run = do
   where
     sendClientMsg serverChan = atomically . writeTChan serverChan . Client . MsgBody 
 
-    findThreadsByDeviceId ::
-      [DeviceId] ->
-      ThreadMap ->
-      DeviceMap ->
-      [(Action (TChan (Action.Message)), Async ())]
-    findThreadsByDeviceId devices threadMap' deviceMap' = fold $ devices <&> \did ->
+    findThreadsByDeviceId :: [DeviceId] -> ThreadMap -> DeviceMap -> [(Action', Async ())]
+    findThreadsByDeviceId devices threadMap' deviceMap' = mconcat $ devices <&> \did ->
       case M.lookup did deviceMap' of
         Just actionNames -> 
-          fold $ catMaybes $ actionNames <&> flip M.lookup threadMap'
+          mconcat . catMaybes $ actionNames <&> flip M.lookup threadMap'
         Nothing -> []
 
     initializeAndRunAction ::
@@ -102,7 +99,7 @@ run = do
       deviceMap' <- readTVarIO deviceMap
 
       let action = findAction actionName newId
-          devicesToStop =
+          actionsToStop =
             findThreadsByDeviceId (wantsFullControlOver action) threadMap' deviceMap'
 
       -- shut down devices this action wants a monopoly over, if any
@@ -113,7 +110,7 @@ run = do
               "Conflicting Device usage: Shutting down threads running action " <>
                 (T.pack . show $ name act)
             cancel asyn)
-        devicesToStop
+        actionsToStop
 
       -- start the new action
       clientAsync <-
@@ -149,7 +146,7 @@ run = do
     runAction
       myName
       broadcastChan
-      ( Action.Action _name _id _devices _wantsFullControlOver initAction cleanupAction runAction') =
+      ( Action.Action _ _ _ _ initAction cleanupAction runAction') =
       bracket
         (initAction myName broadcastChan)
         (cleanupAction myName)
