@@ -62,6 +62,7 @@
             ghcid
             cabal-install
             zlib
+            watchexec
           ];
           inputsFrom = builtins.attrValues self.packages.${system};
         };

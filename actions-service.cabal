@@ -82,11 +82,19 @@ executable actions-service
     "-with-rtsopts=-N -T"
     -Wall
 
-test-suite actions-service-test
+test-suite actions-service-tests
   import:           shared
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
-  main-is:          Main.hs
+  main-is:          Driver.hs
+  other-modules:    Test.Unit.Service.App.Daemon
   build-depends:    actions-service
+                  , hspec ^>= 2.9.7
+                  , QuickCheck ^>= 2.14.2
                   , tasty ^>= 1.4.2.3
-                  , tasty-hunit ^>= 0.10.0.3
+                  , tasty-discover ^>= 4.2.2
+                  , tasty-hspec ^>= 1.2.0.1
+                  -- , tasty-hunit ^>= 0.10.0.3
+
+--  build-tool-depends:
+--    tasty-discover:tasty-discover ^>= 4.2.2
