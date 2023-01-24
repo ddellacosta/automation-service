@@ -87,6 +87,8 @@ test-suite actions-service-tests
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Driver.hs
+  -- added to get rid of warnings when running cabal test; is it
+  -- really necessary otherwise?
   other-modules:    Test.Unit.Service.App.Daemon
   build-depends:    actions-service
                   , hspec ^>= 2.9.7

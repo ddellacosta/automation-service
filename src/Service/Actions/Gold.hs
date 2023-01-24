@@ -11,7 +11,7 @@ import Data.UUID (UUID)
 import Network.MQTT.Client (Topic)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
-import Service.Action (Action(..), Message(..), MsgBody(..))
+import Service.Action (Action, ActionFor(..), Message(..), MsgBody(..))
 import Service.ActionName (ActionName(..))
 import qualified Service.Device as Device
 import Service.Env (Env)
@@ -26,9 +26,9 @@ import Service.Messages.GledoptoGLC007P
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan, atomically, tryReadTChan)
 
-goldAction :: UUID -> Action (TChan Message)
+goldAction :: (Logger m, MonadMQTT m, MonadUnliftIO m) => UUID -> Action m
 goldAction newId =
-  Action Gold newId [Device.GledoptoGLC007P_1] [Device.GledoptoGLC007P_1] initAction cleanupAction runAction
+  ActionFor Gold newId [Device.GledoptoGLC007P_1] [Device.GledoptoGLC007P_1] initAction cleanupAction runAction
 
 initAction :: (MonadUnliftIO m) => Text -> TChan Message -> m (TChan Message)
 initAction _myName = pure

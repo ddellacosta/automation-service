@@ -10,16 +10,16 @@ import Data.Text (Text)
 import Data.UUID (UUID)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
-import Service.Action (Action(..), Message(..))
+import Service.Action (Action, ActionFor(..), Message(..))
 import Service.ActionName (ActionName(..))
 import qualified Service.Device as Device
 import Service.Messages.GledoptoGLC007P (mkColorXY, seconds, withTransition')
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan)
 
-trinityAction :: UUID -> Action (TChan Message)
+trinityAction :: (Logger m, MonadMQTT m, MonadUnliftIO m) => UUID -> Action m
 trinityAction newId =
-  Action Trinity newId [Device.GledoptoGLC007P_1] [Device.GledoptoGLC007P_1] initAction cleanupAction runAction
+  ActionFor Trinity newId [Device.GledoptoGLC007P_1] [Device.GledoptoGLC007P_1] initAction cleanupAction runAction
 
 initAction :: (MonadUnliftIO m) => Text -> TChan Message -> m (TChan Message)
 initAction _myName = pure

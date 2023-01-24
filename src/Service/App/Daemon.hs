@@ -14,12 +14,15 @@ import Data.Maybe (catMaybes)
 import qualified Data.Text as T
 import Data.Text (Text)
 import qualified Data.UUID.V4 as UUID.V4
-import qualified Service.Action as Action
--- TODO need to fix these messaging types to not be garbage
-import Service.Action (Action(name, devices, wantsFullControlOver), Message(..), MsgBody (..))
+import Service.Action
+  ( Action
+  , ActionFor(ActionFor, name, devices, wantsFullControlOver)
+  , Message(..)
+  , MsgBody (..)
+  )
 import Service.ActionName (ActionName, serializeActionName)
 import Service.Actions (findAction)
-import Service.App (ActionsService, Logger(..))
+import Service.App (Logger(..), MonadMQTT)
 import Service.Device (DeviceId)
 import Service.Env (Env, config, loggerCleanup, messagesChan)
 import qualified Service.Messages.Action as Messages
@@ -38,18 +41,16 @@ import UnliftIO.STM
   , writeTVar
   )
 
-type Action' = Action (TChan Action.Message)
-
-type ThreadMap = M.Map ActionName [(Action', Async ())]
+type ThreadMap m = M.Map ActionName [(Action m, Async ())]
 
 type DeviceMap = M.Map DeviceId [ActionName]
 
-run :: ActionsService ()
+run :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m) => m ()
 run = do
   config' <- view config
   loggerCleanup' <- view loggerCleanup
 
-  bracket (newTVarIO (M.empty :: ThreadMap)) (cleanup loggerCleanup') $ \threadMap -> do
+  bracket (newTVarIO (M.empty :: ThreadMap m)) (cleanup loggerCleanup') $ \threadMap -> do
     debug $ T.pack $ show config'
 
     deviceMap <- newTVarIO (M.empty :: DeviceMap)
@@ -79,100 +80,102 @@ run = do
   where
     sendClientMsg serverChan = atomically . writeTChan serverChan . Client . MsgBody 
 
-    findThreadsByDeviceId :: [DeviceId] -> ThreadMap -> DeviceMap -> [(Action', Async ())]
-    findThreadsByDeviceId devices threadMap' deviceMap' = mconcat $ devices <&> \did ->
-      case M.lookup did deviceMap' of
-        Just actionNames -> 
-          mconcat . catMaybes $ actionNames <&> flip M.lookup threadMap'
-        Nothing -> []
+findThreadsByDeviceId :: (Monad m) => [DeviceId] -> ThreadMap m -> DeviceMap -> [(Action m, Async ())]
+findThreadsByDeviceId devices threadMap' deviceMap' = mconcat $ devices <&> \did ->
+  case M.lookup did deviceMap' of
+    Just actionNames ->
+      mconcat . catMaybes $ actionNames <&> flip M.lookup threadMap'
+    Nothing -> []
 
-    initializeAndRunAction ::
-      TVar ThreadMap ->
-      TVar DeviceMap ->
-      TChan Action.Message ->
-      ActionName ->
-      ActionsService ()
-    initializeAndRunAction threadMap deviceMap broadcastChan actionName = do
-      clientChan <- atomically $ dupTChan broadcastChan
-      newId <- liftIO UUID.V4.nextRandom
-      threadMap' <- readTVarIO threadMap
-      deviceMap' <- readTVarIO deviceMap
+initializeAndRunAction ::
+  (Logger m, MonadMQTT m, MonadUnliftIO m) =>
+  TVar (ThreadMap m) ->
+  TVar DeviceMap ->
+  TChan Message ->
+  ActionName ->
+  m ()
+initializeAndRunAction threadMap deviceMap broadcastChan actionName = do
+  clientChan <- atomically $ dupTChan broadcastChan
+  newId <- liftIO UUID.V4.nextRandom
+  threadMap' <- readTVarIO threadMap
+  deviceMap' <- readTVarIO deviceMap
 
-      let action = findAction actionName newId
-          actionsToStop =
-            findThreadsByDeviceId (wantsFullControlOver action) threadMap' deviceMap'
+  let action = findAction actionName newId
+      actionsToStop =
+        findThreadsByDeviceId (wantsFullControlOver action) threadMap' deviceMap'
 
-      -- shut down devices this action wants a monopoly over, if any
-      -- TODO clean these out of the threadMap/deviceMap where they are stored? Or who cares? I can imagine that being costly at high volumes of actions, maybe never an issue...?
-      mapM_
-        (\(act, asyn) -> do
-            debug $
-              "Conflicting Device usage: Shutting down threads running action " <>
-                (T.pack . show $ name act)
-            cancel asyn)
-        actionsToStop
+  -- shut down devices this action wants a monopoly over, if any
+  -- TODO clean these out of the threadMap/deviceMap where they are stored? Or who cares? I can imagine that being costly at high volumes of actions, maybe never an issue...?
+  mapM_
+    (\(act, asyn) -> do
+        debug $
+          "Conflicting Device usage: Shutting down threads running action " <>
+            (T.pack . show $ name act)
+        cancel asyn)
+    actionsToStop
 
-      -- start the new action
-      clientAsync <-
-        async $ runAction (serializeActionName actionName) clientChan action
+  -- start the new action
+  clientAsync <-
+    async $ runAction (serializeActionName actionName) clientChan action
 
-      atomically $ do
-        -- add new entry to ActionName -> (Action, Async ()) map
-        writeTVar threadMap $
-          M.alter
-            (\case
-                Nothing -> Just [(action, clientAsync)]
-                Just actions -> Just (actions <> [(action, clientAsync)]))
-            actionName
-            threadMap'
+  atomically $ do
+    -- add new entry to ActionName -> (Action, Async ()) map
+    writeTVar threadMap $
+      M.alter
+        (\case
+            Nothing -> Just [(action, clientAsync)]
+            Just actions -> Just (actions <> [(action, clientAsync)]))
+        actionName
+        threadMap'
 
-        -- add reference to newly started action in device -> [actionName] map
-        mapM_
-          (\deviceId -> writeTVar deviceMap $
-            M.alter
-              (\case
-                  Nothing -> Just [actionName]
-                  Just actionNames -> Just (actionNames <> [actionName])
-              )
-              deviceId
-              deviceMap')
-          (devices action)
+    -- add reference to newly started action in device -> [actionName] map
+    mapM_
+      (\deviceId -> writeTVar deviceMap $
+        M.alter
+          (\case
+              Nothing -> Just [actionName]
+              Just actionNames -> Just (actionNames <> [actionName])
+          )
+          deviceId
+          deviceMap')
+      (devices action)
 
-    runAction ::
-      Text ->
-      TChan Action.Message ->
-      Action (TChan Action.Message) ->
-      ActionsService ()
-    runAction
-      myName
-      broadcastChan
-      ( Action.Action _ _ _ _ initAction cleanupAction runAction') =
-      bracket
-        (initAction myName broadcastChan)
-        (cleanupAction myName)
-        (runAction' myName)
+runAction ::
+  (MonadUnliftIO m) =>
+  Text ->
+  TChan Message ->
+  Action m ->
+  m ()
+runAction
+  myName
+  broadcastChan
+  ( ActionFor _ _ _ _ initAction cleanupAction runAction') =
+  bracket
+    (initAction myName broadcastChan)
+    (cleanupAction myName)
+    (runAction' myName)
 
-    stopAction :: TVar ThreadMap -> ActionName -> ActionsService ()
-    stopAction threadMap actionName = do
-      threadMap' <- readTVarIO threadMap
-      for_ (M.lookup actionName threadMap') $
-        mapM_ (\(_, async') -> cancel async')
+stopAction :: (MonadUnliftIO m) => TVar (ThreadMap m) -> ActionName -> m ()
+stopAction threadMap actionName = do
+  threadMap' <- readTVarIO threadMap
+  for_ (M.lookup actionName threadMap') $
+    mapM_ (\(_, async') -> cancel async')
 
-    -- TODO I SHOULD PROBABLY STILL CLEAN THESE UP!
-    -- atomically $ writeTVar threadMap $ M.delete actionName threadMap'
+-- TODO I SHOULD PROBABLY STILL CLEAN THESE UP!
+-- atomically $ writeTVar threadMap $ M.delete actionName threadMap'
 
-    -- final cleanup: if this thing shuts down with threads running,
-    -- kill all the threads
-    cleanup ::
-      (Logger m, MonadIO m, MonadReader Env m, MonadUnliftIO m) =>
-      IO () ->
-      TVar ThreadMap ->
-      m ()
-    cleanup loggerCleanup' threadMap = do
-      threadMap' <- readTVarIO threadMap
-      for_ (M.assocs threadMap') $ \(aName, asyncs) -> do
-        info $ "Shutting down Action " <> serializeActionName aName
-        mapM_ (\(_, async') -> cancel async') asyncs
-      -- TODO does this matter?
-      atomically $ writeTVar threadMap M.empty
-      liftIO $ loggerCleanup'
+-- final cleanup: if this thing shuts down with threads running,
+-- kill all the threads
+cleanup ::
+  (Logger m, MonadIO m, MonadReader Env m, MonadUnliftIO m) =>
+  IO () ->
+  TVar (ThreadMap m) ->
+  m ()
+cleanup loggerCleanup' threadMap = do
+  threadMap' <- readTVarIO threadMap
+  for_ (M.assocs threadMap') $ \(aName, asyncs) -> do
+    info $ "Shutting down Action " <> serializeActionName aName
+    mapM_ (\(_, async') -> cancel async') asyncs
+  -- TODO does this matter?
+  atomically $ writeTVar threadMap M.empty
+  liftIO $ loggerCleanup'

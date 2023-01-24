@@ -9,7 +9,7 @@ import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Data.Text (Text)
 import Data.UUID (UUID)
 import Service.ActionName (ActionName(..))
-import Service.Action (Action(..), Message)
+import Service.Action (Action, ActionFor(..), Message)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
 import Service.Messages.GledoptoGLC007P (Effect(..), effect', hex', seconds)
@@ -17,8 +17,8 @@ import qualified Service.Device as Device
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan)
 
-chrizmazAction :: UUID -> Action (TChan Message)
-chrizmazAction newId = Action Chrizmaz newId [Device.GledoptoGLC007P_1] [Device.GledoptoGLC007P_1] initAction cleanupAction runAction 
+chrizmazAction :: (Logger m, MonadMQTT m, MonadUnliftIO m) => UUID -> Action m
+chrizmazAction newId = ActionFor Chrizmaz newId [Device.GledoptoGLC007P_1] [Device.GledoptoGLC007P_1] initAction cleanupAction runAction 
 
 initAction :: (MonadUnliftIO m) => Text -> TChan Message -> m (TChan Message)
 initAction _myName = pure

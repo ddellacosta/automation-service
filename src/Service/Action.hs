@@ -1,5 +1,6 @@
 module Service.Action
-  ( Action(..)
+  ( Action
+  , ActionFor(..)
   , Message(..)
   , MsgBody(..)
   , mkNullAction
@@ -11,9 +12,10 @@ import Data.Text (Text)
 import qualified Data.UUID as UUID
 import Data.UUID (UUID)
 import Service.ActionName (ActionName(..))
-import Service.App (ActionsService)
 import Service.Device (DeviceId)
+import UnliftIO.STM (TChan)
 
+-- TODO need to fix these messaging types to not be garbage
 data Message = Server MsgBody | Client MsgBody
   deriving (Show)
 
@@ -22,21 +24,23 @@ data MsgBody = MsgBody
   }
   deriving (Show)
 
-data Action a = Action
+data ActionFor m a = ActionFor
   { name :: ActionName
   , id :: UUID
   , devices :: [DeviceId]
   , wantsFullControlOver :: [DeviceId]
-  , init :: Text -> a -> ActionsService a
-  , cleanup :: Text -> a -> ActionsService ()
-  , run :: Text -> a -> ActionsService ()
+  , init :: Text -> a -> m a
+  , cleanup :: Text -> a -> m ()
+  , run :: Text -> a -> m ()
   }
 
-nullAction :: UUID -> Action a
-nullAction newId = Action Null newId [] [] constA noop noop
+type Action m = ActionFor m (TChan Message)
+
+nullAction :: (Applicative m) => UUID -> ActionFor m a
+nullAction newId = ActionFor Null newId [] [] constA noop noop
   where
     constA _ = pure
     noop _ _ = pure ()
 
-mkNullAction :: Action a
+mkNullAction :: (Applicative m) => ActionFor m a
 mkNullAction = nullAction UUID.nil
