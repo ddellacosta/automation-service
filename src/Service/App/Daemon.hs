@@ -1,5 +1,8 @@
 module Service.App.Daemon
-  ( run
+  ( DeviceMap
+  , ThreadMap
+  , initializeAndRunAction
+  , run
   )
 where
 
@@ -24,7 +27,7 @@ import Service.ActionName (ActionName, serializeActionName)
 import Service.Actions (findAction)
 import Service.App (Logger(..), MonadMQTT)
 import Service.Device (DeviceId)
-import Service.Env (Env, config, loggerCleanup, messagesChan)
+import Service.Env (Env, config, appCleanup, messagesChan)
 import qualified Service.Messages.Action as Messages
 import UnliftIO.Async (Async(..), async, cancel)
 import UnliftIO.Exception (bracket)
@@ -48,9 +51,9 @@ type DeviceMap = M.Map DeviceId [ActionName]
 run :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m) => m ()
 run = do
   config' <- view config
-  loggerCleanup' <- view loggerCleanup
+  appCleanup' <- view appCleanup
 
-  bracket (newTVarIO (M.empty :: ThreadMap m)) (cleanup loggerCleanup') $ \threadMap -> do
+  bracket (newTVarIO (M.empty :: ThreadMap m)) (cleanup appCleanup') $ \threadMap -> do
     debug $ T.pack $ show config'
 
     deviceMap <- newTVarIO (M.empty :: DeviceMap)
@@ -80,7 +83,8 @@ run = do
   where
     sendClientMsg serverChan = atomically . writeTChan serverChan . Client . MsgBody 
 
-findThreadsByDeviceId :: (Monad m) => [DeviceId] -> ThreadMap m -> DeviceMap -> [(Action m, Async ())]
+findThreadsByDeviceId ::
+  (Monad m) => [DeviceId] -> ThreadMap m -> DeviceMap -> [(Action m, Async ())]
 findThreadsByDeviceId devices threadMap' deviceMap' = mconcat $ devices <&> \did ->
   case M.lookup did deviceMap' of
     Just actionNames ->
@@ -88,7 +92,7 @@ findThreadsByDeviceId devices threadMap' deviceMap' = mconcat $ devices <&> \did
     Nothing -> []
 
 initializeAndRunAction ::
-  (Logger m, MonadMQTT m, MonadUnliftIO m) =>
+  (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) =>
   TVar (ThreadMap m) ->
   TVar DeviceMap ->
   TChan Message ->
@@ -140,12 +144,7 @@ initializeAndRunAction threadMap deviceMap broadcastChan actionName = do
           deviceMap')
       (devices action)
 
-runAction ::
-  (MonadUnliftIO m) =>
-  Text ->
-  TChan Message ->
-  Action m ->
-  m ()
+runAction :: (MonadUnliftIO m) => Text -> TChan Message -> Action m -> m ()
 runAction
   myName
   broadcastChan
@@ -171,11 +170,11 @@ cleanup ::
   IO () ->
   TVar (ThreadMap m) ->
   m ()
-cleanup loggerCleanup' threadMap = do
+cleanup appCleanup' threadMap = do
   threadMap' <- readTVarIO threadMap
   for_ (M.assocs threadMap') $ \(aName, asyncs) -> do
     info $ "Shutting down Action " <> serializeActionName aName
     mapM_ (\(_, async') -> cancel async') asyncs
   -- TODO does this matter?
   atomically $ writeTVar threadMap M.empty
-  liftIO $ loggerCleanup'
+  liftIO $ appCleanup'

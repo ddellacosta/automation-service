@@ -5,6 +5,7 @@ module Service.Actions.Chrizmaz
   where
 
 import Control.Monad (forever)
+import Control.Monad.Reader (MonadReader)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Data.Text (Text)
 import Data.UUID (UUID)
@@ -14,16 +15,20 @@ import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
 import Service.Messages.GledoptoGLC007P (Effect(..), effect', hex', seconds)
 import qualified Service.Device as Device
+import Service.Env (Env)
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan)
 
-chrizmazAction :: (Logger m, MonadMQTT m, MonadUnliftIO m) => UUID -> Action m
+chrizmazAction ::
+  (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) =>
+  UUID ->
+  Action m
 chrizmazAction newId = ActionFor Chrizmaz newId [Device.GledoptoGLC007P_1] [Device.GledoptoGLC007P_1] initAction cleanupAction runAction 
 
 initAction :: (MonadUnliftIO m) => Text -> TChan Message -> m (TChan Message)
 initAction _myName = pure
 
-cleanupAction :: (Logger m, MonadMQTT m, MonadUnliftIO m) => Text -> TChan Message -> m ()
+cleanupAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => Text -> TChan Message -> m ()
 cleanupAction myName _broadcastChan = do
   info $ "Shutting down " <> myName
 
@@ -34,7 +39,7 @@ cleanupAction myName _broadcastChan = do
   info "turning led strip off"
   publishMQTT ledTopic "{\"state\": \"OFF\"}"
 
-runAction :: (Logger m, MonadMQTT m, MonadUnliftIO m) => Text -> TChan Message -> m ()
+runAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => Text -> TChan Message -> m ()
 runAction myName _broadcastChan = do
   info $ "Urnning Chrizmaz arbhft " <> myName <> " Jolly HO!"
 

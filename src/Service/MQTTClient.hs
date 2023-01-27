@@ -5,6 +5,7 @@ module Service.MQTTClient
   )
 where
 
+import Data.Either (fromRight)
 import Data.Maybe (fromMaybe)
 import Data.X509.CertificateStore (makeCertificateStore, readCertificateStore)
 import Network.Connection (TLSSettings(..))
@@ -24,18 +25,16 @@ import Service.Env (MQTTConfig(..))
 
 initMQTTClient :: MQTT.MessageCallback -> MQTTConfig -> IO MQTT.MQTTClient
 initMQTTClient msgCB (MQTTConfig {..}) = do
-  mCertStore <- readCertificateStore _caCertPath
-  eCreds <- credentialLoadX509 _clientCertPath _clientKeyPath
+  mCertStore <- maybe (pure Nothing) readCertificateStore _caCertPath
+  eCreds <- case (_clientCertPath, _clientKeyPath) of
+    (Just clientCertPath', Just clientKeyPath') -> credentialLoadX509 clientCertPath' clientKeyPath'
+    _ -> pure $ Left "clientCertPath and/or clientKeyPath are empty"
 
-  let mqttConfig' = (mkMQTTConfig $ mkClientParams eCreds mCertStore)
+  let mqttConfig' = mkMQTTConfig $ mkClientParams eCreds mCertStore
 
   MQTT.connectURI mqttConfig' _uri 
 
   where
-    certStore = fromMaybe (makeCertificateStore [])
-
-    cred = either (\i -> error $ "got a bad credential! " <> i) id
-
     clientParams' = defaultParamsClient "mosquitto" ""
 
     mkClientParams eCreds mCertStore = clientParams'
@@ -46,12 +45,14 @@ initMQTTClient msgCB (MQTTConfig {..}) = do
           }
       , clientHooks =
           (clientHooks clientParams')
-          { onCertificateRequest = clientCertificate (cred eCreds)
+          { onCertificateRequest = fromRight (onCertificateRequest $ clientHooks clientParams') $
+              clientCertificate <$> eCreds
           }
       , clientShared =
           (clientShared clientParams')
-          { sharedCredentials = Credentials [(cred eCreds)]
-          , sharedCAStore = certStore mCertStore
+          { sharedCredentials = fromRight (sharedCredentials $ clientShared clientParams') $
+              (\c -> Credentials [c]) <$> eCreds
+          , sharedCAStore = fromMaybe (makeCertificateStore []) mCertStore
           }
       }
 

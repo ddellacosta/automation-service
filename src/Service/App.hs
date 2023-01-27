@@ -3,6 +3,7 @@ module Service.App
   , Logger(..)
   , MonadMQTT(..)
   , log
+  , logDefault
   , runActionsService
   , loggerConfig
   )
@@ -56,7 +57,7 @@ runActionsService env (ActionsService x) = runReaderT x env
 
 -- Logger
 
-class (MonadIO m, MonadReader Env m) => Logger m where
+class (Monad m) => Logger m where
   debug :: Text -> m ()
   info :: Text -> m ()
   warn :: Text -> m ()
@@ -96,7 +97,7 @@ loggerConfig config' = do
 
 -- MonadMQTT
 
-class (Monad m, MonadReader Env m) => MonadMQTT m where
+class (Monad m) => MonadMQTT m where
   publishMQTT :: Topic -> ByteString -> m ()
 
 instance MonadMQTT ActionsService where

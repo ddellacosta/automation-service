@@ -12,6 +12,7 @@ import GHC.Generics (Generic)
 
 data ActionName
   = Null
+  | Test
   | Gold
   | Chrizmaz
   | Trinity

@@ -15,7 +15,7 @@ module Service.Env
   , logFilePath
   , logLevel
   , logger
-  , loggerCleanup
+  , appCleanup
   , messagesChan
   , mqttClient
   , mqttConfig
@@ -53,10 +53,10 @@ deviceDecoder =
 
 data MQTTConfig = MQTTConfig
   { _uri :: URI
-  , _caCertPath :: FilePath
-  , _clientCertPath :: FilePath
-  , _clientKeyPath :: FilePath
   , _actionsServiceTopicFilter :: Filter
+  , _caCertPath :: Maybe FilePath
+  , _clientCertPath :: Maybe FilePath
+  , _clientKeyPath :: Maybe FilePath
   }
   deriving (Generic, Show)
 
@@ -67,10 +67,10 @@ mqttConfigDecoder =
   record
     ( MQTTConfig
         <$> field "uri" uriDecoder
-        <*> field "caCertPath" string
-        <*> field "clientCertPath" string
-        <*> field "clientKeyPath" string
         <*> field "actionsServiceTopic" (string <&> S.fromString)
+        <*> field "caCertPath" auto
+        <*> field "clientCertPath" auto
+        <*> field "clientKeyPath" auto
     )
 
 uriDecoder :: Decoder URI
@@ -99,7 +99,7 @@ configDecoder =
 data Env = Env
   { _config :: Config
   , _logger :: TimedFastLogger
-  , _loggerCleanup :: IO ()
+  , _appCleanup :: IO ()
   , _mqttClient :: MQTTClient
   , _messagesChan :: TQueue (Messages.Action Text)
   }

@@ -31,20 +31,13 @@ let Config
       }
 
 in  { mqttBroker =
-      { uri = "%%MQTT-URI%%"
-      , caCertPath = "/home/dd/code/home-assistant/mosquitto_config/ca.crt"
-      , clientCertPath =
-          "/home/dd/code/home-assistant/mosquitto_config/client.crt"
-      , clientKeyPath =
-          "/home/dd/code/home-assistant/mosquitto_config/client.key"
+      { uri = "mqtt://localhost:1883"
       , actionsServiceTopic = "actions-service/set"
+      , caCertPath = None Text
+      , clientCertPath = None Text
+      , clientKeyPath = None Text
       }
-    , devices =
-      [ { id = "GledoptoGLC007P_1"
-        , name = "Gledopto GL-C-007P RGBW LED Controller Pro"
-        , topic = "zigbee2mqtt/Gledopto GL-C-007P RGBW LED Controller Pro/set"
-        }
-      ]
+    , devices = [] : List DeviceConfig
     , logFilePath = "logs/logfile"
     , logLevel = LogLevel.Debug
     }

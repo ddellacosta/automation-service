@@ -86,10 +86,11 @@ test-suite actions-service-tests
   import:           shared
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
-  main-is:          Driver.hs
+--  main-is:          Driver.hs
+  main-is:          Main.hs
   -- added to get rid of warnings when running cabal test; is it
   -- really necessary otherwise?
-  other-modules:    Test.Unit.Service.App.Daemon
+  other-modules:    Test.Integration.Service.App.Daemon
   build-depends:    actions-service
                   , hspec ^>= 2.9.7
                   , QuickCheck ^>= 2.14.2
@@ -97,6 +98,10 @@ test-suite actions-service-tests
                   , tasty-discover ^>= 4.2.2
                   , tasty-hspec ^>= 1.2.0.1
                   -- , tasty-hunit ^>= 0.10.0.3
-
 --  build-tool-depends:
 --    tasty-discover:tasty-discover ^>= 4.2.2
+  ghc-options:
+    -threaded
+    -rtsopts
+    "-with-rtsopts=-N -T"
+    -Wall

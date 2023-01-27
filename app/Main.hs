@@ -56,7 +56,7 @@ initialize = do
     MQTT.subscribe mc [(mqttConfig' ^. actionsServiceTopicFilter, MQTT.subOptions)] []
   --  print $ show props
   --  print $ foldMap (either show show) eithers
-  pure $ Env config' logger' loggerCleanup mc messagesChan'
+  pure $ Env config' logger' (loggerCleanup >> MQTT.normalDisconnect mc) mc messagesChan'
 
   where
     --

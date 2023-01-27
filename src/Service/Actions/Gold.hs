@@ -26,14 +26,14 @@ import Service.Messages.GledoptoGLC007P
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan, atomically, tryReadTChan)
 
-goldAction :: (Logger m, MonadMQTT m, MonadUnliftIO m) => UUID -> Action m
+goldAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => UUID -> Action m
 goldAction newId =
   ActionFor Gold newId [Device.GledoptoGLC007P_1] [Device.GledoptoGLC007P_1] initAction cleanupAction runAction
 
 initAction :: (MonadUnliftIO m) => Text -> TChan Message -> m (TChan Message)
 initAction _myName = pure
 
-cleanupAction :: (Logger m, MonadMQTT m, MonadUnliftIO m) => Text -> TChan Message -> m ()
+cleanupAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => Text -> TChan Message -> m ()
 cleanupAction myName _broadcastChan = do
   info $ "Shutting down " <> myName
 
@@ -44,7 +44,11 @@ cleanupAction myName _broadcastChan = do
   info "turning led strip off"
   publishMQTT ledTopic "{\"state\": \"OFF\"}"
 
-runAction :: (Logger m, MonadMQTT m, MonadUnliftIO m) => Text -> TChan Message -> m ()
+runAction ::
+  (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) =>
+  Text ->
+  TChan Message ->
+  m ()
 runAction myName broadcastChan = do
   info $ "Running " <> myName
 

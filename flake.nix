@@ -63,6 +63,7 @@
             cabal-install
             zlib
             watchexec
+            mosquitto
           ];
           inputsFrom = builtins.attrValues self.packages.${system};
         };
