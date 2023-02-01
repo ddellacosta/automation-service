@@ -4,10 +4,6 @@ module Test.Integration.Service.App.Daemon
   )
 where
 
--- import Control.Exception (evaluate)
--- import Test.Hspec (Spec, anyException, shouldThrow, shouldBe, it, describe)
--- import Test.QuickCheck (Testable(property))
-
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.Map.Strict as M
 import Test.Hspec (Spec, before, describe, expectationFailure, it, shouldBe)

@@ -47,29 +47,30 @@ common shared
     , uuid ^>= 1.3.15
     , x509-store ^>= 1.6.9
   default-extensions:
-     OverloadedStrings
-   , DeriveGeneric
-   , FunctionalDependencies
-   , LambdaCase
-   , TupleSections
+      OverloadedStrings
+    , DeriveGeneric
+    , FunctionalDependencies
+    , LambdaCase
+    , TupleSections
 
 library
   import:           shared
   hs-source-dirs:   src
-  exposed-modules:  Service.Action
-                  , Service.ActionName
-                  , Service.Actions
-                  , Service.Actions.Chrizmaz
-                  , Service.Actions.Gold
-                  , Service.Actions.Trinity
-                  , Service.App
-                  , Service.App.Daemon
-                  , Service.App.Helpers
-                  , Service.Device
-                  , Service.Env
-                  , Service.Messages.Action
-                  , Service.Messages.GledoptoGLC007P
-                  , Service.MQTTClient
+  exposed-modules:
+      Service.Action
+    , Service.ActionName
+    , Service.Actions
+    , Service.Actions.Chrizmaz
+    , Service.Actions.Gold
+    , Service.Actions.Trinity
+    , Service.App
+    , Service.App.Daemon
+    , Service.App.Helpers
+    , Service.Device
+    , Service.Env
+    , Service.Messages.Action
+    , Service.Messages.GledoptoGLC007P
+    , Service.MQTTClient
 
 executable actions-service
   import:           shared
@@ -86,20 +87,21 @@ test-suite actions-service-tests
   import:           shared
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
---  main-is:          Driver.hs
   main-is:          Main.hs
-  -- added to get rid of warnings when running cabal test; is it
-  -- really necessary otherwise?
-  other-modules:    Test.Integration.Service.App.Daemon
-  build-depends:    actions-service
-                  , hspec ^>= 2.9.7
-                  , QuickCheck ^>= 2.14.2
-                  , tasty ^>= 1.4.2.3
-                  , tasty-discover ^>= 4.2.2
-                  , tasty-hspec ^>= 1.2.0.1
-                  -- , tasty-hunit ^>= 0.10.0.3
---  build-tool-depends:
---    tasty-discover:tasty-discover ^>= 4.2.2
+  -- I added other-modules to get rid of warnings when running cabal
+  -- test. The absence of other-modules doesn't seem to prevent it
+  -- from running successfully otherwise. Is other-modules really
+  -- necessary?
+  other-modules:
+      Test.Integration.TestApp
+    , Test.Integration.Service.App.Daemon
+    , Test.Unit.Service.Device
+  build-depends:
+      actions-service
+    , hspec ^>= 2.9.7
+    , QuickCheck ^>= 2.14.2
+    , tasty ^>= 1.4.2.3
+    , tasty-hspec ^>= 1.2.0.1
   ghc-options:
     -threaded
     -rtsopts

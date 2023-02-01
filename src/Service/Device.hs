@@ -22,13 +22,21 @@ data Device = Device
   , _name :: Text
   , _topic :: Topic
   }
-  deriving (Generic, Show)
+  deriving (Generic, Show, Eq)
 
 makeFieldsNoPrefix ''Device
 
+-- |
+-- | A Device with the DeviceId of `Null`, name "Null" and topic "null". Placeholder for when we
+-- | are expecting a Device but don't have one, for whatever reason.
+-- |
 nullDevice :: Device
 nullDevice = Device Null "Null" "null"
 
+-- |
+-- | findDevice returns either the device matching the DeviceId, or
+-- | nullDevice if nothing is found.
+-- |
 findDevice :: DeviceId -> [Device] -> Device
 findDevice deviceId devices =
   fromMaybe nullDevice $ devices ^? folded . filtered ((== deviceId) . _id)

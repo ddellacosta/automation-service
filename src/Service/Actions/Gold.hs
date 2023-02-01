@@ -4,6 +4,8 @@ module Service.Actions.Gold
   )
 where
 
+import Prelude hiding (id, init)
+
 import Control.Monad.Reader (MonadReader, liftIO)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Data.Text (Text)
@@ -28,7 +30,15 @@ import UnliftIO.STM (TChan, atomically, tryReadTChan)
 
 goldAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => UUID -> Action m
 goldAction newId =
-  ActionFor Gold newId [Device.GledoptoGLC007P_1] [Device.GledoptoGLC007P_1] initAction cleanupAction runAction
+  ActionFor
+    { name = Gold
+    , id = newId
+    , devices = [Device.GledoptoGLC007P_1]
+    , wantsFullControlOver = [Device.GledoptoGLC007P_1]
+    , init = initAction
+    , cleanup = cleanupAction
+    , run = runAction
+    }
 
 initAction :: (MonadUnliftIO m) => Text -> TChan Message -> m (TChan Message)
 initAction _myName = pure
