@@ -91,6 +91,7 @@
           hlint
           ghcid
           watchexec
+          mosquitto
         ]);
       });
 }

@@ -2,11 +2,16 @@
 
 module Service.MQTTClient
   ( initMQTTClient
+  , mqttClientCallback
   )
 where
 
+import Control.Monad (when)
+import Data.Aeson (decode)
 import Data.Either (fromRight)
+import Data.Foldable (for_)
 import Data.Maybe (fromMaybe)
+import Data.Text (Text)
 import Data.X509.CertificateStore (makeCertificateStore, readCertificateStore)
 import Network.Connection (TLSSettings(..))
 import qualified Network.MQTT.Client as MQTT
@@ -21,7 +26,12 @@ import Network.TLS
   , defaultParamsClient
   )
 import Network.TLS.Extra.Cipher (ciphersuite_default)
-import Service.Env (MQTTConfig(..))
+import qualified Service.App as App
+import Service.Env (MQTTConfig(..), LogLevel(..))
+import qualified Service.Messages.Action as Messages
+import System.Log.FastLogger (TimedFastLogger)
+import UnliftIO.STM (TQueue, atomically, writeTQueue)
+
 
 initMQTTClient :: MQTT.MessageCallback -> MQTTConfig -> IO MQTT.MQTTClient
 initMQTTClient msgCB (MQTTConfig {..}) = do
@@ -45,8 +55,9 @@ initMQTTClient msgCB (MQTTConfig {..}) = do
           }
       , clientHooks =
           (clientHooks clientParams')
-          { onCertificateRequest = fromRight (onCertificateRequest $ clientHooks clientParams') $
-              clientCertificate <$> eCreds
+          { onCertificateRequest =
+              fromRight (onCertificateRequest $ clientHooks clientParams') $
+                clientCertificate <$> eCreds
           }
       , clientShared =
           (clientShared clientParams')
@@ -68,3 +79,15 @@ initMQTTClient msgCB (MQTTConfig {..}) = do
     clientCertificate cred' (certtypes, mHashSigs, dns) = do
       putStrLn $ "Implement me -- certtypes: " <> show certtypes <> ", mHashSigs: " <> show mHashSigs <> ", DNs: " <> show dns
       pure $ Just cred'
+
+
+-- |
+-- | Returns a SimpleCallback with type
+-- | MQTTClient -> Topic -> ByteString -> [Property] -> IO ()
+-- |
+mqttClientCallback :: LogLevel -> TQueue (Messages.Action Text) -> TimedFastLogger -> MQTT.MessageCallback
+mqttClientCallback logLevelSet messagesChan' logger' =
+  MQTT.SimpleCallback $ \_mc topic' msg _props -> do
+    when (Debug >= logLevelSet) $
+      App.log logger' Debug $ "Received message " <> show msg <> " to " <> show topic'
+    for_ (decode msg) $ atomically . writeTQueue messagesChan'

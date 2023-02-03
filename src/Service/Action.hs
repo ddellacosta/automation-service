@@ -3,6 +3,7 @@ module Service.Action
   , ActionFor(..)
   , Message(..)
   , MsgBody(..)
+  , NewAction(..)
   , mkNullAction
   , nullAction
   )
@@ -44,3 +45,6 @@ nullAction newId = ActionFor Null newId [] [] constA noop noop
 
 mkNullAction :: (Applicative m) => ActionFor m a
 mkNullAction = nullAction UUID.nil
+
+
+type NewAction m = m ()

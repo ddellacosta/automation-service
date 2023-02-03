@@ -26,7 +26,7 @@ instance FromJSON ActionName
 serializeActionName :: ActionName -> Text
 serializeActionName = T.pack . show 
 
-parseActionName :: Text -> Maybe ActionName
+parseActionName :: String -> Maybe ActionName
 parseActionName = \case
   "Gold" -> Just Gold
   "Chrizmaz" -> Just Chrizmaz

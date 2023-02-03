@@ -96,6 +96,7 @@ test-suite actions-service-tests
       Test.Integration.TestApp
     , Test.Integration.Service.App.Daemon
     , Test.Unit.Service.Device
+    , Test.Unit.Service.Messages.Action
   build-depends:
       actions-service
     , hspec ^>= 2.9.7

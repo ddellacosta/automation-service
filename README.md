@@ -7,7 +7,7 @@ Actions Service provides a way to build complex flows using MQTT topics and HTTP
 Running tests:
 
 ```bash
-$ watchexec -w test/ 'cabal test --test-show-details=always --test-options "--color=always"'
+$ watchexec -w test -w src -w app 'cabal test --test-show-details=always --test-options "--color=always"'
 ```
 
 ## License/Copyright
