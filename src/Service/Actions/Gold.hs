@@ -9,7 +9,6 @@ import Prelude hiding (id, init)
 import Control.Monad.Reader (MonadReader, liftIO)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Data.Text (Text)
-import Data.UUID (UUID)
 import Network.MQTT.Client (Topic)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
@@ -28,20 +27,15 @@ import Service.Messages.GledoptoGLC007P
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan, atomically, tryReadTChan)
 
-goldAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => UUID -> Action m
-goldAction newId =
+goldAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => Action m
+goldAction =
   ActionFor
     { name = Gold
-    , id = newId
     , devices = [Device.GledoptoGLC007P_1]
     , wantsFullControlOver = [Device.GledoptoGLC007P_1]
-    , init = initAction
     , cleanup = cleanupAction
     , run = runAction
     }
-
-initAction :: (MonadUnliftIO m) => Text -> TChan Message -> m (TChan Message)
-initAction _myName = pure
 
 cleanupAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => Text -> TChan Message -> m ()
 cleanupAction myName _broadcastChan = do

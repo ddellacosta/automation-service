@@ -3,15 +3,11 @@ module Service.Action
   , ActionFor(..)
   , Message(..)
   , MsgBody(..)
-  , NewAction(..)
-  , mkNullAction
   , nullAction
   )
   where
 
 import Data.Text (Text)
-import qualified Data.UUID as UUID
-import Data.UUID (UUID)
 import Service.ActionName (ActionName(..))
 import Service.Device (DeviceId)
 import UnliftIO.STM (TChan)
@@ -25,26 +21,17 @@ data MsgBody = MsgBody
   }
   deriving (Show)
 
-data ActionFor m a = ActionFor
+data ActionFor monad msg = ActionFor
   { name :: ActionName
-  , id :: UUID
   , devices :: [DeviceId]
   , wantsFullControlOver :: [DeviceId]
-  , init :: Text -> a -> m a
-  , cleanup :: Text -> a -> m ()
-  , run :: Text -> a -> m ()
+  , cleanup :: Text -> TChan msg -> monad ()
+  , run :: Text -> TChan msg -> monad ()
   }
 
-type Action m = ActionFor m (TChan Message)
+type Action m = ActionFor m Message
 
-nullAction :: (Applicative m) => UUID -> ActionFor m a
-nullAction newId = ActionFor Null newId [] [] constA noop noop
+nullAction :: (Applicative m) => ActionFor m a
+nullAction = ActionFor Null [] [] noop noop
   where
-    constA _ = pure
     noop _ _ = pure ()
-
-mkNullAction :: (Applicative m) => ActionFor m a
-mkNullAction = nullAction UUID.nil
-
-
-type NewAction m = m ()

@@ -16,7 +16,6 @@ import qualified Data.Map.Strict as M
 import Data.Maybe (catMaybes)
 import qualified Data.Text as T
 import Data.Text (Text)
-import qualified Data.UUID.V4 as UUID.V4
 import Service.Action
   ( Action
   , ActionFor(ActionFor, name, devices, wantsFullControlOver)
@@ -100,11 +99,10 @@ initializeAndRunAction ::
   m ()
 initializeAndRunAction threadMap deviceMap broadcastChan actionName = do
   clientChan <- atomically $ dupTChan broadcastChan
-  newId <- liftIO UUID.V4.nextRandom
   threadMap' <- readTVarIO threadMap
   deviceMap' <- readTVarIO deviceMap
 
-  let action = findAction actionName newId
+  let action = findAction actionName
       actionsToStop =
         findThreadsByDeviceId (wantsFullControlOver action) threadMap' deviceMap'
 
@@ -148,9 +146,9 @@ runAction :: (MonadUnliftIO m) => Text -> TChan Message -> Action m -> m ()
 runAction
   myName
   broadcastChan
-  ( ActionFor _ _ _ _ initAction cleanupAction runAction') =
+  ( ActionFor _ _ _ cleanupAction runAction') =
   bracket
-    (initAction myName broadcastChan)
+    (pure broadcastChan)
     (cleanupAction myName)
     (runAction' myName)
 

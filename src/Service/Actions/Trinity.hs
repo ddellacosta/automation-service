@@ -8,7 +8,6 @@ import Control.Monad (forever)
 import Control.Monad.Reader (MonadReader)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Data.Text (Text)
-import Data.UUID (UUID)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
 import Service.Action (Action, ActionFor(..), Message(..))
@@ -19,12 +18,15 @@ import Service.Messages.GledoptoGLC007P (mkColorXY, seconds, withTransition')
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan)
 
-trinityAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => UUID -> Action m
-trinityAction newId =
-  ActionFor Trinity newId [Device.GledoptoGLC007P_1] [Device.GledoptoGLC007P_1] initAction cleanupAction runAction
-
-initAction :: (MonadUnliftIO m) => Text -> TChan Message -> m (TChan Message)
-initAction _myName = pure
+trinityAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => Action m
+trinityAction =
+  ActionFor
+    { name = Trinity
+    , devices = [Device.GledoptoGLC007P_1]
+    , wantsFullControlOver = [Device.GledoptoGLC007P_1]
+    , cleanup = cleanupAction
+    , run = runAction
+    }
 
 cleanupAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => Text -> TChan Message -> m ()
 cleanupAction myName _broadcastChan = do

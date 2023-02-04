@@ -1,4 +1,7 @@
-module Service.Actions (findAction) where
+module Service.Actions
+  ( findAction
+  )
+where
 
 import Control.Monad.Reader (MonadReader)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
@@ -14,7 +17,7 @@ import Service.Env (Env)
 findAction ::
   (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) =>
   ActionName ->
-  (UUID -> Action m)
+  Action m
 findAction = \case
   Gold -> goldAction
   Chrizmaz -> chrizmazAction

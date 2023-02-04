@@ -8,7 +8,6 @@ import Control.Monad (forever)
 import Control.Monad.Reader (MonadReader)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Data.Text (Text)
-import Data.UUID (UUID)
 import Service.ActionName (ActionName(..))
 import Service.Action (Action, ActionFor(..), Message)
 import Service.App (Logger(..), MonadMQTT(..))
@@ -21,12 +20,15 @@ import UnliftIO.STM (TChan)
 
 chrizmazAction ::
   (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) =>
-  UUID ->
   Action m
-chrizmazAction newId = ActionFor Chrizmaz newId [Device.GledoptoGLC007P_1] [Device.GledoptoGLC007P_1] initAction cleanupAction runAction 
-
-initAction :: (MonadUnliftIO m) => Text -> TChan Message -> m (TChan Message)
-initAction _myName = pure
+chrizmazAction =
+  ActionFor
+    { name = Chrizmaz
+    , devices = [Device.GledoptoGLC007P_1]
+    , wantsFullControlOver = [Device.GledoptoGLC007P_1]
+    , cleanup = cleanupAction
+    , run = runAction
+    }
 
 cleanupAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => Text -> TChan Message -> m ()
 cleanupAction myName _broadcastChan = do
