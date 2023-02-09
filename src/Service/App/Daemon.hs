@@ -31,6 +31,7 @@ import Service.App.DaemonState
   , ThreadMap
   , insertAction
   , insertDeviceActions
+  , removeActions
   )
 import Service.Env (Env, config, appCleanup, messagesChan)
 import qualified Service.Messages.Action as Messages
@@ -114,6 +115,7 @@ initializeAndRunAction
         findThreadsByDeviceId (wantsFullControlOver action) threadMap' deviceMap'
 
     mapM_ stopAction' actionsToStop
+    atomically $ removeActions _threadMap $ name . fst <$> actionsToStop
 
     clientAsync <- async $
       bracket (pure clientChan) (Action.cleanup action) (Action.run action)

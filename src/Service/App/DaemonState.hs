@@ -8,6 +8,7 @@ module Service.App.DaemonState
   , deviceMap
   , insertAction
   , insertDeviceActions
+  , removeActions
   , threadMap
   , serverChan
   )
@@ -55,6 +56,10 @@ insertAction threadMap' actionName actionEntry = do
       actionName
       threadMap''
 
+removeActions :: TVar (ThreadMap m) -> [ActionName] -> STM ()
+removeActions threadMap' actions =
+  readTVar threadMap' >>=
+    \tm -> writeTVar threadMap' $ foldr M.delete tm actions
 
 -- |
 -- | Given a TVar DeviceMap, this will add a new ActionName entry for
