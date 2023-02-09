@@ -37,7 +37,8 @@ in  { mqttBroker =
       , clientCertPath = None Text
       , clientKeyPath = None Text
       }
-    , devices = [] : List DeviceConfig
-    , logFilePath = "logs/logfile"
+    , devices =
+      [ { id = "TestDevice", name = "Test Device", topic = "test-device" } ]
+    , logFilePath = "logs/testlogfile"
     , logLevel = LogLevel.Debug
     }

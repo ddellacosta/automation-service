@@ -25,8 +25,8 @@ data ActionFor monad msg = ActionFor
   { name :: ActionName
   , devices :: [DeviceId]
   , wantsFullControlOver :: [DeviceId]
-  , cleanup :: Text -> TChan msg -> monad ()
-  , run :: Text -> TChan msg -> monad ()
+  , cleanup :: TChan msg -> monad ()
+  , run :: TChan msg -> monad ()
   }
 
 type Action m = ActionFor m Message
@@ -34,4 +34,4 @@ type Action m = ActionFor m Message
 nullAction :: (Applicative m) => ActionFor m a
 nullAction = ActionFor Null [] [] noop noop
   where
-    noop _ _ = pure ()
+    noop = const $ pure ()

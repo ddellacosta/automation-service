@@ -20,9 +20,10 @@ main :: IO ()
 main = defaultMain =<< allTests
 
 allTests :: IO TestTree
-allTests = unit >>= \unit' ->
-  integration >>= \integration' ->
-    pure $ testGroup "All Tests" [ unit', integration' ]
+allTests = do
+  unit' <- unit
+  integration' <- integration
+  pure $ testGroup "All Tests" [ unit', integration' ]
 
 mainIntegration :: IO ()
 mainIntegration = defaultMain =<< integration
@@ -33,7 +34,12 @@ unit = do
   actionMessagesSpec <- testSpec "Messages.Action Spec" Messages.Action.spec_
   appHelpersSpec <- testSpec "App.Helpers Spec" App.Helpers.spec
   appDaemonStateSpec <- testSpec "App.DaemonState Spec" App.DaemonState.spec
-  pure $ testGroup "Unit Tests" [ deviceSpec, actionMessagesSpec, appHelpersSpec, appDaemonStateSpec ]
+  pure $ testGroup "Unit Tests"
+    [ actionMessagesSpec
+    , appDaemonStateSpec
+    , appHelpersSpec
+    , deviceSpec
+    ]
 
 integration :: IO TestTree
 integration = do

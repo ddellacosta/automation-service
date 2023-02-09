@@ -1,3 +1,5 @@
+{-# GHC_OPTIONS -Wnoincomplete-uni-patterns -Wnounused-top-binds #-}
+
 module Test.Integration.TestApp
   ( testActionsService
   , initEnv
@@ -51,7 +53,6 @@ initEnv = do
   mc <- initMQTTClient mqttCallback (config' ^. mqttConfig)
   messagesChan' <- newTQueueIO
   pure $ Env config' logger' (loggerCleanup >> MQTT.normalDisconnect mc) mc messagesChan'
-
   where
     -- mqttCallback :: MQTTClient -> Topic -> ByteString -> [Property] -> IO ()
     mqttCallback = MQTT.SimpleCallback $ \_mc topic _msg _props -> do

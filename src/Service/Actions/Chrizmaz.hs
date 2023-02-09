@@ -30,9 +30,12 @@ chrizmazAction =
     , run = runAction
     }
 
-cleanupAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => Text -> TChan Message -> m ()
-cleanupAction myName _broadcastChan = do
-  info $ "Shutting down " <> myName
+cleanupAction
+  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  => TChan Message
+  -> m ()
+cleanupAction _broadcastChan = do
+  info "Shutting down Chrizmaz"
 
   -- TODO FAIL APPROPRIATELY, LOG IT, AND STOP THREAD IF WE CAN'T LOAD THE DEVICE
   -- if gledoptoLedStrip = nullDevice then throwException and quit
@@ -41,9 +44,12 @@ cleanupAction myName _broadcastChan = do
   info "turning led strip off"
   publishMQTT ledTopic "{\"state\": \"OFF\"}"
 
-runAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => Text -> TChan Message -> m ()
-runAction myName _broadcastChan = do
-  info $ "Urnning Chrizmaz arbhft " <> myName <> " Jolly HO!"
+runAction
+  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  => TChan Message
+  -> m ()
+runAction _broadcastChan = do
+  info "Urnning Chrizmaz arbhft, Jolly HO!"
 
   -- TODO FAIL APPROPRIATELY, LOG IT, AND STOP THREAD IF WE CAN'T LOAD THE DEVICE
   -- if gledoptoLedStrip = nullDevice then throwException and quit

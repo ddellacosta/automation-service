@@ -7,7 +7,6 @@ where
 import Control.Monad (forever)
 import Control.Monad.Reader (MonadReader)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
-import Data.Text (Text)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
 import Service.Action (Action, ActionFor(..), Message(..))
@@ -28,9 +27,12 @@ trinityAction =
     , run = runAction
     }
 
-cleanupAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => Text -> TChan Message -> m ()
-cleanupAction myName _broadcastChan = do
-  info $ "Shutting down " <> myName
+cleanupAction
+  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  => TChan Message
+  -> m ()
+cleanupAction _broadcastChan = do
+  info "Shutting down Trinity"
 
   -- TODO FAIL APPROPRIATELY, LOG IT, AND STOP THREAD IF WE CAN'T LOAD THE DEVICE
   -- if gledoptoLedStrip = nullDevice then throwException and quit
@@ -39,9 +41,12 @@ cleanupAction myName _broadcastChan = do
   info "turning led strip off"
   publishMQTT ledTopic "{\"state\": \"OFF\"}"
 
-runAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => Text -> TChan Message -> m ()
-runAction myName _broadcastChan = do
-  info $ "Running " <> myName
+runAction
+  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  => TChan Message
+  -> m ()
+runAction _broadcastChan = do
+  info "Running Trinity"
 
   -- TODO FAIL APPROPRIATELY, LOG IT, AND STOP THREAD IF WE CAN'T LOAD THE DEVICE
   (_gledoptoLedStrip, ledTopic) <- Helpers.findDeviceM Device.GledoptoGLC007P_1

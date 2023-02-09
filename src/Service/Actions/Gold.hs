@@ -37,9 +37,12 @@ goldAction =
     , run = runAction
     }
 
-cleanupAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => Text -> TChan Message -> m ()
-cleanupAction myName _broadcastChan = do
-  info $ "Shutting down " <> myName
+cleanupAction
+  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  => TChan Message
+  -> m ()
+cleanupAction _broadcastChan = do
+  info $ "Shutting down Gold"
 
   -- TODO FAIL APPROPRIATELY, LOG IT, AND STOP THREAD IF WE CAN'T LOAD THE DEVICE
   -- if gledoptoLedStrip = nullDevice then throwException and quit
@@ -48,13 +51,12 @@ cleanupAction myName _broadcastChan = do
   info "turning led strip off"
   publishMQTT ledTopic "{\"state\": \"OFF\"}"
 
-runAction ::
-  (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) =>
-  Text ->
-  TChan Message ->
-  m ()
-runAction myName broadcastChan = do
-  info $ "Running " <> myName
+runAction
+  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  => TChan Message
+  -> m ()
+runAction broadcastChan = do
+  info "Running Gold"
 
   -- TODO FAIL APPROPRIATELY, LOG IT, AND STOP THREAD IF WE CAN'T LOAD THE DEVICE
   (_gledoptoLedStrip, ledTopic) <- Helpers.findDeviceM Device.GledoptoGLC007P_1
@@ -81,12 +83,12 @@ runAction myName broadcastChan = do
       -> m ()
     go ledTopic broadcastChan' = do
       liftIO $ threadDelay (seconds 60)
-      debug $ myName <> ": breathe"
+      debug "Gold: breathe"
       publishMQTT ledTopic (effect' Breathe)
 
       -- this bit is just a proto-PoC right now, doesn't really do anything
       maybeMsg <- atomically $ tryReadTChan broadcastChan'
       case maybeMsg of
         Just (Client (MsgBody msg')) ->
-          (debug $ myName <> ", msg: " <> msg') >> go ledTopic broadcastChan'
+          debug ("Gold -- msg: " <> msg') >> go ledTopic broadcastChan'
         _ -> go ledTopic broadcastChan'

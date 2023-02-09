@@ -4,14 +4,16 @@ module Test.Integration.Service.App.Daemon
   )
 where
 
-import Control.Monad.IO.Class (liftIO)
+import Control.Lens ((^.))
 import qualified Data.Map.Strict as M
-import Test.Hspec (Spec, before, describe, expectationFailure, it, shouldBe)
-import Test.Integration.TestApp (initEnv, testActionsService)
 import Service.App.Daemon (initializeAndRunAction)
-import Service.App.DaemonState (DaemonState(..), DeviceMap, ThreadMap)
+import Service.App.DaemonState (DaemonState(_threadMap))
 import Service.ActionName (ActionName(..))
-import UnliftIO.STM (atomically, dupTChan, newBroadcastTChanIO, newTVarIO, readTVarIO)
+import Service.Env (config)
+import Test.Hspec (Spec, aroundAll, describe, expectationFailure, it, shouldBe, pending)
+import Test.Integration.TestApp (testActionsService)
+import Test.Integration.Service.App.DaemonTestHelpers (findAction, initAndCleanup)
+import UnliftIO.STM (readTVarIO)
 
 spec_ :: Spec
 spec_ = describe "Service.App.Daemon specs" $ do
@@ -19,22 +21,27 @@ spec_ = describe "Service.App.Daemon specs" $ do
 
 threadMapSpecs :: Spec
 threadMapSpecs =
-  before initEnv $ do
-    describe "ThreadMap Specs" $ do 
-      it "adds an entry to the ThreadMap List indexed by ActionName" $ \env -> do
-        broadcastChan <- newBroadcastTChanIO
-        serverChan <- atomically $ dupTChan broadcastChan
-        threadMap <- liftIO $ newTVarIO (M.empty :: ThreadMap m)
-        deviceMap <- liftIO $ newTVarIO (M.empty :: DeviceMap)
-        let daemonState = DaemonState threadMap deviceMap broadcastChan serverChan
+  aroundAll initAndCleanup $ do
+    describe "Daemon's stateful behavior" $ do
+      it "adds an entry to the ThreadMap List indexed by ActionName" $
+        \(env, daemonState) -> do
+          testActionsService env $ initializeAndRunAction daemonState Test findAction
+          threadMap' <- readTVarIO (_threadMap daemonState)
+          case M.lookup Test threadMap' of
+            Just testActions -> length testActions `shouldBe` 1
+            Nothing ->
+              expectationFailure "Should have an action at index ActionName `Test`"
 
-        testActionsService env $
-          initializeAndRunAction daemonState Test
-
-        threadMap' <- readTVarIO threadMap
-        case M.lookup Test threadMap' of
-          Just testActions -> length testActions `shouldBe` 1
-          Nothing -> expectationFailure "Should have an action at index ActionName `Test`"
+      it "removes conflicting Device entries from ThreadMap for given ActionName" $
+        \(env, daemonState) -> do
+          pending
+          putStrLn $ show (env ^. config)
+          testActionsService env $ initializeAndRunAction daemonState Test findAction
+          threadMap' <- readTVarIO (_threadMap daemonState)
+          case M.lookup Test threadMap' of
+            Just testActions -> length testActions `shouldBe` 1
+            Nothing ->
+              expectationFailure "Should have an action at index ActionName `Test`"
 
 
 {-

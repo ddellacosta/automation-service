@@ -96,6 +96,7 @@ test-suite actions-service-tests
   other-modules:
       Test.Integration.TestApp
     , Test.Integration.Service.App.Daemon
+    , Test.Integration.Service.App.DaemonTestHelpers
     , Test.Unit.Service.App.DaemonState
     , Test.Unit.Service.App.Helpers
     , Test.Unit.Service.Device
