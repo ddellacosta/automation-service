@@ -10,7 +10,7 @@ import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.Hspec (testSpec)
 import qualified Test.Integration.Service.App.Daemon as Daemon
 import qualified Test.Unit.Service.App.Helpers as App.Helpers
-import qualified Test.Unit.Service.App.ThreadMap as App.ThreadMap
+import qualified Test.Unit.Service.App.DaemonState as App.DaemonState
 import qualified Test.Unit.Service.Device as Device
 import qualified Test.Unit.Service.Messages.Action as Messages.Action
 
@@ -32,8 +32,8 @@ unit = do
   deviceSpec <- testSpec "Device Spec" Device.spec_
   actionMessagesSpec <- testSpec "Messages.Action Spec" Messages.Action.spec_
   appHelpersSpec <- testSpec "App.Helpers Spec" App.Helpers.spec
-  appThreadMapSpec <- testSpec "App.ThreadMap Spec" App.ThreadMap.spec
-  pure $ testGroup "Unit Tests" [ deviceSpec, actionMessagesSpec, appHelpersSpec, appThreadMapSpec ]
+  appDaemonStateSpec <- testSpec "App.DaemonState Spec" App.DaemonState.spec
+  pure $ testGroup "Unit Tests" [ deviceSpec, actionMessagesSpec, appHelpersSpec, appDaemonStateSpec ]
 
 integration :: IO TestTree
 integration = do

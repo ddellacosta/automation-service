@@ -24,9 +24,13 @@ import Service.ActionName (ActionName, serializeActionName)
 import Service.Actions (findAction)
 import Service.App (Logger(..), MonadMQTT)
 import Service.App.Helpers (findThreadsByDeviceId)
-import Service.App.DaemonState (DaemonState(..))
-import Service.App.DeviceMap (DeviceMap, insertDeviceActions)
-import Service.App.ThreadMap (ThreadMap, insertAction)
+import Service.App.DaemonState
+  ( DaemonState(..)
+  , DeviceMap
+  , ThreadMap
+  , insertAction
+  , insertDeviceActions
+  )
 import Service.Env (Env, config, appCleanup, messagesChan)
 import qualified Service.Messages.Action as Messages
 import UnliftIO.Async (async, cancel)

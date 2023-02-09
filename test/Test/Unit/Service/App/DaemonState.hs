@@ -1,4 +1,4 @@
-module Test.Unit.Service.App.ThreadMap
+module Test.Unit.Service.App.DaemonState
   ( spec
   )
 where
@@ -8,7 +8,7 @@ import qualified Data.Map.Strict as M
 import Test.Hspec (Spec, describe, it, shouldBe)
 import Service.Action (Action, ActionFor(name), nullAction)
 import Service.ActionName (ActionName(Null))
-import Service.App.ThreadMap (ThreadMap, insertAction)
+import Service.App.DaemonState (ThreadMap, insertAction)
 import UnliftIO.Async (Async, async)
 import UnliftIO.STM (atomically, newTVarIO, readTVarIO)
 

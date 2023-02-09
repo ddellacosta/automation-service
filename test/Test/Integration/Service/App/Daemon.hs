@@ -9,9 +9,7 @@ import qualified Data.Map.Strict as M
 import Test.Hspec (Spec, before, describe, expectationFailure, it, shouldBe)
 import Test.Integration.TestApp (initEnv, testActionsService)
 import Service.App.Daemon (initializeAndRunAction)
-import Service.App.DaemonState (DaemonState(..))
-import Service.App.DeviceMap (DeviceMap)
-import Service.App.ThreadMap (ThreadMap)
+import Service.App.DaemonState (DaemonState(..), DeviceMap, ThreadMap)
 import Service.ActionName (ActionName(..))
 import UnliftIO.STM (atomically, dupTChan, newBroadcastTChanIO, newTVarIO, readTVarIO)
 

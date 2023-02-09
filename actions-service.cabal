@@ -66,9 +66,7 @@ library
     , Service.App
     , Service.App.Daemon
     , Service.App.DaemonState
-    , Service.App.DeviceMap
     , Service.App.Helpers
-    , Service.App.ThreadMap
     , Service.Device
     , Service.Env
     , Service.Messages.Action
@@ -98,8 +96,8 @@ test-suite actions-service-tests
   other-modules:
       Test.Integration.TestApp
     , Test.Integration.Service.App.Daemon
+    , Test.Unit.Service.App.DaemonState
     , Test.Unit.Service.App.Helpers
-    , Test.Unit.Service.App.ThreadMap
     , Test.Unit.Service.Device
     , Test.Unit.Service.Messages.Action
   build-depends:
