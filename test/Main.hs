@@ -1,6 +1,7 @@
 module Main
   ( integration
   , main
+  , mainIntegration
   , unit
   )
 where
@@ -8,26 +9,31 @@ where
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.Hspec (testSpec)
 import qualified Test.Integration.Service.App.Daemon as Daemon
+import qualified Test.Unit.Service.App.Helpers as App.Helpers
+import qualified Test.Unit.Service.App.ThreadMap as App.ThreadMap
 import qualified Test.Unit.Service.Device as Device
 import qualified Test.Unit.Service.Messages.Action as Messages.Action
 
 
 main :: IO ()
 -- TODO make this configurable somehow--tasty filtering/args?
-main = defaultMain =<< unit
--- main = defaultMain =<< allTests
+main = defaultMain =<< allTests
 
--- allTests :: IO TestTree
--- allTests = do
---   unitTT <- unit
---   integrationTT <- integration
---   pure $ testGroup "All tests" [ unitTT, integrationTT ]
+allTests :: IO TestTree
+allTests = unit >>= \unit' ->
+  integration >>= \integration' ->
+    pure $ testGroup "All Tests" [ unit', integration' ]
+
+mainIntegration :: IO ()
+mainIntegration = defaultMain =<< integration
 
 unit :: IO TestTree
 unit = do
   deviceSpec <- testSpec "Device Spec" Device.spec_
   actionMessagesSpec <- testSpec "Messages.Action Spec" Messages.Action.spec_
-  pure $ testGroup "Unit Tests" [ deviceSpec, actionMessagesSpec ]
+  appHelpersSpec <- testSpec "App.Helpers Spec" App.Helpers.spec
+  appThreadMapSpec <- testSpec "App.ThreadMap Spec" App.ThreadMap.spec
+  pure $ testGroup "Unit Tests" [ deviceSpec, actionMessagesSpec, appHelpersSpec, appThreadMapSpec ]
 
 integration :: IO TestTree
 integration = do

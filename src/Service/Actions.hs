@@ -5,7 +5,6 @@ where
 
 import Control.Monad.Reader (MonadReader)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
-import Data.UUID (UUID)
 import Service.App (Logger, MonadMQTT)
 import Service.Action (Action, nullAction)
 import Service.ActionName (ActionName(..))

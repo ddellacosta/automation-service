@@ -8,6 +8,8 @@ Running tests:
 
 ```bash
 $ watchexec -w test -w src -w app 'cabal test --test-show-details=always --test-options "--color=always"'
+$ cabal test --test-show-details=always --test-options '--color=always -l -p Unit'
+$ cabal test --test-show-details=always --test-options '--color=always -l -p Integration'
 ```
 
 ## License/Copyright

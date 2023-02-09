@@ -11,23 +11,14 @@
   };
 
   outputs = { self, nixpkgs, flake-utils }:
-    # flake-utils.lib.eachDefaultSystem (system:
-    # flake-utils.lib.eachSystem ["x86_64-linux" "x86_64-darwin" "aarch64-darwin"] (system:
     flake-utils.lib.eachSystem ["x86_64-linux"] (system:
       with nixpkgs.legacyPackages.${system};
       let
-        nixos-lib = nixpkgs + "/nixos/lib";
         t = lib.trivial;
         hl = haskell.lib;
         haskellPackages = haskell.packages.ghc925;
 
         name = "actions-service";
-
-        tests = nixos-lib.runTest {
-          imports = [ ./test.nix ];
-          hostPkgs = nixpkgs;  # the Nixpkgs package set used outside the VMs
-          defaults.services.foo.package = mypkg;
-        };
 
         project = devTools: # [1]
           let
@@ -43,26 +34,14 @@
               modifier = (t.flip t.pipe) [
                 addBuildTools
                 hl.dontHaddock
-                # hl.enableStaticLibraries
-                # hl.justStaticExecutables
-                # hl.disableLibraryProfiling
-                # hl.disableExecutableProfiling
-                # hl.dontCheck
               ];
             };
 
       in {
-        packages.pkg = project []; # [3]
-
-        #defaultPackage = self.packages.${system}.pkg;
+        packages.pkg = project [];
 
         defaultPackage = pkgs.dockerTools.buildImage {
           name = "actions-service";
-          
-          #runAsRoot = ''
-          #  #!${pkgs.runtimeShell}
-          #  mkdir -p /app
-          #'';
 
           extraCommands = ''
             mkdir ./app

@@ -11,9 +11,7 @@ import Control.Monad (forever)
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
 import Data.Foldable (for_)
-import Data.Functor ((<&>))
 import qualified Data.Map.Strict as M
-import Data.Maybe (catMaybes)
 import qualified Data.Text as T
 import Data.Text (Text)
 import Service.Action
@@ -25,10 +23,13 @@ import Service.Action
 import Service.ActionName (ActionName, serializeActionName)
 import Service.Actions (findAction)
 import Service.App (Logger(..), MonadMQTT)
-import Service.Device (DeviceId)
+import Service.App.Helpers (findThreadsByDeviceId)
+import Service.App.DaemonState (DaemonState(..))
+import Service.App.DeviceMap (DeviceMap, insertDeviceActions)
+import Service.App.ThreadMap (ThreadMap, insertAction)
 import Service.Env (Env, config, appCleanup, messagesChan)
 import qualified Service.Messages.Action as Messages
-import UnliftIO.Async (Async(..), async, cancel)
+import UnliftIO.Async (async, cancel)
 import UnliftIO.Exception (bracket)
 import UnliftIO.STM
   ( TChan
@@ -42,10 +43,6 @@ import UnliftIO.STM
   , writeTChan
   , writeTVar
   )
-
-type ThreadMap m = M.Map ActionName [(Action m, Async ())]
-
-type DeviceMap = M.Map DeviceId [ActionName]
 
 run :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m) => m ()
 run = do
@@ -61,46 +58,46 @@ run = do
 
     info "Initializing broadcast and duplicating for server channel"
     broadcastChan <- newBroadcastTChanIO
-    serverChan <- atomically $ dupTChan broadcastChan 
+    serverChan <- atomically $ dupTChan broadcastChan
+
+    let daemonState = DaemonState threadMap deviceMap broadcastChan serverChan
 
     forever $ do
       msg <- atomically $ readTQueue messagesChan'
       debug $ T.pack $ show msg
-      case msg of
-        Messages.Start actionName ->
-          initializeAndRunAction threadMap deviceMap broadcastChan actionName
+      dispatchAction daemonState msg
 
-        Messages.Stop actionName ->
-          stopAction threadMap actionName
+dispatchAction
+  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  => DaemonState m
+  -> Messages.Action Text
+  -> m ()
+dispatchAction
+  daemonState@(DaemonState _threadMap _deviceMap _broadcastChan _serverChan) = \case
+    Messages.Start actionName ->
+      initializeAndRunAction daemonState actionName
 
-        Messages.SendTo actionName msg' -> do
-          sendClientMsg serverChan $ (serializeActionName actionName) <> msg'
+    Messages.Stop actionName ->
+      stopAction _threadMap actionName
 
-        Messages.Null ->
-          debug "Null Action"
+    Messages.SendTo actionName msg' -> do
+      sendClientMsg _serverChan $ serializeActionName actionName <> msg'
 
-  where
-    sendClientMsg serverChan = atomically . writeTChan serverChan . Client . MsgBody 
+    Messages.Null ->
+      debug "Null Action"
 
-findThreadsByDeviceId ::
-  (Monad m) => [DeviceId] -> ThreadMap m -> DeviceMap -> [(Action m, Async ())]
-findThreadsByDeviceId devices threadMap' deviceMap' = mconcat $ devices <&> \did ->
-  case M.lookup did deviceMap' of
-    Just actionNames ->
-      mconcat . catMaybes $ actionNames <&> flip M.lookup threadMap'
-    Nothing -> []
+    where
+      sendClientMsg serverChan' = atomically . writeTChan serverChan' . Client . MsgBody
 
 initializeAndRunAction ::
   (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) =>
-  TVar (ThreadMap m) ->
-  TVar DeviceMap ->
-  TChan Message ->
+  DaemonState m ->
   ActionName ->
   m ()
-initializeAndRunAction threadMap deviceMap broadcastChan actionName = do
-  clientChan <- atomically $ dupTChan broadcastChan
-  threadMap' <- readTVarIO threadMap
-  deviceMap' <- readTVarIO deviceMap
+initializeAndRunAction (DaemonState _threadMap _deviceMap _broadcastChan _) actionName = do
+  clientChan <- atomically $ dupTChan _broadcastChan
+  threadMap' <- readTVarIO _threadMap
+  deviceMap' <- readTVarIO _deviceMap
 
   let action = findAction actionName
       actionsToStop =
@@ -121,26 +118,8 @@ initializeAndRunAction threadMap deviceMap broadcastChan actionName = do
     async $ runAction (serializeActionName actionName) clientChan action
 
   atomically $ do
-    -- add new entry to ActionName -> (Action, Async ()) map
-    writeTVar threadMap $
-      M.alter
-        (\case
-            Nothing -> Just [(action, clientAsync)]
-            Just actions -> Just (actions <> [(action, clientAsync)]))
-        actionName
-        threadMap'
-
-    -- add reference to newly started action in device -> [actionName] map
-    mapM_
-      (\deviceId -> writeTVar deviceMap $
-        M.alter
-          (\case
-              Nothing -> Just [actionName]
-              Just actionNames -> Just (actionNames <> [actionName])
-          )
-          deviceId
-          deviceMap')
-      (devices action)
+    insertAction _threadMap actionName (action, clientAsync)
+    insertDeviceActions _deviceMap (devices action) actionName
 
 runAction :: (MonadUnliftIO m) => Text -> TChan Message -> Action m -> m ()
 runAction
@@ -175,4 +154,4 @@ cleanup appCleanup' threadMap = do
     mapM_ (\(_, async') -> cancel async') asyncs
   -- TODO does this matter?
   atomically $ writeTVar threadMap M.empty
-  liftIO $ appCleanup'
+  liftIO appCleanup'

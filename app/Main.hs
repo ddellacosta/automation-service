@@ -9,8 +9,7 @@ import qualified Network.MQTT.Client as MQTT
 import qualified Service.App.Daemon as Daemon
 import Service.App (loggerConfig, runActionsService)
 import Service.Env
-  ( Config
-  , Env(..)
+  ( Env(..)
   , actionsServiceTopicFilter
   , configDecoder
   , logLevel
@@ -19,6 +18,7 @@ import Service.Env
 import Service.MQTTClient (mqttClientCallback, initMQTTClient)
 import System.Log.FastLogger (newTimedFastLogger)
 import UnliftIO.STM (newTQueueIO)
+
 
 -- this needs to be more intelligent, in particular in terms of how we
 -- expect it to interact with Docker, if that is a main way we expect
@@ -36,7 +36,7 @@ main = initialize >>= flip runActionsService Daemon.run
 initialize :: IO Env
 initialize = do
   -- need to handle a configuration error? Dhall provides a lot of error output
-  config' <- inputFile configDecoder configFilePath :: IO Config
+  config' <- inputFile configDecoder configFilePath
   (fmtTime, logType) <- loggerConfig config'
 
   let
