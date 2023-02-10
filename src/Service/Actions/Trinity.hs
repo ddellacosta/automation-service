@@ -12,12 +12,12 @@ import qualified Service.App.Helpers as Helpers
 import Service.Action (Action, ActionFor(..), Message(..))
 import Service.ActionName (ActionName(..))
 import qualified Service.Device as Device
-import Service.Env (Env)
+import Service.Env (Env')
 import Service.Messages.GledoptoGLC007P (mkColorXY, seconds, withTransition')
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan)
 
-trinityAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => Action m
+trinityAction :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m) => Action m
 trinityAction =
   ActionFor
     { name = Trinity
@@ -28,7 +28,7 @@ trinityAction =
     }
 
 cleanupAction
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => TChan Message
   -> m ()
 cleanupAction _broadcastChan = do
@@ -42,7 +42,7 @@ cleanupAction _broadcastChan = do
   publishMQTT ledTopic "{\"state\": \"OFF\"}"
 
 runAction
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => TChan Message
   -> m ()
 runAction _broadcastChan = do

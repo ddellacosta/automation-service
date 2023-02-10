@@ -1,19 +1,17 @@
 module Service.App.Daemon
   ( DeviceMap
   , ThreadMap
-  , initializeAndRunAction
   , run
+  , run'
   )
 where
 
 import Control.Lens (view)
-import Control.Monad (forever)
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
 import Data.Foldable (for_)
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
-import Data.Text (Text)
 import qualified Service.Action as Action
 import Service.Action
   ( Action
@@ -28,77 +26,92 @@ import Service.App.Helpers (findThreadsByDeviceId)
 import Service.App.DaemonState
   ( DaemonState(..)
   , DeviceMap
+  , ServerResponse(..)
   , ThreadMap
+  , initDaemonState
   , insertAction
   , insertDeviceActions
   , removeActions
   )
-import Service.Env (Env, config, appCleanup, messagesChan)
+import Service.Env (Env', config, appCleanup, messagesQueue)
 import qualified Service.Messages.Action as Messages
 import UnliftIO.Async (async, cancel)
-import UnliftIO.Exception (bracket)
+import UnliftIO.Exception (bracket, bracket_)
 import UnliftIO.STM
-  ( TVar
+  ( TQueue
+  , TVar
   , atomically
   , dupTChan
-  , newBroadcastTChanIO
-  , newTVarIO
+  , newTQueueIO
   , readTQueue
   , readTVarIO
   , writeTChan
-  , writeTVar
+  , writeTQueue
   )
 
 
-run :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m) => m ()
+run :: (Logger m, MonadReader (Env' logger mqttClient) m, MonadMQTT m, MonadUnliftIO m) => m ()
 run = do
+  daemonState <- liftIO initDaemonState
+  responseQueue <- newTQueueIO
+  run' daemonState findAction responseQueue
+
+
+run'
+  :: (Logger m, MonadReader (Env' logger mqttClient) m, MonadMQTT m, MonadUnliftIO m)
+  => DaemonState m
+  -> (ActionName -> Action m)
+  -> TQueue ServerResponse -- see note below about writing to responseQueue
+  -> m ()
+run' daemonState findAction' responseQueue = do
   config' <- view config
   appCleanup' <- view appCleanup
 
-  bracket (newTVarIO (M.empty :: ThreadMap m)) (cleanupActions appCleanup') $
-    \threadMap -> do
-      (debug . T.pack . show) config'
+  bracket_(pure ()) (cleanupActions appCleanup' daemonState) $ do
+    (debug . T.pack . show) config'
+    messagesQueue' <- view messagesQueue
+    go messagesQueue' findAction'
 
-      deviceMap <- newTVarIO (M.empty :: DeviceMap)
-      broadcastChan <- newBroadcastTChanIO
-      serverChan <- atomically $ dupTChan broadcastChan
+  where
+    go messagesQueue' findAction'' = do
+      msg <- atomically $ readTQueue messagesQueue'
+      debug $ T.pack $ show msg
 
-      let
-        daemonState = DaemonState threadMap deviceMap broadcastChan serverChan
+      case msg of
+        Messages.StopServer -> do
+          -- see note below about writing to responseQueue
+          atomically $ writeTQueue responseQueue StoppingServer
+          pure ()
 
-      messagesChan' <- view messagesChan
+        Messages.Start actionName -> runServerStep messagesQueue' findAction'' $
+          initializeAndRunAction daemonState actionName findAction''
 
-      forever $ do
-        msg <- atomically $ readTQueue messagesChan'
-        debug $ T.pack $ show msg
-        dispatchAction daemonState msg
+        Messages.Stop actionName -> runServerStep messagesQueue' findAction'' $
+          stopAction (_threadMap daemonState) actionName
 
+        Messages.SendTo actionName msg' -> runServerStep messagesQueue' findAction'' $
+          sendClientMsg (_serverChan daemonState) $ serializeActionName actionName <> msg'
 
-dispatchAction
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
-  => DaemonState m
-  -> Messages.Action Text
-  -> m ()
-dispatchAction
-  daemonState@(DaemonState _threadMap _deviceMap _broadcastChan _serverChan) = \case
-    Messages.Start actionName ->
-      initializeAndRunAction daemonState actionName findAction
+        Messages.Null -> runServerStep messagesQueue' findAction'' $
+          debug "Null Action"
 
-    Messages.Stop actionName ->
-      stopAction _threadMap actionName
+    runServerStep messagesQueue' findAction'' step = do
+      step
+      -- To be honest this is just here to allow me to write
+      -- integration tests that exercise this entire daemon process
+      -- while it's running in a separate thread. If there was another
+      -- way to ensure that I can block on checking assertions while
+      -- running this process in a thread, I'd get rid of this,
+      -- because it doesn't actually provide any functionality in a
+      -- production context.
+      atomically $ writeTQueue responseQueue MsgLoopEnd
+      go messagesQueue' findAction''
 
-    Messages.SendTo actionName msg' -> do
-      sendClientMsg _serverChan $ serializeActionName actionName <> msg'
-
-    Messages.Null ->
-      debug "Null Action"
-
-    where
-      sendClientMsg serverChan' = atomically . writeTChan serverChan' . Client . MsgBody
+    sendClientMsg serverChan' = atomically . writeTChan serverChan' . Client . MsgBody
 
 
 initializeAndRunAction
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => DaemonState m
   -> ActionName
   -> (ActionName -> Action m)
@@ -144,15 +157,16 @@ stopAction threadMap actionName = do
 -- final cleanup: if this thing shuts down with threads running,
 -- kill all the threads
 cleanupActions
-  :: (Logger m, MonadIO m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger m, MonadIO m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => IO ()
-  -> TVar (ThreadMap m)
+  -> DaemonState m
   -> m ()
-cleanupActions appCleanup' threadMap = do
+cleanupActions appCleanup' daemonState = do
+  let threadMap = _threadMap daemonState
   threadMap' <- readTVarIO threadMap
   for_ (M.assocs threadMap') $ \(aName, asyncs) -> do
     info $ "Shutting down Action " <> serializeActionName aName
     mapM_ (\(_, async') -> cancel async') asyncs
-  -- TODO does this matter?
-  atomically $ writeTVar threadMap M.empty
+  -- this probably doesn't matter
+  -- atomically $ writeTVar threadMap M.empty
   liftIO appCleanup'

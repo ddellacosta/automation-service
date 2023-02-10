@@ -1,5 +1,5 @@
 module Test.Unit.Service.Messages.Action
-  ( spec_
+  ( spec
   ,
   )
 where
@@ -11,8 +11,8 @@ import Service.Messages.Action (Action(..))
 import Service.ActionName (ActionName(Gold))
 
 
-spec_ :: Spec
-spec_ = describe "Action message parsing" $ do
+spec :: Spec
+spec = describe "Action message parsing" $ do
   it "correctly parses well-formed Action messages" $ do
     (decode "{\"start\": \"Gold\"}" :: Maybe (Action Text))
       `shouldBe`

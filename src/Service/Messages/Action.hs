@@ -22,6 +22,7 @@ import GHC.Generics (Generic)
 import Service.ActionName (ActionName, parseActionName)
 
 data Action msg =
+  StopServer | -- not actually possible to pass this in from outside, internal use only
   Start ActionName |
   Stop ActionName |
   SendTo ActionName msg |

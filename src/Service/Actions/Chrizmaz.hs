@@ -14,12 +14,12 @@ import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
 import Service.Messages.GledoptoGLC007P (Effect(..), effect', hex', seconds)
 import qualified Service.Device as Device
-import Service.Env (Env)
+import Service.Env (Env')
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan)
 
 chrizmazAction ::
-  (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) =>
+  (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m) =>
   Action m
 chrizmazAction =
   ActionFor
@@ -31,7 +31,7 @@ chrizmazAction =
     }
 
 cleanupAction
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => TChan Message
   -> m ()
 cleanupAction _broadcastChan = do
@@ -45,7 +45,7 @@ cleanupAction _broadcastChan = do
   publishMQTT ledTopic "{\"state\": \"OFF\"}"
 
 runAction
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => TChan Message
   -> m ()
 runAction _broadcastChan = do

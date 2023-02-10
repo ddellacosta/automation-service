@@ -1,5 +1,5 @@
 module Test.Unit.Service.Device
-  ( spec_
+  ( spec
   ,
   )
 where
@@ -7,8 +7,8 @@ where
 import Test.Hspec (Spec, describe, it, shouldBe)
 import Service.Device (Device(..), DeviceId(..), findDevice, nullDevice)
 
-spec_ :: Spec
-spec_ = describe "Device logic" $ do
+spec :: Spec
+spec = describe "Device logic" $ do
   it "finds devices by DeviceId from a list of Devices" $ do
     let gledoptoglc007p =
           Device GledoptoGLC007P_1 "Gledopto GLC-007-P" "gledopto glc-007-p"

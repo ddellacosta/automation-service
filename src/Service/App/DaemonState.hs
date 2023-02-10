@@ -1,11 +1,14 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Service.App.DaemonState
-  ( DaemonState(..)
+  ( ActionEntry
+  , DaemonState(..)
   , DeviceMap
+  , ServerResponse(..)
   , ThreadMap
   , broadcastChan
   , deviceMap
+  , initDaemonState
   , insertAction
   , insertDeviceActions
   , removeActions
@@ -20,7 +23,22 @@ import Service.Action (Action, Message)
 import Service.ActionName (ActionName)
 import Service.Device (DeviceId)
 import UnliftIO.Async (Async)
-import UnliftIO.STM (STM, TChan, TVar, readTVar, writeTVar)
+import UnliftIO.STM
+  ( STM
+  , TChan
+  , TVar
+  , atomically
+  , dupTChan
+  , newBroadcastTChanIO
+  , newTVarIO
+  , readTVar
+  , writeTVar
+  )
+
+data ServerResponse
+  = MsgLoopEnd
+  | StoppingServer
+  deriving (Show)
 
 type ActionEntry m = (Action m, Async ())
 
@@ -36,6 +54,14 @@ data DaemonState m = DaemonState
   }
 
 makeFieldsNoPrefix ''DaemonState
+
+initDaemonState :: IO (DaemonState m)
+initDaemonState = do
+  broadcastChan' <- newBroadcastTChanIO
+  serverChan' <- atomically $ dupTChan broadcastChan'
+  threadMap' <- newTVarIO M.empty
+  deviceMap' <- newTVarIO M.empty
+  pure $ DaemonState threadMap' deviceMap' broadcastChan' serverChan'
 
 
 -- |

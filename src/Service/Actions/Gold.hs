@@ -15,7 +15,7 @@ import qualified Service.App.Helpers as Helpers
 import Service.Action (Action, ActionFor(..), Message(..), MsgBody(..))
 import Service.ActionName (ActionName(..))
 import qualified Service.Device as Device
-import Service.Env (Env)
+import Service.Env (Env')
 import Service.Messages.GledoptoGLC007P
   ( Effect(..)
   , effect'
@@ -27,7 +27,7 @@ import Service.Messages.GledoptoGLC007P
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan, atomically, tryReadTChan)
 
-goldAction :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m) => Action m
+goldAction :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m) => Action m
 goldAction =
   ActionFor
     { name = Gold
@@ -38,7 +38,7 @@ goldAction =
     }
 
 cleanupAction
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => TChan Message
   -> m ()
 cleanupAction _broadcastChan = do
@@ -52,7 +52,7 @@ cleanupAction _broadcastChan = do
   publishMQTT ledTopic "{\"state\": \"OFF\"}"
 
 runAction
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => TChan Message
   -> m ()
 runAction broadcastChan = do
@@ -77,7 +77,7 @@ runAction broadcastChan = do
 
   where
     go
-      :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m)
+      :: (Logger m, MonadReader (Env' logger mqttClient) m, MonadMQTT m, MonadUnliftIO m)
       => Topic
       -> TChan Message
       -> m ()

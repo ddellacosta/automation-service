@@ -9,7 +9,8 @@ import qualified Network.MQTT.Client as MQTT
 import qualified Service.App.Daemon as Daemon
 import Service.App (loggerConfig, runActionsService)
 import Service.Env
-  ( Env(..)
+  ( Env
+  , Env'(..)
   , actionsServiceTopicFilter
   , configDecoder
   , logLevel
@@ -52,4 +53,4 @@ initialize = do
   (_eithers, _props) <-
     MQTT.subscribe mc [(mqttConfig' ^. actionsServiceTopicFilter, MQTT.subOptions)] []
 
-  pure $ Env config' logger' (loggerCleanup >> MQTT.normalDisconnect mc) mc messagesChan'
+  pure $ Env' config' logger' mc messagesChan' (loggerCleanup >> MQTT.normalDisconnect mc)

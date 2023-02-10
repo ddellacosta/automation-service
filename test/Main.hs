@@ -1,7 +1,6 @@
 module Main
   ( integration
   , main
-  , mainIntegration
   , unit
   )
 where
@@ -16,7 +15,6 @@ import qualified Test.Unit.Service.Messages.Action as Messages.Action
 
 
 main :: IO ()
--- TODO make this configurable somehow--tasty filtering/args?
 main = defaultMain =<< allTests
 
 allTests :: IO TestTree
@@ -25,13 +23,10 @@ allTests = do
   integration' <- integration
   pure $ testGroup "All Tests" [ unit', integration' ]
 
-mainIntegration :: IO ()
-mainIntegration = defaultMain =<< integration
-
 unit :: IO TestTree
 unit = do
-  deviceSpec <- testSpec "Device Spec" Device.spec_
-  actionMessagesSpec <- testSpec "Messages.Action Spec" Messages.Action.spec_
+  deviceSpec <- testSpec "Device Spec" Device.spec
+  actionMessagesSpec <- testSpec "Messages.Action Spec" Messages.Action.spec
   appHelpersSpec <- testSpec "App.Helpers Spec" App.Helpers.spec
   appDaemonStateSpec <- testSpec "App.DaemonState Spec" App.DaemonState.spec
   pure $ testGroup "Unit Tests"
@@ -43,5 +38,5 @@ unit = do
 
 integration :: IO TestTree
 integration = do
-  daemonSpec <- testSpec "Daemon Spec" Daemon.spec_
+  daemonSpec <- testSpec "Daemon Spec" Daemon.spec
   pure $ testGroup "Integration Tests" [ daemonSpec ]

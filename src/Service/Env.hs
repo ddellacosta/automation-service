@@ -1,7 +1,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Service.Env
-  ( Env(..)
+  ( Env
+  , Env'(..)
   , Config(..)
   , LogLevel(..)
   , MQTTConfig(..)
@@ -16,7 +17,7 @@ module Service.Env
   , logLevel
   , logger
   , appCleanup
-  , messagesChan
+  , messagesQueue
   , mqttClient
   , mqttConfig
   , uri
@@ -96,13 +97,15 @@ configDecoder =
         <*> field "logLevel" auto
     )
 
-data Env = Env
+data Env' logger mqttClient = Env'
   { _config :: Config
-  , _logger :: TimedFastLogger
+  , _logger :: logger
+  , _mqttClient :: mqttClient
+  , _messagesQueue :: TQueue (Messages.Action Text)
   , _appCleanup :: IO ()
-  , _mqttClient :: MQTTClient
-  , _messagesChan :: TQueue (Messages.Action Text)
   }
 --  deriving (Generic)
 
-makeFieldsNoPrefix ''Env
+makeFieldsNoPrefix ''Env'
+
+type Env = Env' TimedFastLogger MQTTClient
