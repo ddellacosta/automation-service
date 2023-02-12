@@ -15,7 +15,10 @@ import Service.Device (Device, DeviceId, findDevice, topic)
 import Service.Env (Env', config, devices)
 import UnliftIO.Async (Async)
 
-findDeviceM :: (MonadReader (Env' logger mqttClient) m) => DeviceId -> m (Device, MQTT.Topic)
+findDeviceM
+  :: (MonadReader (Env' logger mqttClient) m)
+  => DeviceId
+  -> m (Device, MQTT.Topic)
 findDeviceM deviceId = do
   devices' <- view (config . devices)
   let device = findDevice deviceId devices'

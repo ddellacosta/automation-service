@@ -17,7 +17,9 @@ import Service.Messages.GledoptoGLC007P (mkColorXY, seconds, withTransition')
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan)
 
-trinityAction :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m) => Action m
+trinityAction
+  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
+  => Action m
 trinityAction =
   ActionFor
     { name = Trinity

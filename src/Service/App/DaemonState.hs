@@ -18,6 +18,7 @@ module Service.App.DaemonState
   where
 
 import Control.Lens (makeFieldsNoPrefix)
+import Data.Foldable (for_)
 import qualified Data.Map.Strict as M
 import Service.Action (Action, Message)
 import Service.ActionName (ActionName)
@@ -75,12 +76,7 @@ insertAction :: TVar (ThreadMap m) -> ActionName -> ActionEntry m -> STM ()
 insertAction threadMap' actionName actionEntry = do
   threadMap'' <- readTVar threadMap'
   writeTVar threadMap' $
-    M.alter
-      (\case
-          Nothing -> Just [actionEntry]
-          Just actions -> Just (actions <> [actionEntry]))
-      actionName
-      threadMap''
+    M.alter (Just . foldr (<>) [actionEntry]) actionName threadMap''
 
 removeActions :: TVar (ThreadMap m) -> [ActionName] -> STM ()
 removeActions threadMap' actions =
@@ -94,14 +90,6 @@ removeActions threadMap' actions =
 insertDeviceActions :: TVar DeviceMap -> [DeviceId] -> ActionName -> STM ()
 insertDeviceActions deviceMap' devices actionName = do
   deviceMap'' <- readTVar deviceMap'
-  mapM_ (\deviceId ->
+  for_ devices $ \deviceId ->
     writeTVar deviceMap' $
-      M.alter
-        (\case
-            Nothing -> Just [actionName]
-            Just actionNames -> Just (actionNames <> [actionName])
-        )
-        deviceId
-        deviceMap''
-    )
-    devices
+      M.alter (Just . foldr (<>) [actionName]) deviceId deviceMap''

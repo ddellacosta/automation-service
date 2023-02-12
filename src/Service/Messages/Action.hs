@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
+
 module Service.Messages.Action
   ( Action(..)
   ,
@@ -16,26 +17,24 @@ import Data.Aeson
   )
 import Data.Aeson.Types (Parser)
 import Data.Maybe (fromMaybe)
-import Data.Text (Text)
-import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Service.ActionName (ActionName, parseActionName)
 
-data Action msg =
-  StopServer | -- not actually possible to pass this in from outside, internal use only
-  Start ActionName |
-  Stop ActionName |
-  SendTo ActionName msg |
-  Null
+data Action msg where
+  StopServer :: Action msg
+  Start :: ActionName -> Action msg
+  Stop :: ActionName -> Action msg
+  SendTo :: ActionName -> msg -> Action msg
+  Null :: Action msg
   deriving (Generic, Eq, Ord, Show)
 
 --
 -- TODO generalize this for different msg types
 --
-instance ToJSON (Action Text) where
+instance (ToJSON msgBody) => ToJSON (Action msgBody) where
   toEncoding = genericToEncoding defaultOptions
 
-instance FromJSON (Action Text) where
+instance (FromJSON msgBody) => FromJSON (Action msgBody) where
   --
   -- The semantics of this are pretty stupid. Basically anything other
   -- than a perfectly well-formed message with a single action should
@@ -53,7 +52,7 @@ instance FromJSON (Action Text) where
   -- implement. If it turns out we really want to be able to pass
   -- multiple actions in a single message, I'll revisit this.
   --
-  parseJSON :: Value -> Parser (Action Text)
+  parseJSON :: Value -> Parser (Action msgBody)
   parseJSON = withObject "Action" $ \o -> do
     startAction <- o .:? "start"
     stopAction <- o .:? "stop"
@@ -64,5 +63,5 @@ instance FromJSON (Action Text) where
       (_, Just actionName, _) -> Stop <$> parseActionName actionName
       (_, _, Just actionName) -> do
         sendToAction <- parseActionName actionName
-        SendTo sendToAction . T.pack <$> msg
+        SendTo sendToAction <$> msg
       _ -> Nothing

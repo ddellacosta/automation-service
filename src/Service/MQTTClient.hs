@@ -85,7 +85,8 @@ initMQTTClient msgCB (MQTTConfig {..}) = do
 -- | Returns a SimpleCallback with type
 -- | MQTTClient -> Topic -> ByteString -> [Property] -> IO ()
 -- |
-mqttClientCallback :: LogLevel -> TQueue (Messages.Action Text) -> TimedFastLogger -> MQTT.MessageCallback
+mqttClientCallback
+  :: LogLevel -> TQueue (Messages.Action Text) -> TimedFastLogger -> MQTT.MessageCallback
 mqttClientCallback logLevelSet messagesChan' logger' =
   MQTT.SimpleCallback $ \_mc topic' msg _props -> do
     when (Debug >= logLevelSet) $

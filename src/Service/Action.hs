@@ -2,36 +2,30 @@ module Service.Action
   ( Action
   , ActionFor(..)
   , Message(..)
-  , MsgBody(..)
   , nullAction
   )
   where
 
-import Data.Text (Text)
+import Data.Aeson (FromJSON)
 import Service.ActionName (ActionName(..))
 import Service.Device (DeviceId)
 import UnliftIO.STM (TChan)
 
--- TODO need to fix these messaging types to not be garbage
-data Message = Server MsgBody | Client MsgBody
-  deriving (Show)
+data Message where
+  Server :: forall e. (FromJSON e, Show e) => e -> Message
+  Client :: forall e. (FromJSON e, Show e) => e -> Message
 
-data MsgBody = MsgBody
-  { msg :: Text
-  }
-  deriving (Show)
-
-data ActionFor monad msg = ActionFor
+data ActionFor monad = ActionFor
   { name :: ActionName
   , devices :: [DeviceId]
   , wantsFullControlOver :: [DeviceId]
-  , cleanup :: TChan msg -> monad ()
-  , run :: TChan msg -> monad ()
+  , cleanup :: TChan Message -> monad ()
+  , run :: TChan Message -> monad ()
   }
 
-type Action m = ActionFor m Message
+type Action m = ActionFor m
 
-nullAction :: (Applicative m) => ActionFor m a
+nullAction :: (Applicative m) => ActionFor m
 nullAction = ActionFor Null [] [] noop noop
   where
     noop = const $ pure ()

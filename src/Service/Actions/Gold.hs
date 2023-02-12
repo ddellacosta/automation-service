@@ -8,11 +8,14 @@ import Prelude hiding (id, init)
 
 import Control.Monad.Reader (MonadReader, liftIO)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
+import Data.Aeson (FromJSON, ToJSON(..), defaultOptions, genericToEncoding)
+import qualified Data.Text as T
 import Data.Text (Text)
+import GHC.Generics (Generic)
 import Network.MQTT.Client (Topic)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
-import Service.Action (Action, ActionFor(..), Message(..), MsgBody(..))
+import Service.Action (Action, ActionFor(..), Message(..))
 import Service.ActionName (ActionName(..))
 import qualified Service.Device as Device
 import Service.Env (Env')
@@ -27,7 +30,9 @@ import Service.Messages.GledoptoGLC007P
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan, atomically, tryReadTChan)
 
-goldAction :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m) => Action m
+goldAction
+  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
+  => Action m
 goldAction =
   ActionFor
     { name = Gold
@@ -82,13 +87,27 @@ runAction broadcastChan = do
       -> TChan Message
       -> m ()
     go ledTopic broadcastChan' = do
-      liftIO $ threadDelay (seconds 60)
+      liftIO $ threadDelay $ seconds 60
       debug "Gold: breathe"
-      publishMQTT ledTopic (effect' Breathe)
-
-      -- this bit is just a proto-PoC right now, doesn't really do anything
+      publishMQTT ledTopic $ effect' Breathe
+      --
+      -- For now, this and GoldMsg below are just here to remind me
+      -- how to create and use per-Action message types
+      --
       maybeMsg <- atomically $ tryReadTChan broadcastChan'
       case maybeMsg of
-        Just (Client (MsgBody msg')) ->
-          debug ("Gold -- msg: " <> msg') >> go ledTopic broadcastChan'
+        Just (Client msg') ->
+          debug ("Gold received msg: " <> T.pack (show msg'))
+            >> go ledTopic broadcastChan'
         _ -> go ledTopic broadcastChan'
+
+data GoldMsg = GoldMsg
+  { mood :: Text
+  , fancy :: Bool
+  }
+  deriving (Show, Generic, Ord, Eq)
+
+instance ToJSON GoldMsg where
+  toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON GoldMsg

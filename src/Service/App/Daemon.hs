@@ -17,7 +17,6 @@ import Service.Action
   ( Action
   , ActionFor(name, devices, wantsFullControlOver)
   , Message(..)
-  , MsgBody (..)
   )
 import Service.ActionName (ActionName, serializeActionName)
 import Service.Actions (findAction)
@@ -50,7 +49,9 @@ import UnliftIO.STM
   )
 
 
-run :: (Logger m, MonadReader (Env' logger mqttClient) m, MonadMQTT m, MonadUnliftIO m) => m ()
+run
+  :: (Logger m, MonadReader (Env' logger mqttClient) m, MonadMQTT m, MonadUnliftIO m)
+  => m ()
 run = do
   daemonState <- liftIO initDaemonState
   responseQueue <- newTQueueIO
@@ -107,7 +108,7 @@ run' daemonState findAction' responseQueue = do
       atomically $ writeTQueue responseQueue MsgLoopEnd
       go messagesQueue' findAction''
 
-    sendClientMsg serverChan' = atomically . writeTChan serverChan' . Client . MsgBody
+    sendClientMsg serverChan' = atomically . writeTChan serverChan' . Client
 
 
 initializeAndRunAction
@@ -167,6 +168,4 @@ cleanupActions appCleanup' daemonState = do
   for_ (M.assocs threadMap') $ \(aName, asyncs) -> do
     info $ "Shutting down Action " <> serializeActionName aName
     mapM_ (\(_, async') -> cancel async') asyncs
-  -- this probably doesn't matter
-  -- atomically $ writeTVar threadMap M.empty
   liftIO appCleanup'

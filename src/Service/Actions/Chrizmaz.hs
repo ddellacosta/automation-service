@@ -7,7 +7,6 @@ module Service.Actions.Chrizmaz
 import Control.Monad (forever)
 import Control.Monad.Reader (MonadReader)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
-import Data.Text (Text)
 import Service.ActionName (ActionName(..))
 import Service.Action (Action, ActionFor(..), Message)
 import Service.App (Logger(..), MonadMQTT(..))
@@ -18,9 +17,9 @@ import Service.Env (Env')
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan)
 
-chrizmazAction ::
-  (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m) =>
-  Action m
+chrizmazAction
+  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
+  => Action m
 chrizmazAction =
   ActionFor
     { name = Chrizmaz
