@@ -68,8 +68,8 @@ run' daemonState findAction' responseQueue = do
   config' <- view config
   appCleanup' <- view appCleanup
 
-  bracket_(pure ()) (cleanupActions appCleanup' daemonState) $ do
-    (debug . T.pack . show) config'
+  bracket_ (pure ()) (cleanupActions appCleanup' daemonState) $ do
+    debug . T.pack . show $ config'
     messagesQueue' <- view messagesQueue
     go messagesQueue' findAction'
 
