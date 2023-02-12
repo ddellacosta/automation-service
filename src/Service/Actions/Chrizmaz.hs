@@ -8,7 +8,7 @@ import Control.Monad (forever)
 import Control.Monad.Reader (MonadReader)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Service.ActionName (ActionName(..))
-import Service.Action (Action, ActionFor(..), Message)
+import Service.Action (Action(..), Message)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
 import Service.Messages.GledoptoGLC007P (Effect(..), effect', hex', seconds)
@@ -21,7 +21,7 @@ chrizmazAction
   :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => Action m
 chrizmazAction =
-  ActionFor
+  Action
     { name = Chrizmaz
     , devices = [Device.GledoptoGLC007P_1]
     , wantsFullControlOver = [Device.GledoptoGLC007P_1]

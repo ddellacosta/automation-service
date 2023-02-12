@@ -1,6 +1,5 @@
 module Service.Action
-  ( Action
-  , ActionFor(..)
+  ( Action(..)
   , Message(..)
   , nullAction
   )
@@ -15,7 +14,7 @@ data Message where
   Server :: forall e. (FromJSON e, Show e) => e -> Message
   Client :: forall e. (FromJSON e, Show e) => e -> Message
 
-data ActionFor monad = ActionFor
+data Action monad = Action
   { name :: ActionName
   , devices :: [DeviceId]
   , wantsFullControlOver :: [DeviceId]
@@ -23,9 +22,7 @@ data ActionFor monad = ActionFor
   , run :: TChan Message -> monad ()
   }
 
-type Action m = ActionFor m
-
-nullAction :: (Applicative m) => ActionFor m
-nullAction = ActionFor Null [] [] noop noop
+nullAction :: (Applicative m) => Action m
+nullAction = Action Null [] [] noop noop
   where
     noop = const $ pure ()

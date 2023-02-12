@@ -9,7 +9,7 @@ import Control.Monad.Reader (MonadReader)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
-import Service.Action (Action, ActionFor(..), Message(..))
+import Service.Action (Action(..), Message(..))
 import Service.ActionName (ActionName(..))
 import qualified Service.Device as Device
 import Service.Env (Env')
@@ -21,7 +21,7 @@ trinityAction
   :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => Action m
 trinityAction =
-  ActionFor
+  Action
     { name = Trinity
     , devices = [Device.GledoptoGLC007P_1]
     , wantsFullControlOver = [Device.GledoptoGLC007P_1]

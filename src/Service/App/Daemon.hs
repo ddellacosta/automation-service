@@ -14,8 +14,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import qualified Service.Action as Action
 import Service.Action
-  ( Action
-  , ActionFor(name, devices, wantsFullControlOver)
+  ( Action(name, devices, wantsFullControlOver)
   , Message(..)
   )
 import Service.ActionName (ActionName, serializeActionName)
@@ -56,7 +55,6 @@ run = do
   daemonState <- liftIO initDaemonState
   responseQueue <- newTQueueIO
   run' daemonState findAction responseQueue
-
 
 run'
   :: (Logger m, MonadReader (Env' logger mqttClient) m, MonadMQTT m, MonadUnliftIO m)
@@ -110,7 +108,6 @@ run' daemonState findAction' responseQueue = do
 
     sendClientMsg serverChan' = atomically . writeTChan serverChan' . Client
 
-
 initializeAndRunAction
   :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => DaemonState m
@@ -143,7 +140,6 @@ initializeAndRunAction
         debug $ "Conflicting Device usage: Shutting down threads running action "
           <> (T.pack . show $ name act)
         cancel asyn
-
 
 stopAction :: (MonadUnliftIO m) => TVar (ThreadMap m) -> ActionName -> m ()
 stopAction threadMap actionName = do

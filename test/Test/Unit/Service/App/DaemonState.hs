@@ -6,7 +6,7 @@ where
 import Control.Lens ((<&>), _head, preview)
 import qualified Data.Map.Strict as M
 import Test.Hspec (Spec, describe, it, shouldBe)
-import Service.Action (Action, ActionFor(name), nullAction)
+import Service.Action (Action(name), nullAction)
 import Service.ActionName (ActionName(Null))
 import Service.App.DaemonState (ThreadMap, insertAction)
 import UnliftIO.Async (Async, async)

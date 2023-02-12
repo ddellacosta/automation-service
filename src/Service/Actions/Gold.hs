@@ -15,7 +15,7 @@ import GHC.Generics (Generic)
 import Network.MQTT.Client (Topic)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
-import Service.Action (Action, ActionFor(..), Message(..))
+import Service.Action (Action(..), Message(..))
 import Service.ActionName (ActionName(..))
 import qualified Service.Device as Device
 import Service.Env (Env')
@@ -34,7 +34,7 @@ goldAction
   :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => Action m
 goldAction =
-  ActionFor
+  Action
     { name = Gold
     , devices = [Device.GledoptoGLC007P_1]
     , wantsFullControlOver = [Device.GledoptoGLC007P_1]
