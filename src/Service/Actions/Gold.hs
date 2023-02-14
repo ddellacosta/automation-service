@@ -8,7 +8,7 @@ import Prelude hiding (id, init)
 
 import Control.Monad.Reader (MonadReader, liftIO)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
-import Data.Aeson (FromJSON, ToJSON(..), defaultOptions, genericToEncoding)
+import Data.Aeson (FromJSON, ToJSON(..), decode, defaultOptions, encode, genericToEncoding)
 import qualified Data.Text as T
 import Data.Text (Text)
 import GHC.Generics (Generic)
@@ -92,12 +92,15 @@ runAction broadcastChan = do
       publishMQTT ledTopic $ effect' Breathe
       --
       -- For now, this and GoldMsg below are just here to remind me
-      -- how to create and use per-Action message types
+      -- how to create and use per-Action message types...actually,
+      -- testing it just now this doesn't seem to pick up messages
+      -- anyways. TODO: fix
       --
       maybeMsg <- atomically $ tryReadTChan broadcastChan'
+      debug $ "Gold got msg? " <> T.pack (show maybeMsg)
       case maybeMsg of
-        Just (Client msg') ->
-          debug ("Gold received msg: " <> T.pack (show msg'))
+        Just (Client Gold msg') ->
+          debug ("Gold received msg: " <> (T.pack . show) ((decode . encode) msg' :: Maybe GoldMsg))
             >> go ledTopic broadcastChan'
         _ -> go ledTopic broadcastChan'
 

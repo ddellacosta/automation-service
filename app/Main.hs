@@ -45,12 +45,12 @@ initialize = do
 
   -- handle failure to open/write to file, anything else?
   (logger', loggerCleanup) <- newTimedFastLogger fmtTime logType
-  messagesChan' <- newTQueueIO
+  messageQueue' <- newTQueueIO
 
   -- handle errors from not being able to connect, etc.?
-  mc <- initMQTTClient (mqttClientCallback logLevelSet messagesChan' logger') mqttConfig'
+  mc <- initMQTTClient (mqttClientCallback logLevelSet messageQueue' logger') mqttConfig'
 
   (_eithers, _props) <-
     MQTT.subscribe mc [(mqttConfig' ^. actionsServiceTopicFilter, MQTT.subOptions)] []
 
-  pure $ Env' config' logger' mc messagesChan' (loggerCleanup >> MQTT.normalDisconnect mc)
+  pure $ Env' config' logger' mc messageQueue' (loggerCleanup >> MQTT.normalDisconnect mc)

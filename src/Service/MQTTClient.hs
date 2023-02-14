@@ -7,11 +7,10 @@ module Service.MQTTClient
 where
 
 import Control.Monad (when)
-import Data.Aeson (decode)
+import Data.Aeson (FromJSON, decode)
 import Data.Either (fromRight)
 import Data.Foldable (for_)
 import Data.Maybe (fromMaybe)
-import Data.Text (Text)
 import Data.X509.CertificateStore (makeCertificateStore, readCertificateStore)
 import Network.Connection (TLSSettings(..))
 import qualified Network.MQTT.Client as MQTT
@@ -37,7 +36,8 @@ initMQTTClient :: MQTT.MessageCallback -> MQTTConfig -> IO MQTT.MQTTClient
 initMQTTClient msgCB (MQTTConfig {..}) = do
   mCertStore <- maybe (pure Nothing) readCertificateStore _caCertPath
   eCreds <- case (_clientCertPath, _clientKeyPath) of
-    (Just clientCertPath', Just clientKeyPath') -> credentialLoadX509 clientCertPath' clientKeyPath'
+    (Just clientCertPath', Just clientKeyPath') ->
+      credentialLoadX509 clientCertPath' clientKeyPath'
     _ -> pure $ Left "clientCertPath and/or clientKeyPath are empty"
 
   let mqttConfig' = mkMQTTConfig $ mkClientParams eCreds mCertStore
@@ -82,13 +82,13 @@ initMQTTClient msgCB (MQTTConfig {..}) = do
 
 
 -- |
--- | Returns a SimpleCallback with type
+-- | Returns a SimpleCallback which is an alias for type
 -- | MQTTClient -> Topic -> ByteString -> [Property] -> IO ()
 -- |
 mqttClientCallback
-  :: LogLevel -> TQueue (Messages.Action Text) -> TimedFastLogger -> MQTT.MessageCallback
-mqttClientCallback logLevelSet messagesChan' logger' =
+  :: LogLevel -> TQueue Messages.Action -> TimedFastLogger -> MQTT.MessageCallback
+mqttClientCallback logLevelSet messagesQueue' logger' =
   MQTT.SimpleCallback $ \_mc topic' msg _props -> do
     when (Debug >= logLevelSet) $
       App.log logger' Debug $ "Received message " <> show msg <> " to " <> show topic'
-    for_ (decode msg) $ atomically . writeTQueue messagesChan'
+    for_ (decode msg) $ atomically . writeTQueue messagesQueue'

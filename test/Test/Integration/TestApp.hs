@@ -2,6 +2,7 @@
 
 module Test.Integration.TestApp
   ( Env
+  , TestActionsService
   , testActionsService
   , initEnv
   )

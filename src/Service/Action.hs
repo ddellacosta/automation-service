@@ -5,14 +5,15 @@ module Service.Action
   )
   where
 
-import Data.Aeson (FromJSON)
+import Data.Aeson (Value)
 import Service.ActionName (ActionName(..))
 import Service.Device (DeviceId)
 import UnliftIO.STM (TChan)
 
-data Message where
-  Server :: forall e. (FromJSON e, Show e) => e -> Message
-  Client :: forall e. (FromJSON e, Show e) => e -> Message
+data Message
+  = Client ActionName Value
+  | Server ActionName Value
+  deriving (Show)
 
 data Action monad = Action
   { name :: ActionName

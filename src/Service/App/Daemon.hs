@@ -6,10 +6,15 @@ module Service.App.Daemon
   )
 where
 
+import Prelude hiding (filter)
+
 import Control.Lens (view)
+import Control.Monad (forM_)
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
+import Data.Aeson (Value)
 import Data.Foldable (for_)
+import Data.List.NonEmpty (NonEmpty((:|)), nonEmpty)
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import qualified Service.Action as Action
@@ -20,23 +25,25 @@ import Service.Action
 import Service.ActionName (ActionName, serializeActionName)
 import Service.Actions (findAction)
 import Service.App (Logger(..), MonadMQTT)
-import Service.App.Helpers (findThreadsByDeviceId)
 import Service.App.DaemonState
   ( DaemonState(..)
   , DeviceMap
   , ServerResponse(..)
   , ThreadMap
+  , findThreadsByDeviceId
   , initDaemonState
   , insertAction
-  , insertDeviceActions
+  , insertDeviceAction
   , removeActions
+  , removeDeviceActions
   )
-import Service.Env (Env', config, appCleanup, messagesQueue)
+import Service.Env (Env', config, appCleanup, messageQueue)
 import qualified Service.Messages.Action as Messages
 import UnliftIO.Async (async, cancel)
 import UnliftIO.Exception (bracket, bracket_)
 import UnliftIO.STM
-  ( TQueue
+  ( TChan
+  , TQueue
   , TVar
   , atomically
   , dupTChan
@@ -45,6 +52,7 @@ import UnliftIO.STM
   , readTVarIO
   , writeTChan
   , writeTQueue
+  , writeTVar
   )
 
 
@@ -68,13 +76,13 @@ run' daemonState findAction' responseQueue = do
 
   bracket_ (pure ()) (cleanupActions appCleanup' daemonState) $ do
     debug . T.pack . show $ config'
-    messagesQueue' <- view messagesQueue
-    go messagesQueue' findAction'
+    go findAction'
 
   where
-    go messagesQueue' findAction'' = do
-      msg <- atomically $ readTQueue messagesQueue'
-      debug $ T.pack $ show msg
+    go findAction'' = do
+      messageQueue' <- view messageQueue
+      msg <- atomically $ readTQueue messageQueue'
+      debug $ "Received Message in main Daemon thread: " <> T.pack (show msg)
 
       case msg of
         Messages.StopServer -> do
@@ -82,19 +90,23 @@ run' daemonState findAction' responseQueue = do
           atomically $ writeTQueue responseQueue StoppingServer
           pure ()
 
-        Messages.Start actionName -> runServerStep messagesQueue' findAction'' $
+        Messages.Start actionName -> runServerStep findAction'' $
           initializeAndRunAction daemonState actionName findAction''
 
-        Messages.Stop actionName -> runServerStep messagesQueue' findAction'' $
-          stopAction (_threadMap daemonState) actionName
+        Messages.Stop actionName -> runServerStep findAction'' $
+          stopAction (_threadMap daemonState) (_deviceMap daemonState) actionName
 
-        Messages.SendTo actionName msg' -> runServerStep messagesQueue' findAction'' $
-          sendClientMsg (_serverChan daemonState) $ serializeActionName actionName <> msg'
+        Messages.SendTo actionName msg' -> runServerStep findAction'' $
+          sendClientMsg actionName (_serverChan daemonState) msg'
 
-        Messages.Null -> runServerStep messagesQueue' findAction'' $
+        Messages.Schedule _actionName _actionSchedule ->
+          runServerStep findAction'' $
+            pure ()
+
+        Messages.Null -> runServerStep findAction'' $
           debug "Null Action"
 
-    runServerStep messagesQueue' findAction'' step = do
+    runServerStep findAction'' step = do
       step
       -- To be honest this is just here to allow me to write
       -- integration tests that exercise this entire daemon process
@@ -104,9 +116,12 @@ run' daemonState findAction' responseQueue = do
       -- because it doesn't actually provide any functionality in a
       -- production context.
       atomically $ writeTQueue responseQueue MsgLoopEnd
-      go messagesQueue' findAction''
+      go findAction''
 
-    sendClientMsg serverChan' = atomically . writeTChan serverChan' . Client
+    sendClientMsg
+      :: (MonadUnliftIO m) => ActionName -> TChan Message -> Value -> m ()
+    sendClientMsg actionName serverChan' =
+      atomically . writeTChan serverChan' . Client actionName
 
 initializeAndRunAction
   :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
@@ -126,14 +141,18 @@ initializeAndRunAction
         findThreadsByDeviceId (wantsFullControlOver action) threadMap' deviceMap'
 
     mapM_ stopAction' actionsToStop
-    atomically $ removeActions _threadMap $ name . fst <$> actionsToStop
+    atomically $ do
+      let stopped = name . fst <$> actionsToStop
+      removeActions _threadMap stopped
+      forM_ (nonEmpty stopped) $ \stopped' ->
+        removeDeviceActions _deviceMap stopped'
 
     clientAsync <- async $
       bracket (pure clientChan) (Action.cleanup action) (Action.run action)
 
     atomically $ do
       insertAction _threadMap actionName (action, clientAsync)
-      insertDeviceActions _deviceMap (devices action) actionName
+      insertDeviceAction _deviceMap (devices action) actionName
 
     where
       stopAction' (act, asyn) = do
@@ -141,18 +160,15 @@ initializeAndRunAction
           <> (T.pack . show $ name act)
         cancel asyn
 
-stopAction :: (MonadUnliftIO m) => TVar (ThreadMap m) -> ActionName -> m ()
-stopAction threadMap actionName = do
+stopAction :: (MonadUnliftIO m) => TVar (ThreadMap m) -> TVar DeviceMap -> ActionName -> m ()
+stopAction threadMap deviceMap actionName = do
   threadMap' <- readTVarIO threadMap
   for_ (M.lookup actionName threadMap') $
     mapM_ (\(_, async') -> cancel async')
+  atomically $ do
+    writeTVar threadMap $ M.delete actionName threadMap'
+    removeDeviceActions deviceMap (actionName :| [])
 
--- TODO I SHOULD PROBABLY STILL CLEAN THESE UP!
--- atomically $ writeTVar threadMap $ M.delete actionName threadMap'
-
-
--- final cleanup: if this thing shuts down with threads running,
--- kill all the threads
 cleanupActions
   :: (Logger m, MonadIO m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => IO ()

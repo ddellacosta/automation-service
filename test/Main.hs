@@ -38,5 +38,5 @@ unit = do
 
 integration :: IO TestTree
 integration = do
-  daemonSpec <- testSpec "Daemon Spec" Daemon.spec
+  daemonSpec <- testSpec "Service.App.Daemon specs" Daemon.spec
   pure $ testGroup "Integration Tests" [ daemonSpec ]

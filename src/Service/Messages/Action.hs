@@ -16,25 +16,26 @@ import Data.Aeson
   , withObject
   )
 import Data.Aeson.Types (Parser)
+import Data.Text (Text)
 import Data.Maybe (fromMaybe)
 import GHC.Generics (Generic)
 import Service.ActionName (ActionName, parseActionName)
 
-data Action msg where
-  StopServer :: Action msg
-  Start :: ActionName -> Action msg
-  Stop :: ActionName -> Action msg
-  SendTo :: ActionName -> msg -> Action msg
-  Null :: Action msg
-  deriving (Generic, Eq, Ord, Show)
+type ActionSchedule = Text
 
---
--- TODO generalize this for different msg types
---
-instance (ToJSON msgBody) => ToJSON (Action msgBody) where
+data Action where
+  StopServer :: Action
+  Start :: ActionName -> Action
+  Stop :: ActionName -> Action
+  SendTo :: ActionName -> Value -> Action
+  Schedule :: ActionName -> ActionSchedule -> Action
+  Null :: Action
+  deriving (Generic, Eq, Show)
+
+instance ToJSON Action where
   toEncoding = genericToEncoding defaultOptions
 
-instance (FromJSON msgBody) => FromJSON (Action msgBody) where
+instance FromJSON Action where
   --
   -- The semantics of this are pretty stupid. Basically anything other
   -- than a perfectly well-formed message with a single action should
@@ -52,7 +53,7 @@ instance (FromJSON msgBody) => FromJSON (Action msgBody) where
   -- implement. If it turns out we really want to be able to pass
   -- multiple actions in a single message, I'll revisit this.
   --
-  parseJSON :: Value -> Parser (Action msgBody)
+  parseJSON :: Value -> Parser Action
   parseJSON = withObject "Action" $ \o -> do
     startAction <- o .:? "start"
     stopAction <- o .:? "stop"

@@ -32,12 +32,12 @@ let Config
 
 in  { mqttBroker =
       { uri = "%%MQTT-URI%%"
-      , caCertPath = "/home/dd/code/home-assistant/mosquitto_config/ca.crt"
-      , clientCertPath =
-          "/home/dd/code/home-assistant/mosquitto_config/client.crt"
-      , clientKeyPath =
-          "/home/dd/code/home-assistant/mosquitto_config/client.key"
       , actionsServiceTopic = "actions-service/set"
+      , caCertPath = Some "/home/dd/code/home-assistant/mosquitto_config/ca.crt"
+      , clientCertPath = Some
+          "/home/dd/code/home-assistant/mosquitto_config/client.crt"
+      , clientKeyPath = Some
+          "/home/dd/code/home-assistant/mosquitto_config/client.key"
       }
     , devices =
       [ { id = "GledoptoGLC007P_1"

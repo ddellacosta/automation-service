@@ -17,7 +17,7 @@ module Service.Env
   , logLevel
   , logger
   , appCleanup
-  , messagesQueue
+  , messageQueue
   , mqttClient
   , mqttConfig
   , uri
@@ -28,7 +28,6 @@ import Control.Lens (makeFieldsNoPrefix)
 import Data.Functor ((<&>))
 import Data.Maybe (fromMaybe)
 import qualified Data.String as S
-import Data.Text (Text)
 import Dhall (Decoder, Generic, FromDhall(..), auto, list, strictText, field, record, string)
 import Network.MQTT.Client (MQTTClient)
 import Network.MQTT.Topic (Filter)
@@ -101,10 +100,9 @@ data Env' logger mqttClient = Env'
   { _config :: Config
   , _logger :: logger
   , _mqttClient :: mqttClient
-  , _messagesQueue :: TQueue (Messages.Action Text)
+  , _messageQueue :: TQueue Messages.Action
   , _appCleanup :: IO ()
   }
---  deriving (Generic)
 
 makeFieldsNoPrefix ''Env'
 
