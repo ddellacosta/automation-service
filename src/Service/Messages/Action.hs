@@ -1,11 +1,18 @@
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Service.Messages.Action
   ( Action(..)
-  ,
+  , _Null
+  , _Schedule
+  , _SendTo
+  , _Start
+  , _Stop
+  , _StopServer
   )
 where
 
+import Control.Lens (makePrisms)
 import Data.Aeson
   ( FromJSON(..)
   , ToJSON(..)
@@ -31,6 +38,8 @@ data Action where
   Schedule :: ActionName -> ActionSchedule -> Action
   Null :: Action
   deriving (Generic, Eq, Show)
+
+makePrisms ''Action
 
 instance ToJSON Action where
   toEncoding = genericToEncoding defaultOptions

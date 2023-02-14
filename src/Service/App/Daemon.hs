@@ -9,11 +9,10 @@ where
 import Prelude hiding (filter)
 
 import Control.Lens (view)
-import Control.Monad (forM_)
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
 import Data.Aeson (Value)
-import Data.Foldable (for_)
+import Data.Foldable (for_, forM_)
 import Data.List.NonEmpty (NonEmpty((:|)), nonEmpty)
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T

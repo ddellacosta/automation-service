@@ -6,9 +6,11 @@ where
 
 import Prelude hiding (id, init)
 
+import Control.Lens ((^?))
 import Control.Monad.Reader (MonadReader, liftIO)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Data.Aeson (FromJSON, ToJSON(..), decode, defaultOptions, encode, genericToEncoding)
+import Data.Aeson.Lens (key)
 import qualified Data.Text as T
 import Data.Text (Text)
 import GHC.Generics (Generic)
@@ -100,17 +102,12 @@ runAction broadcastChan = do
       debug $ "Gold got msg? " <> T.pack (show maybeMsg)
       case maybeMsg of
         Just (Client Gold msg') ->
-          debug ("Gold received msg: " <> (T.pack . show) ((decode . encode) msg' :: Maybe GoldMsg))
+          debug
+            ( T.pack $
+                "Gold received msg. Mood is " <>
+                show (msg' ^? key "mood") <>
+                ", Fancy = " <>
+                show (msg' ^? key "fancy")
+            )
             >> go ledTopic broadcastChan'
         _ -> go ledTopic broadcastChan'
-
-data GoldMsg = GoldMsg
-  { mood :: Text
-  , fancy :: Bool
-  }
-  deriving (Show, Generic, Ord, Eq)
-
-instance ToJSON GoldMsg where
-  toEncoding = genericToEncoding defaultOptions
-
-instance FromJSON GoldMsg
