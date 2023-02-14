@@ -3,7 +3,7 @@ module Test.Unit.Service.App.DaemonState
   )
 where
 
-import Control.Lens ((<&>), _head, preview)
+import Control.Lens ((<&>))
 import qualified Data.Map.Strict as M
 import Test.Hspec (Spec, describe, it, shouldBe)
 import Service.Action (Action(name), nullAction)
@@ -27,8 +27,6 @@ spec = describe "Tests ThreadMap functions" $ do
     threadMap' <- readTVarIO threadMap
 
     let
-      newActionEntries = M.lookup actionName threadMap'
-      newActionEntry = newActionEntries >>= preview _head
+      newActionEntry = M.lookup actionName threadMap'
 
-    (newActionEntries <&> length) `shouldBe` Just 1
     (newActionEntry <&> fst <&> name) `shouldBe` Just actionName

@@ -128,10 +128,10 @@ initializeAndRunAction
   -> ActionName
   -> m ()
 initializeAndRunAction
-  (DaemonState _threadMap _deviceMap _broadcastChan _) actionName = do
-    clientChan <- atomically $ dupTChan _broadcastChan
-    threadMap' <- readTVarIO _threadMap
-    deviceMap' <- readTVarIO _deviceMap
+  (DaemonState threadMapTV deviceMapTV broadcastChan' _) actionName = do
+    clientChan <- atomically $ dupTChan broadcastChan'
+    threadMap' <- readTVarIO threadMapTV
+    deviceMap' <- readTVarIO deviceMapTV
 
     let
       action = findAction actionName
@@ -141,16 +141,16 @@ initializeAndRunAction
     mapM_ stopAction' actionsToStop
     atomically $ do
       let stopped = name . fst <$> actionsToStop
-      removeActions _threadMap stopped
+      removeActions threadMapTV stopped
       forM_ (nonEmpty stopped) $ \stopped' ->
-        removeDeviceActions _deviceMap stopped'
+        removeDeviceActions deviceMapTV stopped'
 
     clientAsync <- async $
       bracket (pure clientChan) (Action.cleanup action) (Action.run action)
 
     atomically $ do
-      insertAction _threadMap actionName (action, clientAsync)
-      insertDeviceAction _deviceMap (devices action) actionName
+      insertAction threadMapTV actionName (action, clientAsync)
+      insertDeviceAction deviceMapTV (devices action) actionName
 
     where
       stopAction' (act, asyn) = do
@@ -163,8 +163,7 @@ stopAction daemonState actionName = do
   let
     (threadMapTV, deviceMapTV) = daemonState ^. lensProduct threadMap deviceMap
   threadMap' <- readTVarIO threadMapTV
-  for_ (M.lookup actionName threadMap') $
-    mapM_ (\(_, async') -> cancel async')
+  for_ (M.lookup actionName threadMap') $ \(_, async') -> cancel async'
   atomically $ do
     writeTVar threadMapTV $ M.delete actionName threadMap'
     removeDeviceActions deviceMapTV (actionName :| [])
@@ -177,7 +176,7 @@ cleanupActions
 cleanupActions appCleanup' daemonState = do
   let threadMapTV = daemonState ^. threadMap
   threadMap' <- readTVarIO threadMapTV
-  for_ (M.assocs threadMap') $ \(aName, asyncs) -> do
+  for_ (M.assocs threadMap') $ \(aName, (_, async')) -> do
     info $ "Shutting down Action " <> serializeActionName aName
-    mapM_ (\(_, async') -> cancel async') asyncs
+    cancel async'
   liftIO appCleanup'

@@ -47,7 +47,7 @@ data ServerResponse
 
 type ActionEntry m = (Action m, Async ())
 
-type ThreadMap m = M.Map ActionName [ActionEntry m]
+type ThreadMap m = M.Map ActionName (ActionEntry m)
 
 type DeviceMap = M.Map DeviceId (NonEmpty ActionName)
 
@@ -64,9 +64,9 @@ initDaemonState :: IO (DaemonState m)
 initDaemonState = do
   broadcastChan' <- newBroadcastTChanIO
   serverChan' <- atomically $ dupTChan broadcastChan'
-  threadMap' <- newTVarIO M.empty
-  deviceMap' <- newTVarIO M.empty
-  pure $ DaemonState threadMap' deviceMap' broadcastChan' serverChan'
+  threadMapTV <- newTVarIO M.empty
+  deviceMapTV <- newTVarIO M.empty
+  pure $ DaemonState threadMapTV deviceMapTV broadcastChan' serverChan'
 
 -- |
 -- | Given a TVar ThreadMap and a (ActionName, (Action m, Async ()))
@@ -76,41 +76,40 @@ initDaemonState = do
 -- | it will add a new List with the new entry as its first member.
 -- |
 insertAction :: TVar (ThreadMap m) -> ActionName -> ActionEntry m -> STM ()
-insertAction threadMap' actionName actionEntry = do
-  threadMap'' <- readTVar threadMap'
-  writeTVar threadMap' $
-    M.alter (Just . foldr (<>) [actionEntry]) actionName threadMap''
+insertAction threadMapTV actionName actionEntry = do
+  threadMap' <- readTVar threadMapTV
+  writeTVar threadMapTV $ M.insert actionName actionEntry threadMap'
 
 -- |
 -- | Removes the Actions corresponding to the list of ActionNames
 -- | passed in from the TVar-wrapped ThreadMap.
 -- |
 removeActions :: TVar (ThreadMap m) -> [ActionName] -> STM ()
-removeActions threadMap' actions =
-  readTVar threadMap' >>=
-    \tm -> writeTVar threadMap' $ foldr M.delete tm actions
+removeActions threadMapTV actions =
+  readTVar threadMapTV >>=
+    \tm -> writeTVar threadMapTV $ foldr M.delete tm actions
 
 -- |
 -- | Given a TVar DeviceMap, this will add a new ActionName entry for
 -- | all matching DeviceIds passed in.
 -- |
 insertDeviceAction :: TVar DeviceMap -> [DeviceId] -> ActionName -> STM ()
-insertDeviceAction deviceMap' devices actionName = do
-  deviceMap'' <- readTVar deviceMap'
+insertDeviceAction deviceMapTV devices actionName = do
+  deviceMap' <- readTVar deviceMapTV
   for_ devices $ \deviceId ->
-    writeTVar deviceMap' $
-      M.alter (Just . foldr (<>) (actionName :| [])) deviceId deviceMap''
+    writeTVar deviceMapTV $
+      M.alter (Just . foldr (<>) (actionName :| [])) deviceId deviceMap'
 
 -- |
 -- | Removes all ActionNames from any Device entries in the TVar
 -- | DeviceMap.
 -- |
 removeDeviceActions :: TVar DeviceMap -> NonEmpty ActionName -> STM ()
-removeDeviceActions deviceMap' actionNames = do
-  deviceMap'' <- readTVar deviceMap'
-  for_ (M.keys deviceMap'') $ \deviceId ->
-    writeTVar deviceMap' $
-      M.alter (filterActionNames =<<) deviceId deviceMap''
+removeDeviceActions deviceMapTV actionNames = do
+  deviceMap' <- readTVar deviceMapTV
+  for_ (M.keys deviceMap') $ \deviceId ->
+    writeTVar deviceMapTV $
+      M.alter (filterActionNames =<<) deviceId deviceMap'
   where
     filterActionNames =
       nonEmpty . flip (foldr (\an -> filter (/= an))) actionNames . toList
@@ -124,6 +123,5 @@ removeDeviceActions deviceMap' actionNames = do
 findThreadsByDeviceId :: [DeviceId] -> ThreadMap m -> DeviceMap -> [(Action m, Async ())]
 findThreadsByDeviceId devices' threadMap' deviceMap' = mconcat $ devices' <&> \did ->
   case M.lookup did deviceMap' of
-    Just actionNames ->
-      mconcat $ mapMaybe (`M.lookup` threadMap') $ toList actionNames
+    Just actionNames -> mapMaybe (`M.lookup` threadMap') $ toList actionNames
     Nothing -> []
