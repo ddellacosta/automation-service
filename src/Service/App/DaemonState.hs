@@ -111,7 +111,7 @@ removeDeviceActions deviceMap' actionNames = do
   deviceMap'' <- readTVar deviceMap'
   for_ (M.keys deviceMap'') $ \deviceId ->
     writeTVar deviceMap' $
-      M.alter (>>= filterActionNames) deviceId deviceMap''
+      M.alter (filterActionNames =<<) deviceId deviceMap''
   where
     filterActionNames =
       nonEmpty . flip (foldr (\an -> filter (/= an))) actionNames . toList

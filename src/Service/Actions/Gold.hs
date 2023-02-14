@@ -9,11 +9,8 @@ import Prelude hiding (id, init)
 import Control.Lens ((^?))
 import Control.Monad.Reader (MonadReader, liftIO)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
-import Data.Aeson (FromJSON, ToJSON(..), decode, defaultOptions, encode, genericToEncoding)
 import Data.Aeson.Lens (key)
 import qualified Data.Text as T
-import Data.Text (Text)
-import GHC.Generics (Generic)
 import Network.MQTT.Client (Topic)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
