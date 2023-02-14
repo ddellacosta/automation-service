@@ -2,8 +2,8 @@ module Main where
 
 import Prelude hiding (log)
 
-import Control.Lens.Unsound (lensProduct)
 import Control.Lens ((^.))
+import Control.Lens.Unsound (lensProduct)
 import Dhall (inputFile)
 import qualified Network.MQTT.Client as MQTT
 import qualified Service.App.Daemon as Daemon

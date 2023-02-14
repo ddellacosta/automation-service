@@ -8,7 +8,8 @@ where
 
 import Prelude hiding (filter)
 
-import Control.Lens (view)
+import Control.Lens ((^.), view)
+import Control.Lens.Unsound (lensProduct)
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
 import Data.Aeson (Value)
@@ -29,12 +30,14 @@ import Service.App.DaemonState
   , DeviceMap
   , ServerResponse(..)
   , ThreadMap
+  , deviceMap
   , findThreadsByDeviceId
   , initDaemonState
   , insertAction
   , insertDeviceAction
   , removeActions
   , removeDeviceActions
+  , threadMap
   )
 import Service.Env (Env', config, appCleanup, messageQueue)
 import qualified Service.Messages.Action as Messages
@@ -43,7 +46,6 @@ import UnliftIO.Exception (bracket, bracket_)
 import UnliftIO.STM
   ( TChan
   , TQueue
-  , TVar
   , atomically
   , dupTChan
   , newTQueueIO
@@ -92,7 +94,7 @@ run' daemonState responseQueue = do
           initializeAndRunAction daemonState actionName
 
         Messages.Stop actionName -> runServerStep $
-          stopAction (_threadMap daemonState) (_deviceMap daemonState) actionName
+          stopAction daemonState actionName
 
         Messages.SendTo actionName msg' -> runServerStep $
           sendClientMsg actionName (_serverChan daemonState) msg'
@@ -156,14 +158,16 @@ initializeAndRunAction
           <> (T.pack . show $ name act)
         cancel asyn
 
-stopAction :: (MonadUnliftIO m) => TVar (ThreadMap m) -> TVar DeviceMap -> ActionName -> m ()
-stopAction threadMap deviceMap actionName = do
-  threadMap' <- readTVarIO threadMap
+stopAction :: (MonadUnliftIO m) => DaemonState m -> ActionName -> m ()
+stopAction daemonState actionName = do
+  let
+    (threadMapTV, deviceMapTV) = daemonState ^. lensProduct threadMap deviceMap
+  threadMap' <- readTVarIO threadMapTV
   for_ (M.lookup actionName threadMap') $
     mapM_ (\(_, async') -> cancel async')
   atomically $ do
-    writeTVar threadMap $ M.delete actionName threadMap'
-    removeDeviceActions deviceMap (actionName :| [])
+    writeTVar threadMapTV $ M.delete actionName threadMap'
+    removeDeviceActions deviceMapTV (actionName :| [])
 
 cleanupActions
   :: (Logger m, MonadIO m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
@@ -171,8 +175,8 @@ cleanupActions
   -> DaemonState m
   -> m ()
 cleanupActions appCleanup' daemonState = do
-  let threadMap = _threadMap daemonState
-  threadMap' <- readTVarIO threadMap
+  let threadMapTV = daemonState ^. threadMap
+  threadMap' <- readTVarIO threadMapTV
   for_ (M.assocs threadMap') $ \(aName, asyncs) -> do
     info $ "Shutting down Action " <> serializeActionName aName
     mapM_ (\(_, async') -> cancel async') asyncs
