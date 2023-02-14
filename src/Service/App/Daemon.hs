@@ -61,24 +61,23 @@ run
 run = do
   daemonState <- liftIO initDaemonState
   responseQueue <- newTQueueIO
-  run' daemonState findAction responseQueue
+  run' daemonState responseQueue
 
 run'
   :: (Logger m, MonadReader (Env' logger mqttClient) m, MonadMQTT m, MonadUnliftIO m)
   => DaemonState m
-  -> (ActionName -> Action m)
   -> TQueue ServerResponse -- see note below about writing to responseQueue
   -> m ()
-run' daemonState findAction' responseQueue = do
+run' daemonState responseQueue = do
   config' <- view config
   appCleanup' <- view appCleanup
 
   bracket_ (pure ()) (cleanupActions appCleanup' daemonState) $ do
     debug . T.pack . show $ config'
-    go findAction'
+    go
 
   where
-    go findAction'' = do
+    go = do
       messageQueue' <- view messageQueue
       msg <- atomically $ readTQueue messageQueue'
       debug $ "Received Message in main Daemon thread: " <> T.pack (show msg)
@@ -89,23 +88,22 @@ run' daemonState findAction' responseQueue = do
           atomically $ writeTQueue responseQueue StoppingServer
           pure ()
 
-        Messages.Start actionName -> runServerStep findAction'' $
-          initializeAndRunAction daemonState actionName findAction''
+        Messages.Start actionName -> runServerStep $
+          initializeAndRunAction daemonState actionName
 
-        Messages.Stop actionName -> runServerStep findAction'' $
+        Messages.Stop actionName -> runServerStep $
           stopAction (_threadMap daemonState) (_deviceMap daemonState) actionName
 
-        Messages.SendTo actionName msg' -> runServerStep findAction'' $
+        Messages.SendTo actionName msg' -> runServerStep $
           sendClientMsg actionName (_serverChan daemonState) msg'
 
         Messages.Schedule _actionName _actionSchedule ->
-          runServerStep findAction'' $
-            pure ()
+          runServerStep $ pure ()
 
-        Messages.Null -> runServerStep findAction'' $
+        Messages.Null -> runServerStep $
           debug "Null Action"
 
-    runServerStep findAction'' step = do
+    runServerStep step = do
       step
       -- To be honest this is just here to allow me to write
       -- integration tests that exercise this entire daemon process
@@ -115,7 +113,7 @@ run' daemonState findAction' responseQueue = do
       -- because it doesn't actually provide any functionality in a
       -- production context.
       atomically $ writeTQueue responseQueue MsgLoopEnd
-      go findAction''
+      go
 
     sendClientMsg
       :: (MonadUnliftIO m) => ActionName -> TChan Message -> Value -> m ()
@@ -126,16 +124,15 @@ initializeAndRunAction
   :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => DaemonState m
   -> ActionName
-  -> (ActionName -> Action m)
   -> m ()
 initializeAndRunAction
-  (DaemonState _threadMap _deviceMap _broadcastChan _) actionName findAction' = do
+  (DaemonState _threadMap _deviceMap _broadcastChan _) actionName = do
     clientChan <- atomically $ dupTChan _broadcastChan
     threadMap' <- readTVarIO _threadMap
     deviceMap' <- readTVarIO _deviceMap
 
     let
-      action = findAction' actionName
+      action = findAction actionName
       actionsToStop =
         findThreadsByDeviceId (wantsFullControlOver action) threadMap' deviceMap'
 

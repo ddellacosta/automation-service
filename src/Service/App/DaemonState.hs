@@ -14,8 +14,8 @@ module Service.App.DaemonState
   , insertDeviceAction
   , removeActions
   , removeDeviceActions
-  , threadMap
   , serverChan
+  , threadMap
   )
   where
 
@@ -68,7 +68,6 @@ initDaemonState = do
   deviceMap' <- newTVarIO M.empty
   pure $ DaemonState threadMap' deviceMap' broadcastChan' serverChan'
 
-
 -- |
 -- | Given a TVar ThreadMap and a (ActionName, (Action m, Async ()))
 -- | pair, inserts a new entry into the ThreadMap. If the ThreadMap
@@ -115,7 +114,6 @@ removeDeviceActions deviceMap' actionNames = do
   where
     filterActionNames =
       nonEmpty . flip (foldr (\an -> filter (/= an))) actionNames . toList
-
 
 -- |
 -- | A utility for extracting any ActionEntries using any of the
