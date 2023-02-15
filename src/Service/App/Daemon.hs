@@ -45,7 +45,7 @@ import Service.App.DaemonState
   )
 import Service.Env (Env', config, appCleanup, messageQueue)
 import qualified Service.Messages.Action as Messages
-import System.Cron (addJob, execSchedule, parseCronSchedule)
+import System.Cron (addJob, execSchedule)
 import UnliftIO.Async (async, cancel)
 import UnliftIO.Exception (bracket, bracket_)
 import UnliftIO.STM
@@ -132,11 +132,10 @@ run' daemonState responseQueue = do
       atomically $ writeTQueue responseQueue MsgLoopEnd
       go
 
-    sendClientMsg
-      :: (MonadUnliftIO m) => ActionName -> TChan Message -> Value -> m ()
-    sendClientMsg actionName serverChan' =
-      atomically . writeTChan serverChan' . Client actionName
-
+sendClientMsg
+  :: (MonadUnliftIO m) => ActionName -> TChan Message -> Value -> m ()
+sendClientMsg actionName serverChan' =
+  atomically . writeTChan serverChan' . Client actionName
 
 addScheduleActionMessage
   :: (MonadIO m)
