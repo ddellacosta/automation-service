@@ -34,11 +34,11 @@ goldAction
   => Action m
 goldAction =
   Action
-    { name = Gold
-    , devices = [Device.GledoptoGLC007P_1]
-    , wantsFullControlOver = [Device.GledoptoGLC007P_1]
-    , cleanup = cleanupAction
-    , run = runAction
+    { _name = Gold
+    , _devices = [Device.GledoptoGLC007P_1]
+    , _wantsFullControlOver = [Device.GledoptoGLC007P_1]
+    , _cleanup = cleanupAction
+    , _run = runAction
     }
 
 cleanupAction

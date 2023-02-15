@@ -3,6 +3,7 @@
 
 module Service.Messages.Action
   ( Action(..)
+  , ActionSchedule
   , _Null
   , _Schedule
   , _SendTo
@@ -35,7 +36,7 @@ data Action where
   Start :: ActionName -> Action
   Stop :: ActionName -> Action
   SendTo :: ActionName -> Value -> Action
-  Schedule :: ActionName -> ActionSchedule -> Action
+  Schedule :: Action -> ActionSchedule -> Action
   Null :: Action
   deriving (Generic, Eq, Show)
 

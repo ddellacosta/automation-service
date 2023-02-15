@@ -10,6 +10,7 @@ import Prelude hiding (filter)
 
 import Control.Lens ((^.), view)
 import Control.Lens.Unsound (lensProduct)
+import Control.Monad (void)
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
 import Data.Aeson (Value)
@@ -19,8 +20,11 @@ import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import qualified Service.Action as Action
 import Service.Action
-  ( Action(name, devices, wantsFullControlOver)
+  ( Action(_name)
   , Message(..)
+  , devices
+  , name
+  , wantsFullControlOver
   )
 import Service.ActionName (ActionName, serializeActionName)
 import Service.Actions (findAction)
@@ -41,6 +45,7 @@ import Service.App.DaemonState
   )
 import Service.Env (Env', config, appCleanup, messageQueue)
 import qualified Service.Messages.Action as Messages
+import System.Cron (addJob, execSchedule, parseCronSchedule)
 import UnliftIO.Async (async, cancel)
 import UnliftIO.Exception (bracket, bracket_)
 import UnliftIO.STM
@@ -65,6 +70,13 @@ run = do
   responseQueue <- newTQueueIO
   run' daemonState responseQueue
 
+--
+-- Splitting this from `run` is a hack to allow me to test the main
+-- logic more easily. I suppose I could move the initialization above
+-- to Main but it feels more natural to wrap it in this module, and by
+-- the same token I don't feel like DaemonState should be stored in
+-- Env.
+--
 run'
   :: (Logger m, MonadReader (Env' logger mqttClient) m, MonadMQTT m, MonadUnliftIO m)
   => DaemonState m
@@ -99,8 +111,11 @@ run' daemonState responseQueue = do
         Messages.SendTo actionName msg' -> runServerStep $
           sendClientMsg actionName (_serverChan daemonState) msg'
 
-        Messages.Schedule _actionName _actionSchedule ->
-          runServerStep $ pure ()
+        Messages.Schedule actionMessage actionSchedule -> runServerStep $ do
+          addScheduleActionMessage
+            actionMessage actionSchedule messageQueue'
+
+          pure ()
 
         Messages.Null -> runServerStep $
           debug "Null Action"
@@ -122,6 +137,17 @@ run' daemonState responseQueue = do
     sendClientMsg actionName serverChan' =
       atomically . writeTChan serverChan' . Client actionName
 
+
+addScheduleActionMessage
+  :: (MonadIO m)
+  => Messages.Action
+  -> Messages.ActionSchedule
+  -> TQueue Messages.Action
+  -> m ()
+addScheduleActionMessage actionMessage actionSchedule messageQueue' = do
+  void $ liftIO $ execSchedule $ flip addJob actionSchedule $ do
+    atomically $ writeTQueue messageQueue' actionMessage
+
 initializeAndRunAction
   :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => DaemonState m
@@ -136,26 +162,26 @@ initializeAndRunAction
     let
       action = findAction actionName
       actionsToStop =
-        findThreadsByDeviceId (wantsFullControlOver action) threadMap' deviceMap'
+        findThreadsByDeviceId (action ^. wantsFullControlOver) threadMap' deviceMap'
 
     mapM_ stopAction' actionsToStop
     atomically $ do
-      let stopped = name . fst <$> actionsToStop
+      let stopped = _name . fst <$> actionsToStop
       removeActions threadMapTV stopped
       forM_ (nonEmpty stopped) $ \stopped' ->
         removeDeviceActions deviceMapTV stopped'
 
     clientAsync <- async $
-      bracket (pure clientChan) (Action.cleanup action) (Action.run action)
+      bracket (pure clientChan) (Action._cleanup action) (Action._run action)
 
     atomically $ do
       insertAction threadMapTV actionName (action, clientAsync)
-      insertDeviceAction deviceMapTV (devices action) actionName
+      insertDeviceAction deviceMapTV (action ^. devices) actionName
 
     where
       stopAction' (act, asyn) = do
         debug $ "Conflicting Device usage: Shutting down threads running action "
-          <> (T.pack . show $ name act)
+          <> (T.pack . show $ act ^. name)
         cancel asyn
 
 stopAction :: (MonadUnliftIO m) => DaemonState m -> ActionName -> m ()
@@ -176,7 +202,7 @@ cleanupActions
 cleanupActions appCleanup' daemonState = do
   let threadMapTV = daemonState ^. threadMap
   threadMap' <- readTVarIO threadMapTV
-  for_ (M.assocs threadMap') $ \(aName, (_, async')) -> do
-    info $ "Shutting down Action " <> serializeActionName aName
+  for_ (M.assocs threadMap') $ \(actionName, (_, async')) -> do
+    info $ "Shutting down Action " <> serializeActionName actionName
     cancel async'
   liftIO appCleanup'

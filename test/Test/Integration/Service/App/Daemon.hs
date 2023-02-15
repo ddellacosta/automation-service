@@ -4,9 +4,13 @@ module Test.Integration.Service.App.Daemon
   )
 where
 
+import Control.Lens ((^?), _1)
 import Control.Monad (void)
+import Control.Retry (exponentialBackoff, limitRetries, retrying)
 import qualified Data.Map.Strict as M
+import Data.Maybe (isNothing)
 import Service.App.DaemonState (DaemonState(_deviceMap, _threadMap))
+import Service.Action (name)
 import Service.ActionName (ActionName(..))
 import qualified Service.Device as Device
 import qualified Service.Messages.Action as Messages
@@ -23,6 +27,13 @@ spec :: Spec
 spec = do
   threadMapSpecs
   deviceMapSpecs
+  --
+  -- this test is SOOOOOOOPER slow, because the soonest I can
+  -- schedule anything is within a minute. I'm probably going to
+  -- turn it off and only run it occasionally, gotta figure out a
+  -- good build process for that
+  --
+  -- _schedulerSpecs
 
 threadMapSpecs :: Spec
 threadMapSpecs = do
@@ -33,7 +44,7 @@ threadMapSpecs = do
         blockUntilNextEventLoop responseQueue
         threadMap' <- readTVarIO $ _threadMap daemonState
         lookupOrFail "Should have an action at index ActionName `Gold`" Gold threadMap' $
-          \testActions -> length testActions `shouldBe` 1
+          \testActions -> testActions ^? _1 . name `shouldBe` Just Gold
 
   around initAndCleanup $ do
     it "removes conflicting Action entries using 'owned' Devices from ThreadMap when starting" $
@@ -90,3 +101,17 @@ deviceMapSpecs = do
         deviceMap' <- readTVarIO $ _deviceMap daemonState
         lookupOrFail "Should have an action at index ActionName `Gold`" Device.GledoptoGLC007P_1 deviceMap' $
           \testActionNames -> length testActionNames `shouldBe` 1
+
+_schedulerSpecs :: Spec
+_schedulerSpecs = do
+  around initAndCleanup $ do
+    it "schedules an action to be run at a later date" $
+      testWithAsyncDaemon $ \daemonState messageQueue' _responseQueue -> do
+        atomically $
+          writeTQueue messageQueue' $ Messages.Schedule (Messages.Start Gold) "* * * * *"
+        -- 1000 microseconds = 0.001 seconds
+        let retryPolicy = exponentialBackoff 100 <> limitRetries 30
+        actionEntry <- retrying retryPolicy (const $ pure . isNothing) $ \_ -> do
+          threadMap' <- readTVarIO $ _threadMap daemonState
+          pure $ M.lookup Gold threadMap'
+        (void $ actionEntry) `shouldBe` (Just ())

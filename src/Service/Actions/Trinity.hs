@@ -22,11 +22,11 @@ trinityAction
   => Action m
 trinityAction =
   Action
-    { name = Trinity
-    , devices = [Device.GledoptoGLC007P_1]
-    , wantsFullControlOver = [Device.GledoptoGLC007P_1]
-    , cleanup = cleanupAction
-    , run = runAction
+    { _name = Trinity
+    , _devices = [Device.GledoptoGLC007P_1]
+    , _wantsFullControlOver = [Device.GledoptoGLC007P_1]
+    , _cleanup = cleanupAction
+    , _run = runAction
     }
 
 cleanupAction

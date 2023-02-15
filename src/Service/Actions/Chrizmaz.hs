@@ -22,11 +22,11 @@ chrizmazAction
   => Action m
 chrizmazAction =
   Action
-    { name = Chrizmaz
-    , devices = [Device.GledoptoGLC007P_1]
-    , wantsFullControlOver = [Device.GledoptoGLC007P_1]
-    , cleanup = cleanupAction
-    , run = runAction
+    { _name = Chrizmaz
+    , _devices = [Device.GledoptoGLC007P_1]
+    , _wantsFullControlOver = [Device.GledoptoGLC007P_1]
+    , _cleanup = cleanupAction
+    , _run = runAction
     }
 
 cleanupAction
