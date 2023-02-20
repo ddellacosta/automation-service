@@ -7,7 +7,7 @@ module Service.MQTTClient
 where
 
 import Control.Monad (when)
-import Data.Aeson (FromJSON, decode)
+import Data.Aeson (decode)
 import Data.Either (fromRight)
 import Data.Foldable (for_)
 import Data.Maybe (fromMaybe)

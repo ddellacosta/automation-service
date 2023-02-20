@@ -16,6 +16,7 @@ module Service.Env
   , logFilePath
   , logLevel
   , logger
+  , luaScriptPath
   , appCleanup
   , messageQueue
   , mqttClient
@@ -74,13 +75,14 @@ mqttConfigDecoder =
     )
 
 uriDecoder :: Decoder URI
-uriDecoder = string <&> (fromMaybe nullURI) . parseURI
+uriDecoder = string <&> fromMaybe nullURI . parseURI
 
 data Config = Config
   { _mqttConfig :: MQTTConfig
   , _devices :: [Device]
   , _logFilePath :: FilePath
   , _logLevel :: LogLevel
+  , _luaScriptPath :: FilePath
   }
   deriving (Generic, Show)
 
@@ -94,6 +96,7 @@ configDecoder =
         <*> field "devices" (list deviceDecoder)
         <*> field "logFilePath" string 
         <*> field "logLevel" auto
+        <*> field "luaScriptPath" string
     )
 
 data Env' logger mqttClient = Env'

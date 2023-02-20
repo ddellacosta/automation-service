@@ -6,9 +6,7 @@ where
 
 import Control.Lens ((^?), _1)
 import Control.Monad (void)
-import Control.Retry (exponentialBackoff, limitRetries, retrying)
 import qualified Data.Map.Strict as M
-import Data.Maybe (isNothing)
 import Service.App.DaemonState (DaemonState(_deviceMap, _threadMap))
 import Service.Action (name)
 import Service.ActionName (ActionName(..))
@@ -106,12 +104,15 @@ _schedulerSpecs :: Spec
 _schedulerSpecs = do
   around initAndCleanup $ do
     it "schedules an action to be run at a later date" $
-      testWithAsyncDaemon $ \daemonState messageQueue' _responseQueue -> do
+      testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
         atomically $
           writeTQueue messageQueue' $ Messages.Schedule (Messages.Start Gold) "* * * * *"
-        -- 1000 microseconds = 0.001 seconds
-        let retryPolicy = exponentialBackoff 100 <> limitRetries 30
-        actionEntry <- retrying retryPolicy (const $ pure . isNothing) $ \_ -> do
-          threadMap' <- readTVarIO $ _threadMap daemonState
-          pure $ M.lookup Gold threadMap'
-        (void $ actionEntry) `shouldBe` (Just ())
+        -- we want to wait for two event loops--one for handling the
+        -- Schedule message, and one for the Start message that will
+        -- be sent later--so we call this twice:
+        blockUntilNextEventLoop responseQueue
+        blockUntilNextEventLoop responseQueue
+
+        threadMap' <- readTVarIO $ _threadMap daemonState
+        let goldActionEntry = M.lookup Gold threadMap'
+        (void $ goldActionEntry) `shouldBe` (Just ())

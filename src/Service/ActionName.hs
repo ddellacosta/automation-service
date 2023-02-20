@@ -12,7 +12,7 @@ import GHC.Generics (Generic)
 
 data ActionName
   = Null
-  | Test
+  | LuaScript
   | Gold
   | Chrizmaz
   | Trinity
@@ -30,5 +30,6 @@ parseActionName :: String -> Maybe ActionName
 parseActionName = \case
   "Gold" -> Just Gold
   "Chrizmaz" -> Just Chrizmaz
+  "LuaScript" -> Just LuaScript
   "Trinity" -> Just Trinity
   _ -> Nothing

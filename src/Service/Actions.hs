@@ -18,8 +18,11 @@ findAction
   => ActionName
   -> Action m
 findAction = \case
+  Null -> nullAction
   Gold -> goldAction
   Chrizmaz -> chrizmazAction
   Trinity -> trinityAction
-  Test -> nullAction
-  Null -> nullAction
+  -- ...shouldn't get here because this isn't dispatched using
+  -- findAction. I could probably use the type system in a more
+  -- sophisticated way to implement this but, meh, for now at least
+  LuaScript -> nullAction

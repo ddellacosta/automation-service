@@ -34,6 +34,7 @@ type ActionSchedule = Text
 data Action where
   StopServer :: Action
   Start :: ActionName -> Action
+  StartLua :: FilePath -> Action
   Stop :: ActionName -> Action
   SendTo :: ActionName -> Value -> Action
   Schedule :: Action -> ActionSchedule -> Action
@@ -69,10 +70,14 @@ instance FromJSON Action where
     stopAction <- o .:? "stop"
     sendTo <- o .:? "send"
     msg <- o .:? "msg"
-    pure $ fromMaybe Null $ case (startAction, stopAction, sendTo) of
-      (Just actionName, _, _) -> Start <$> parseActionName actionName
-      (_, Just actionName, _) -> Stop <$> parseActionName actionName
-      (_, _, Just actionName) -> do
-        sendToAction <- parseActionName actionName
-        SendTo sendToAction <$> msg
-      _ -> Nothing
+    luaScriptFilePath <- o .:? "filepath"
+    pure $
+      fromMaybe Null $
+        case (startAction, stopAction, sendTo, luaScriptFilePath) of
+          (Just "LuaScript", _, _, Just filePath) -> (Just . StartLua) filePath
+          (Just actionName, _, _, _) -> Start <$> parseActionName actionName
+          (_, Just actionName, _, _) -> Stop <$> parseActionName actionName
+          (_, _, Just actionName, _) -> do
+            sendToAction <- parseActionName actionName
+            SendTo sendToAction <$> msg
+          _ -> Nothing

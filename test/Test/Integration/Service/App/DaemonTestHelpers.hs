@@ -24,10 +24,12 @@ initAndCleanup runTests =
   bracket initEnv (view appCleanup) runTests
 
 --
--- This is a hack. I introduced ServerResponse to Daemon specifically
--- so I could write integration-ish tests at this level of
--- abstraction, but it's not clear to me how else I can test
--- effectively without this.
+-- This is part of a hack. In Daemon, at the end of every message loop it
+-- sends a message to ServerResponse noting the loop has completed. I
+-- introduced ServerResponse to Daemon specifically so I could write
+-- integration-ish tests at this level of abstraction, and it's ugly,
+-- but it's not clear to me how else I can test effectively without
+-- this hack.
 --
 blockUntilNextEventLoop :: TQueue ServerResponse -> IO ()
 blockUntilNextEventLoop = void . atomically . readTQueue

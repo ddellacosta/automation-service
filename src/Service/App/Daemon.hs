@@ -26,8 +26,9 @@ import Service.Action
   , name
   , wantsFullControlOver
   )
-import Service.ActionName (ActionName, serializeActionName)
+import Service.ActionName (ActionName(LuaScript), serializeActionName)
 import Service.Actions (findAction)
+import Service.Actions.LuaScript (mkLuaAction)
 import Service.App (Logger(..), MonadMQTT)
 import Service.App.DaemonState
   ( DaemonState(..)
@@ -102,6 +103,9 @@ run' daemonState responseQueue = do
           atomically $ writeTQueue responseQueue StoppingServer
           pure ()
 
+        Messages.StartLua filePath -> runServerStep $
+          initializeAndRunLuaScriptAction daemonState LuaScript filePath
+
         Messages.Start actionName -> runServerStep $
           initializeAndRunAction daemonState actionName
 
@@ -152,14 +156,32 @@ initializeAndRunAction
   => DaemonState m
   -> ActionName
   -> m ()
-initializeAndRunAction
-  (DaemonState threadMapTV deviceMapTV broadcastChan' _) actionName = do
+initializeAndRunAction daemonState actionName =
+  initializeAndRunAction' daemonState actionName Nothing
+
+initializeAndRunLuaScriptAction
+  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
+  => DaemonState m
+  -> ActionName
+  -> FilePath
+  -> m ()
+initializeAndRunLuaScriptAction daemonState actionName =
+  initializeAndRunAction' daemonState actionName . Just
+
+initializeAndRunAction'
+  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
+  => DaemonState m
+  -> ActionName
+  -> Maybe FilePath
+  -> m ()
+initializeAndRunAction'
+  (DaemonState threadMapTV deviceMapTV broadcastChan' _) actionName mFilePath = do
     clientChan <- atomically $ dupTChan broadcastChan'
     threadMap' <- readTVarIO threadMapTV
     deviceMap' <- readTVarIO deviceMapTV
 
     let
-      action = findAction actionName
+      action = maybe (findAction actionName) mkLuaAction mFilePath
       actionsToStop =
         findThreadsByDeviceId (action ^. wantsFullControlOver) threadMap' deviceMap'
 
