@@ -1,4 +1,4 @@
-module Test.Unit.Service.Messages.Action
+module Test.Unit.Service.Messages.Daemon
   ( spec
   ,
   )
@@ -8,24 +8,24 @@ import Control.Lens ((^?), _1, _2, _Just)
 import qualified Data.Aeson as Aeson
 import Data.Aeson (decode, object)
 import Data.Aeson.Lens (key)
-import Service.ActionName (ActionName(Gold))
-import Service.Messages.Action (Action(..), _SendTo)
+import Service.AutomationName (AutomationName(Gold))
+import Service.Messages.Daemon (Message(..), _SendTo)
 import Test.Hspec (Spec, describe, it, shouldBe)
 
 
 spec :: Spec
-spec = describe "Action message parsing" $ do
-  it "correctly parses well-formed Action messages" $ do
-    (decode "{\"start\": \"Gold\"}" :: Maybe Action)
+spec = describe "Automation message parsing" $ do
+  it "correctly parses well-formed Automation messages" $ do
+    (decode "{\"start\": \"Gold\"}" :: Maybe Message)
       `shouldBe`
       Just (Start Gold)
 
-    (decode "{\"stop\": \"Gold\"}" :: Maybe Action)
+    (decode "{\"stop\": \"Gold\"}" :: Maybe Message)
       `shouldBe`
       Just (Stop Gold)
 
     let
-      sendToGold :: Maybe Action
+      sendToGold :: Maybe Message
       sendToGold =
         decode "{\"send\": \"Gold\", \"msg\": {\"mood\": \"frumpy\", \"fancy\": true}}"
 
@@ -54,7 +54,7 @@ spec = describe "Action message parsing" $ do
         )
       )
 
-  it "returns a Null Action message when given an unparseable message" $ do
-    (decode "{\"what\": \"nope\"}" :: Maybe Action)
+  it "returns a Null Automation message when given an unparseable message" $ do
+    (decode "{\"what\": \"nope\"}" :: Maybe Message)
       `shouldBe`
       Just Null

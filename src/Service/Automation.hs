@@ -1,45 +1,45 @@
-module Service.Action
-  ( Action(..)
+module Service.Automation
+  ( Automation(..)
   , Message(..)
   , devices
   , name
-  , nullAction
+  , nullAutomation
   , wantsFullControlOver
   )
   where
 
 import Control.Lens (Lens', lens)
 import Data.Aeson (Value)
-import Service.ActionName (ActionName(..))
+import Service.AutomationName (AutomationName(..))
 import Service.Device (DeviceId)
 import UnliftIO.STM (TChan)
 
 data Message
-  = Client ActionName Value
-  | Server ActionName Value
+  = Client AutomationName Value
+  | Server AutomationName Value
   deriving (Show)
 
-data Action monad = Action
-  { _name :: ActionName
+data Automation monad = Automation
+  { _name :: AutomationName
   , _devices :: [DeviceId]
   , _wantsFullControlOver :: [DeviceId]
   , _cleanup :: TChan Message -> monad ()
   , _run :: TChan Message -> monad ()
   }
 
-name :: Lens' (Action m) ActionName
+name :: Lens' (Automation m) AutomationName
 name = lens _name (\am newName -> am { _name = newName })
 
-devices :: Lens' (Action m) [DeviceId]
+devices :: Lens' (Automation m) [DeviceId]
 devices =
   lens _devices (\am newDevices -> am { _devices = newDevices })
 
-wantsFullControlOver :: Lens' (Action m) [DeviceId]
+wantsFullControlOver :: Lens' (Automation m) [DeviceId]
 wantsFullControlOver =
   lens _wantsFullControlOver $ \am newControlled ->
     am { _wantsFullControlOver = newControlled }
 
-nullAction :: (Applicative m) => Action m
-nullAction = Action Null [] [] noop noop
+nullAutomation :: (Applicative m) => Automation m
+nullAutomation = Automation Null [] [] noop noop
   where
     noop = const $ pure ()

@@ -1,4 +1,4 @@
-module Service.Messages.GledoptoGLC007P
+module Service.Messages.GledoptoController
   ( Color(..)
   , ColorXY(..)
   , Effect(..)

@@ -6,7 +6,7 @@ module Service.Env
   , Config(..)
   , LogLevel(..)
   , MQTTConfig(..)
-  , actionsServiceTopicFilter
+  , automationServiceTopicFilter
   , caCertPath
   , clientCertPath
   , clientKeyPath
@@ -26,35 +26,28 @@ module Service.Env
 where
 
 import Control.Lens (makeFieldsNoPrefix)
+import Data.Aeson (Value)
 import Data.Functor ((<&>))
 import Data.Maybe (fromMaybe)
 import qualified Data.String as S
-import Dhall (Decoder, Generic, FromDhall(..), auto, list, strictText, field, record, string)
+import Dhall (Decoder, Generic, FromDhall(..), auto, field, record, string)
 import Network.MQTT.Client (MQTTClient)
 import Network.MQTT.Topic (Filter)
 import Network.URI (URI, nullURI, parseURI)
-import Service.Device (Device(..), parseDeviceId)
-import qualified Service.Messages.Action as Messages
+import Service.Device (Device)
+import qualified Service.Messages.Daemon as Daemon
+import qualified Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTTDevice
 import System.Log.FastLogger (TimedFastLogger) 
-import UnliftIO.STM (TQueue)
+import UnliftIO.STM (TQueue, TVar)
 
 data LogLevel = Debug | Info | Warn | Error
   deriving (Generic, Show, Eq, Ord)
 
 instance FromDhall LogLevel
 
-deviceDecoder :: Decoder Device
-deviceDecoder =
-  record
-    ( Device
-        <$> field "id" (strictText <&> parseDeviceId)
-        <*> field "name" strictText
-        <*> field "topic" (string <&> S.fromString)
-    )
-
 data MQTTConfig = MQTTConfig
   { _uri :: URI
-  , _actionsServiceTopicFilter :: Filter
+  , _automationServiceTopicFilter :: Filter
   , _caCertPath :: Maybe FilePath
   , _clientCertPath :: Maybe FilePath
   , _clientKeyPath :: Maybe FilePath
@@ -68,7 +61,7 @@ mqttConfigDecoder =
   record
     ( MQTTConfig
         <$> field "uri" uriDecoder
-        <*> field "actionsServiceTopic" (string <&> S.fromString)
+        <*> field "automationServiceTopic" (string <&> S.fromString)
         <*> field "caCertPath" auto
         <*> field "clientCertPath" auto
         <*> field "clientKeyPath" auto
@@ -79,7 +72,6 @@ uriDecoder = string <&> fromMaybe nullURI . parseURI
 
 data Config = Config
   { _mqttConfig :: MQTTConfig
-  , _devices :: [Device]
   , _logFilePath :: FilePath
   , _logLevel :: LogLevel
   , _luaScriptPath :: FilePath
@@ -93,7 +85,6 @@ configDecoder =
   record
     ( Config
         <$> field "mqttBroker" mqttConfigDecoder
-        <*> field "devices" (list deviceDecoder)
         <*> field "logFilePath" string 
         <*> field "logLevel" auto
         <*> field "luaScriptPath" string
@@ -103,8 +94,10 @@ data Env' logger mqttClient = Env'
   { _config :: Config
   , _logger :: logger
   , _mqttClient :: mqttClient
-  , _messageQueue :: TQueue Messages.Action
+  , _messageQueue :: TQueue Daemon.Message
   , _appCleanup :: IO ()
+  , _devices :: TVar [Device]
+  , _deviceMessageQueue :: TQueue Zigbee2MQTTDevice.Message
   }
 
 makeFieldsNoPrefix ''Env'

@@ -8,10 +8,10 @@ import Control.Lens ((^?), _1)
 import Control.Monad (void)
 import qualified Data.Map.Strict as M
 import Service.App.DaemonState (DaemonState(_deviceMap, _threadMap))
-import Service.Action (name)
-import Service.ActionName (ActionName(..))
+import Service.Automation (name)
+import Service.AutomationName (AutomationName(..))
 import qualified Service.Device as Device
-import qualified Service.Messages.Action as Messages
+import qualified Service.Messages.Daemon as Daemon
 import Test.Hspec (Spec, around, it, shouldBe)
 import Test.Integration.Service.App.DaemonTestHelpers
   ( blockUntilNextEventLoop
@@ -36,35 +36,35 @@ spec = do
 threadMapSpecs :: Spec
 threadMapSpecs = do
   around initAndCleanup $ do
-    it "adds an entry to the ThreadMap List indexed by ActionName" $
+    it "adds an entry to the ThreadMap List indexed by AutomationName" $
       testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
-        atomically $ writeTQueue messageQueue' $ Messages.Start Gold
+        atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
         blockUntilNextEventLoop responseQueue
         threadMap' <- readTVarIO $ _threadMap daemonState
-        lookupOrFail "Should have an action at index ActionName `Gold`" Gold threadMap' $
-          \testActions -> testActions ^? _1 . name `shouldBe` Just Gold
+        lookupOrFail "Should have an action at index AutomationName `Gold`" Gold threadMap' $
+          \testAutomations -> testAutomations ^? _1 . name `shouldBe` Just Gold
 
   around initAndCleanup $ do
-    it "removes conflicting Action entries using 'owned' Devices from ThreadMap when starting" $
+    it "removes conflicting Automation entries using 'owned' Devices from ThreadMap when starting" $
       testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
-        atomically $ writeTQueue messageQueue' $ Messages.Start Gold
+        atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
         blockUntilNextEventLoop responseQueue
-        atomically $ writeTQueue messageQueue' $ Messages.Start Gold
+        atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
         blockUntilNextEventLoop responseQueue
         threadMap' <- readTVarIO $ _threadMap daemonState
-        lookupOrFail "Should have an action at index ActionName `Gold`" Gold threadMap' $
-          \testActions -> length testActions `shouldBe` 1
+        lookupOrFail "Should have an action at index AutomationName `Gold`" Gold threadMap' $
+          \testAutomations -> length testAutomations `shouldBe` 1
 
   around initAndCleanup $ do
     it "removes entries from ThreadMap when stopping" $
       testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
-        atomically $ writeTQueue messageQueue' $ Messages.Start Gold
+        atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
         blockUntilNextEventLoop responseQueue
-        atomically $ writeTQueue messageQueue' $ Messages.Stop Gold
+        atomically $ writeTQueue messageQueue' $ Daemon.Stop Gold
         blockUntilNextEventLoop responseQueue
         threadMap' <- readTVarIO $ _threadMap daemonState
         -- the void hack here is because there is no Show
-        -- instance for Just Action, but there is one for Just (), and
+        -- instance for Just Automation, but there is one for Just (), and
         -- all I care about with this test is the effect, not the
         -- value
         (void . M.lookup Gold) threadMap' `shouldBe` Nothing
@@ -74,31 +74,31 @@ deviceMapSpecs = do
   around initAndCleanup $ do
     it "adds an entry to the DeviceMap List indexed by DeviceId" $
       testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
-        atomically $ writeTQueue messageQueue' $ Messages.Start Gold
+        atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
         blockUntilNextEventLoop responseQueue
         deviceMap' <- readTVarIO $ _deviceMap daemonState
-        lookupOrFail "Should have an action at index ActionName `Gold`" Device.GledoptoGLC007P_1 deviceMap'
-          (\testActionNames -> length testActionNames `shouldBe` 1)
+        lookupOrFail "Should have an action at index AutomationName `Gold`" "Device" deviceMap'
+          (\testAutomationNames -> length testAutomationNames `shouldBe` 1)
 
-    it "removes ActionName from the DeviceMap entry when the Action using it is shut down" $
+    it "removes AutomationName from the DeviceMap entry when the Automation using it is shut down" $
       testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
-        atomically $ writeTQueue messageQueue' $ Messages.Start Gold
+        atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
         blockUntilNextEventLoop responseQueue
-        atomically $ writeTQueue messageQueue' $ Messages.Stop Gold
+        atomically $ writeTQueue messageQueue' $ Daemon.Stop Gold
         blockUntilNextEventLoop responseQueue
         deviceMap' <- readTVarIO $ _deviceMap daemonState
         -- see comments above about void hack
-        (void . M.lookup Device.GledoptoGLC007P_1) deviceMap' `shouldBe` Nothing
+        (void . M.lookup "Device") deviceMap' `shouldBe` Nothing
 
-    it "ensures proper bookkeeping for DeviceMap entries when an Action is shut down due to another Action starting" $
+    it "ensures proper bookkeeping for DeviceMap entries when an Automation is shut down due to another Automation starting" $
       testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
-        atomically $ writeTQueue messageQueue' $ Messages.Start Gold
+        atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
         blockUntilNextEventLoop responseQueue
-        atomically $ writeTQueue messageQueue' $ Messages.Start Gold
+        atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
         blockUntilNextEventLoop responseQueue
         deviceMap' <- readTVarIO $ _deviceMap daemonState
-        lookupOrFail "Should have an action at index ActionName `Gold`" Device.GledoptoGLC007P_1 deviceMap' $
-          \testActionNames -> length testActionNames `shouldBe` 1
+        lookupOrFail "Should have an action at index AutomationName `Gold`" "Device" deviceMap' $
+          \testAutomationNames -> length testAutomationNames `shouldBe` 1
 
 _schedulerSpecs :: Spec
 _schedulerSpecs = do
@@ -106,7 +106,7 @@ _schedulerSpecs = do
     it "schedules an action to be run at a later date" $
       testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
         atomically $
-          writeTQueue messageQueue' $ Messages.Schedule (Messages.Start Gold) "* * * * *"
+          writeTQueue messageQueue' $ Daemon.Schedule (Daemon.Start Gold) "* * * * *"
         -- we want to wait for two event loops--one for handling the
         -- Schedule message, and one for the Start message that will
         -- be sent later--so we call this twice:
@@ -114,5 +114,5 @@ _schedulerSpecs = do
         blockUntilNextEventLoop responseQueue
 
         threadMap' <- readTVarIO $ _threadMap daemonState
-        let goldActionEntry = M.lookup Gold threadMap'
-        (void $ goldActionEntry) `shouldBe` (Just ())
+        let goldAutomationEntry = M.lookup Gold threadMap'
+        (void $ goldAutomationEntry) `shouldBe` (Just ())

@@ -1,5 +1,5 @@
 cabal-version:      3.4
-name:               actions-service
+name:               automation-service
 
 -- The package version.
 -- See the Haskell package versioning policy (PVP) for standards
@@ -63,35 +63,37 @@ library
   import:           shared
   hs-source-dirs:   src
   exposed-modules:
-      Service.Action
-    , Service.ActionName
-    , Service.Actions
-    , Service.Actions.Chrizmaz
-    , Service.Actions.Gold
-    , Service.Actions.LuaScript
-    , Service.Actions.Trinity
+      Service.Automation
+    , Service.AutomationName
+    , Service.Automations
+    , Service.Automations.Chrizmaz
+    , Service.Automations.Gold
+    , Service.Automations.LuaScript
+    , Service.Automations.OnLow
+    , Service.Automations.Trinity
     , Service.App
     , Service.App.Daemon
     , Service.App.DaemonState
     , Service.App.Helpers
     , Service.Device
     , Service.Env
-    , Service.Messages.Action
-    , Service.Messages.GledoptoGLC007P
+    , Service.Messages.Daemon
+    , Service.Messages.GledoptoController
+    , Service.Messages.Zigbee2MQTTDevice
     , Service.MQTTClient
 
-executable actions-service
+executable automation-service
   import:           shared
   main-is:          Main.hs
   hs-source-dirs:   app
-  build-depends:    actions-service
+  build-depends:    automation-service
   ghc-options:
     -threaded
     -rtsopts
     "-with-rtsopts=-N -T"
     -Wall
 
-test-suite actions-service-tests
+test-suite automation-service-tests
   import:           shared
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
@@ -107,9 +109,10 @@ test-suite actions-service-tests
     , Test.Unit.Service.App.DaemonState
     , Test.Unit.Service.App.Helpers
     , Test.Unit.Service.Device
-    , Test.Unit.Service.Messages.Action
+    , Test.Unit.Service.Messages.Daemon
+    , Test.Unit.Service.Messages.Zigbee2MQTTDevice
   build-depends:
-      actions-service
+      automation-service
     , hspec ^>= 2.9.7
     , QuickCheck ^>= 2.14.2
     , tasty ^>= 1.4.2.3

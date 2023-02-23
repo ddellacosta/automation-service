@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -fno-warn-unused-binds -fno-warn-incomplete-uni-patterns #-}
-
 module Test.Integration.TestApp
   ( Env
   , TestActionsService
@@ -18,7 +16,7 @@ import Network.MQTT.Client (MessageCallback(SimpleCallback), MQTTConfig(_msgCB))
 import Network.URI (parseURI)
 import qualified Service.App as App
 import Service.Env (Config, Env'(Env'), configDecoder)
-import UnliftIO.STM (TVar, newTVarIO, newTQueueIO)
+import UnliftIO.STM (TVar, newTQueueIO, newTVarIO)
 
 type LogStore = TVar [Text]
 type MQTTMsgStore = TVar (M.Map Text [Text])
@@ -58,22 +56,7 @@ initEnv = do
   logger <- newTVarIO []
   mc <- newTVarIO M.empty
   messagesChan' <- newTQueueIO
-  pure $ Env' config' logger mc messagesChan' (pure ())
-
-testMosquitto :: IO ()
-testMosquitto = do
-  let (Just uri') = parseURI "mqtt://localhost"
-      subscriptions =
-        [ ("tmp/topic1", MQTT.subOptions)
-        , ("tmp/topic2", MQTT.subOptions)
-        ]
-
-  mc <- MQTT.connectURI MQTT.mqttConfig{_msgCB=SimpleCallback msgReceived} uri'
-
-  MQTT.publish mc "tmp/topic1" "hello!" False
-
-  print =<< MQTT.subscribe mc subscriptions []
-  MQTT.waitForClient mc   -- wait for the the client to disconnect
-
-  where
-    msgReceived _ t m p = print (t,m,p)
+  devices <- newTVarIO []
+  deviceMessagesChan <- newTQueueIO
+  pure $
+    Env' config' logger mc messagesChan' (pure ()) devices deviceMessagesChan

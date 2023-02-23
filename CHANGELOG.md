@@ -1,4 +1,4 @@
-# Revision history for actions-service
+# Revision history for automations-service
 
 ## 0.1.0.0 -- YYYY-mm-dd
 

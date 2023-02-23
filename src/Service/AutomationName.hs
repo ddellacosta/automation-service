@@ -1,7 +1,7 @@
-module Service.ActionName
-  ( ActionName(..)
-  , parseActionName
-  , serializeActionName
+module Service.AutomationName
+  ( AutomationName(..)
+  , parseAutomationName
+  , serializeAutomationName
   )
 where
 
@@ -10,26 +10,28 @@ import qualified Data.Text as T
 import Data.Text (Text)
 import GHC.Generics (Generic)
 
-data ActionName
+data AutomationName
   = Null
   | LuaScript
   | Gold
   | Chrizmaz
   | Trinity
+  | OnLow
   deriving (Generic, Show, Eq, Ord)
 
-instance ToJSON ActionName where
+instance ToJSON AutomationName where
     toEncoding = genericToEncoding defaultOptions
 
-instance FromJSON ActionName
+instance FromJSON AutomationName
 
-serializeActionName :: ActionName -> Text
-serializeActionName = T.pack . show 
+serializeAutomationName :: AutomationName -> Text
+serializeAutomationName = T.pack . show
 
-parseActionName :: String -> Maybe ActionName
-parseActionName = \case
+parseAutomationName :: String -> Maybe AutomationName
+parseAutomationName = \case
   "Gold" -> Just Gold
   "Chrizmaz" -> Just Chrizmaz
   "LuaScript" -> Just LuaScript
   "Trinity" -> Just Trinity
+  "OnLow" -> Just OnLow
   _ -> Nothing

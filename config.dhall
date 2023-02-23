@@ -18,15 +18,9 @@ in    { mqttBroker =
         , clientKeyPath = Some
             "/home/dd/code/home-assistant/mosquitto_config/client.key"
         }
-      , devices =
-        [ { id = "GledoptoGLC007P_1"
-          , name = "Gledopto GL-C-007P RGBW LED Controller Pro"
-          , topic = "zigbee2mqtt/Gledopto GL-C-007P RGBW LED Controller Pro/set"
-          }
-        ]
       , logFilePath = "logs/logfile"
       , logLevel = LogLevel.Debug
       , luaScriptPath =
-          "/home/dd/code/home-assistant/actions-service/lua-actions/"
+          "/home/dd/code/home-assistant/automation-service/lua-automations/"
       }
     : ./config/Config.dhall

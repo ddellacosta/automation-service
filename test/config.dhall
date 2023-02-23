@@ -9,16 +9,14 @@ let LogLevel = ../config/LogLevel.dhall
 
 in    { mqttBroker =
         { uri = "mqtt://localhost:1883"
-        , actionsServiceTopic = "actions-service/set"
+        , automationServiceTopic = "automation-service/set"
         , caCertPath = None Text
         , clientCertPath = None Text
         , clientKeyPath = None Text
         }
-      , devices =
-        [ { id = "TestDevice", name = "Test Device", topic = "test-device" } ]
       , logFilePath = "logs/testlogfile"
       , logLevel = LogLevel.Debug
       , luaScriptPath =
-          "/home/dd/code/home-assistant/actions-service/lua-actions/"
+          "/home/dd/code/home-assistant/automation-service/lua-actions/"
       }
     : ../config/Config.dhall

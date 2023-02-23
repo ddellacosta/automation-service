@@ -3,7 +3,7 @@
 #  https://magnus.therning.org/2022-03-13-simple-nix-flake-for-haskell-development.html
 #
 {
-  description = "actions-service";
+  description = "automation-service";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs";
@@ -18,7 +18,7 @@
         hl = haskell.lib;
         haskellPackages = haskell.packages.ghc925;
 
-        name = "actions-service";
+        name = "automation-service";
 
         project = devTools: # [1]
           let
@@ -41,7 +41,7 @@
         packages.pkg = project [];
 
         defaultPackage = pkgs.dockerTools.buildImage {
-          name = "actions-service";
+          name = "automation-service";
 
           extraCommands = ''
             mkdir ./app
@@ -56,7 +56,7 @@
 
           config = {
             WorkingDir = "/app";
-            Cmd = [ "/bin/actions-service" ];
+            Cmd = [ "/bin/automation-service" ];
             Volumes = {
               "/app" = {};
             };
@@ -71,6 +71,7 @@
           ghcid
           watchexec
           mosquitto
+          jq
         ]);
       });
 }

@@ -1,5 +1,5 @@
-module Service.Actions.Gold
-  ( goldAction
+module Service.Automations.Gold
+  ( goldAutomation
   ,
   )
 where
@@ -14,11 +14,11 @@ import qualified Data.Text as T
 import Network.MQTT.Client (Topic)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
-import Service.Action (Action(..), Message(..))
-import Service.ActionName (ActionName(..))
+import Service.Automation (Automation(..), Message(..))
+import Service.AutomationName (AutomationName(..))
 import qualified Service.Device as Device
 import Service.Env (Env')
-import Service.Messages.GledoptoGLC007P
+import Service.Messages.GledoptoController
   ( Effect(..)
   , effect'
   , hex'
@@ -29,41 +29,44 @@ import Service.Messages.GledoptoGLC007P
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan, atomically, tryReadTChan)
 
-goldAction
+goldAutomation
   :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
-  => Action m
-goldAction =
-  Action
+  => Automation m
+goldAutomation =
+  Automation
     { _name = Gold
-    , _devices = [Device.GledoptoGLC007P_1]
-    , _wantsFullControlOver = [Device.GledoptoGLC007P_1]
-    , _cleanup = cleanupAction
-    , _run = runAction
+    , _devices = []
+    , _wantsFullControlOver = []
+    , _cleanup = cleanupAutomation
+    , _run = runAutomation
     }
 
-cleanupAction
+ledTopic :: Topic
+ledTopic = "zigbee2mqtt/Gledopto GL-C-007P RGBW LED Controller Pro/set" 
+
+cleanupAutomation
   :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => TChan Message
   -> m ()
-cleanupAction _broadcastChan = do
+cleanupAutomation _broadcastChan = do
   info $ "Shutting down Gold"
 
   -- TODO FAIL APPROPRIATELY, LOG IT, AND STOP THREAD IF WE CAN'T LOAD THE DEVICE
   -- if gledoptoLedStrip = nullDevice then throwException and quit
-  (_gledoptoLedStrip, ledTopic) <- Helpers.findDeviceM Device.GledoptoGLC007P_1
+  --  (_gledoptoLedStrip, ledTopic) <- Helpers.findDeviceM Device.GledoptoGLC007P_1
 
   info "turning led strip off"
   publishMQTT ledTopic "{\"state\": \"OFF\"}"
 
-runAction
+runAutomation
   :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => TChan Message
   -> m ()
-runAction broadcastChan = do
+runAutomation broadcastChan = do
   info "Running Gold"
 
   -- TODO FAIL APPROPRIATELY, LOG IT, AND STOP THREAD IF WE CAN'T LOAD THE DEVICE
-  (_gledoptoLedStrip, ledTopic) <- Helpers.findDeviceM Device.GledoptoGLC007P_1
+  -- (_gledoptoLedStrip, ledTopic) <- Helpers.findDeviceM Device.GledoptoGLC007P_1
 
   debug "turning on"
   publishMQTT ledTopic "{\"state\": \"ON\"}"
@@ -91,7 +94,7 @@ runAction broadcastChan = do
       publishMQTT ledTopic $ effect' Breathe
       --
       -- For now, this and GoldMsg below are just here to remind me
-      -- how to create and use per-Action message types...actually,
+      -- how to create and use per-Automation message types...actually,
       -- testing it just now this doesn't seem to pick up messages
       -- anyways. TODO: fix
       --

@@ -12,7 +12,7 @@ import Control.Monad (void)
 import qualified Service.App.Daemon as Daemon
 import Service.App.DaemonState (DaemonState, ServerResponse, initDaemonState)
 import Service.Env (appCleanup, messageQueue)
-import qualified Service.Messages.Action as Messages
+import qualified Service.Messages.Daemon as Daemon
 import Test.Hspec (Expectation, expectationFailure)
 import Test.Integration.TestApp (Env, TestActionsService, initEnv, testActionsService)
 import UnliftIO.Async (withAsync)
@@ -71,7 +71,7 @@ lookupOrFail msg k m assertion =
 testWithAsyncDaemon
   ::
     (  DaemonState TestActionsService
-    -> TQueue Messages.Action
+    -> TQueue Daemon.Message
     -> TQueue ServerResponse
     -> Expectation
     )

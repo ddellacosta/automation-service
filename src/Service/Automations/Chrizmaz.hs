@@ -1,5 +1,5 @@
-module Service.Actions.Chrizmaz
-  ( chrizmazAction
+module Service.Automations.Chrizmaz
+  ( chrizmazAutomation
   ,
   )
   where
@@ -7,52 +7,56 @@ module Service.Actions.Chrizmaz
 import Control.Monad (forever)
 import Control.Monad.Reader (MonadReader)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
-import Service.ActionName (ActionName(..))
-import Service.Action (Action(..), Message)
+import Network.MQTT.Client (Topic)
+import Service.AutomationName (AutomationName(..))
+import Service.Automation (Automation(..), Message)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
-import Service.Messages.GledoptoGLC007P (Effect(..), effect', hex', seconds)
+import Service.Messages.GledoptoController (Effect(..), effect', hex', seconds)
 import qualified Service.Device as Device
 import Service.Env (Env')
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan)
 
-chrizmazAction
+chrizmazAutomation
   :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
-  => Action m
-chrizmazAction =
-  Action
+  => Automation m
+chrizmazAutomation =
+  Automation
     { _name = Chrizmaz
-    , _devices = [Device.GledoptoGLC007P_1]
-    , _wantsFullControlOver = [Device.GledoptoGLC007P_1]
-    , _cleanup = cleanupAction
-    , _run = runAction
+    , _devices = []
+    , _wantsFullControlOver = []
+    , _cleanup = cleanupAutomation
+    , _run = runAutomation
     }
 
-cleanupAction
+ledTopic :: Topic
+ledTopic = "zigbee2mqtt/Gledopto GL-C-007P RGBW LED Controller Pro/set" 
+
+cleanupAutomation
   :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => TChan Message
   -> m ()
-cleanupAction _broadcastChan = do
+cleanupAutomation _broadcastChan = do
   info "Shutting down Chrizmaz"
 
   -- TODO FAIL APPROPRIATELY, LOG IT, AND STOP THREAD IF WE CAN'T LOAD THE DEVICE
   -- if gledoptoLedStrip = nullDevice then throwException and quit
-  (_gledoptoLedStrip, ledTopic) <- Helpers.findDeviceM Device.GledoptoGLC007P_1
+  -- (_gledoptoLedStrip, ledTopic) <- Helpers.findDeviceM Device.GledoptoGLC007P_1
 
   info "turning led strip off"
   publishMQTT ledTopic "{\"state\": \"OFF\"}"
 
-runAction
+runAutomation
   :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => TChan Message
   -> m ()
-runAction _broadcastChan = do
+runAutomation _broadcastChan = do
   info "Urnning Chrizmaz arbhft, Jolly HO!"
 
   -- TODO FAIL APPROPRIATELY, LOG IT, AND STOP THREAD IF WE CAN'T LOAD THE DEVICE
   -- if gledoptoLedStrip = nullDevice then throwException and quit
-  (_gledoptoLedStrip, ledTopic) <- Helpers.findDeviceM Device.GledoptoGLC007P_1
+  -- (_gledoptoLedStrip, ledTopic) <- Helpers.findDeviceM Device.GledoptoGLC007P_1
 
   debug "turning on"
   publishMQTT ledTopic "{\"state\": \"ON\"}"

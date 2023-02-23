@@ -18,17 +18,17 @@ import Data.Foldable (for_, forM_)
 import Data.List.NonEmpty (NonEmpty((:|)), nonEmpty)
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
-import qualified Service.Action as Action
-import Service.Action
-  ( Action(_name)
+import qualified Service.Automation as Automation
+import Service.Automation
+  ( Automation(_name)
   , Message(..)
   , devices
   , name
   , wantsFullControlOver
   )
-import Service.ActionName (ActionName(LuaScript), serializeActionName)
-import Service.Actions (findAction)
-import Service.Actions.LuaScript (mkLuaAction)
+import Service.AutomationName (AutomationName(LuaScript), serializeAutomationName)
+import Service.Automations (findAutomation)
+import Service.Automations.LuaScript (mkLuaAutomation)
 import Service.App (Logger(..), MonadMQTT)
 import Service.App.DaemonState
   ( DaemonState(..)
@@ -38,14 +38,15 @@ import Service.App.DaemonState
   , deviceMap
   , findThreadsByDeviceId
   , initDaemonState
-  , insertAction
-  , insertDeviceAction
-  , removeActions
-  , removeDeviceActions
+  , insertAutomation
+  , insertDeviceAutomation
+  , removeAutomations
+  , removeDeviceAutomations
   , threadMap
   )
 import Service.Env (Env', config, appCleanup, messageQueue)
-import qualified Service.Messages.Action as Messages
+import qualified Service.Messages.Daemon as Daemon
+import Service.Messages.Daemon (AutomationSchedule)
 import System.Cron (addJob, execSchedule)
 import UnliftIO.Async (async, cancel)
 import UnliftIO.Exception (bracket, bracket_)
@@ -87,7 +88,7 @@ run' daemonState responseQueue = do
   config' <- view config
   appCleanup' <- view appCleanup
 
-  bracket_ (pure ()) (cleanupActions appCleanup' daemonState) $ do
+  bracket_ (pure ()) (cleanupAutomations appCleanup' daemonState) $ do
     debug . T.pack . show $ config'
     go
 
@@ -98,31 +99,30 @@ run' daemonState responseQueue = do
       debug $ "Received Message in main Daemon thread: " <> T.pack (show msg)
 
       case msg of
-        Messages.StopServer -> do
+        Daemon.StopServer -> do
           -- see note below about writing to responseQueue
           atomically $ writeTQueue responseQueue StoppingServer
           pure ()
 
-        Messages.StartLua filePath -> runServerStep $
-          initializeAndRunLuaScriptAction daemonState LuaScript filePath
+        Daemon.StartLua filePath -> runServerStep $
+          initializeAndRunLuaScriptAutomation daemonState LuaScript filePath
 
-        Messages.Start actionName -> runServerStep $
-          initializeAndRunAction daemonState actionName
+        Daemon.Start automationName -> runServerStep $
+          initializeAndRunAutomation daemonState automationName
 
-        Messages.Stop actionName -> runServerStep $
-          stopAction daemonState actionName
+        Daemon.Stop automationName -> runServerStep $
+          stopAutomation daemonState automationName
 
-        Messages.SendTo actionName msg' -> runServerStep $
-          sendClientMsg actionName (_serverChan daemonState) msg'
+        Daemon.SendTo automationName msg' -> runServerStep $
+          sendClientMsg automationName (_serverChan daemonState) msg'
 
-        Messages.Schedule actionMessage actionSchedule -> runServerStep $ do
-          addScheduleActionMessage
-            actionMessage actionSchedule messageQueue'
-
+        Daemon.Schedule automationMessage automationSchedule -> runServerStep $ do
+          addScheduleAutomationMessage
+            automationMessage automationSchedule messageQueue'
           pure ()
 
-        Messages.Null -> runServerStep $
-          debug "Null Action"
+        Daemon.Null -> runServerStep $
+          debug "Null Automation"
 
     runServerStep step = do
       step
@@ -137,93 +137,93 @@ run' daemonState responseQueue = do
       go
 
 sendClientMsg
-  :: (MonadUnliftIO m) => ActionName -> TChan Message -> Value -> m ()
-sendClientMsg actionName serverChan' =
-  atomically . writeTChan serverChan' . Client actionName
+  :: (MonadUnliftIO m) => AutomationName -> TChan Message -> Value -> m ()
+sendClientMsg automationName serverChan' =
+  atomically . writeTChan serverChan' . Client automationName
 
-addScheduleActionMessage
+addScheduleAutomationMessage
   :: (MonadIO m)
-  => Messages.Action
-  -> Messages.ActionSchedule
-  -> TQueue Messages.Action
+  => Daemon.Message
+  -> AutomationSchedule
+  -> TQueue Daemon.Message
   -> m ()
-addScheduleActionMessage actionMessage actionSchedule messageQueue' = do
-  void $ liftIO $ execSchedule $ flip addJob actionSchedule $ do
-    atomically $ writeTQueue messageQueue' actionMessage
+addScheduleAutomationMessage automationMessage automationSchedule messageQueue' = do
+  void $ liftIO $ execSchedule $ flip addJob automationSchedule $ do
+    atomically $ writeTQueue messageQueue' automationMessage
 
-initializeAndRunAction
+initializeAndRunAutomation
   :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => DaemonState m
-  -> ActionName
+  -> AutomationName
   -> m ()
-initializeAndRunAction daemonState actionName =
-  initializeAndRunAction' daemonState actionName Nothing
+initializeAndRunAutomation daemonState automationName =
+  initializeAndRunAutomation' daemonState automationName Nothing
 
-initializeAndRunLuaScriptAction
+initializeAndRunLuaScriptAutomation
   :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => DaemonState m
-  -> ActionName
+  -> AutomationName
   -> FilePath
   -> m ()
-initializeAndRunLuaScriptAction daemonState actionName =
-  initializeAndRunAction' daemonState actionName . Just
+initializeAndRunLuaScriptAutomation daemonState automationName =
+  initializeAndRunAutomation' daemonState automationName . Just
 
-initializeAndRunAction'
+initializeAndRunAutomation'
   :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => DaemonState m
-  -> ActionName
+  -> AutomationName
   -> Maybe FilePath
   -> m ()
-initializeAndRunAction'
-  (DaemonState threadMapTV deviceMapTV broadcastChan' _) actionName mFilePath = do
+initializeAndRunAutomation'
+  (DaemonState threadMapTV deviceMapTV broadcastChan' _) automationName mFilePath = do
     clientChan <- atomically $ dupTChan broadcastChan'
     threadMap' <- readTVarIO threadMapTV
     deviceMap' <- readTVarIO deviceMapTV
 
     let
-      action = maybe (findAction actionName) mkLuaAction mFilePath
-      actionsToStop =
-        findThreadsByDeviceId (action ^. wantsFullControlOver) threadMap' deviceMap'
+      automation = maybe (findAutomation automationName) mkLuaAutomation mFilePath
+      automationsToStop =
+        findThreadsByDeviceId (automation ^. wantsFullControlOver) threadMap' deviceMap'
 
-    mapM_ stopAction' actionsToStop
+    mapM_ stopAutomation' automationsToStop
     atomically $ do
-      let stopped = _name . fst <$> actionsToStop
-      removeActions threadMapTV stopped
+      let stopped = _name . fst <$> automationsToStop
+      removeAutomations threadMapTV stopped
       forM_ (nonEmpty stopped) $ \stopped' ->
-        removeDeviceActions deviceMapTV stopped'
+        removeDeviceAutomations deviceMapTV stopped'
 
     clientAsync <- async $
-      bracket (pure clientChan) (Action._cleanup action) (Action._run action)
+      bracket (pure clientChan) (Automation._cleanup automation) (Automation._run automation)
 
     atomically $ do
-      insertAction threadMapTV actionName (action, clientAsync)
-      insertDeviceAction deviceMapTV (action ^. devices) actionName
+      insertAutomation threadMapTV automationName (automation, clientAsync)
+      insertDeviceAutomation deviceMapTV (automation ^. devices) automationName
 
     where
-      stopAction' (act, asyn) = do
-        debug $ "Conflicting Device usage: Shutting down threads running action "
+      stopAutomation' (act, asyn) = do
+        debug $ "Conflicting Device usage: Shutting down threads running automation "
           <> (T.pack . show $ act ^. name)
         cancel asyn
 
-stopAction :: (MonadUnliftIO m) => DaemonState m -> ActionName -> m ()
-stopAction daemonState actionName = do
+stopAutomation :: (MonadUnliftIO m) => DaemonState m -> AutomationName -> m ()
+stopAutomation daemonState automationName = do
   let
     (threadMapTV, deviceMapTV) = daemonState ^. lensProduct threadMap deviceMap
   threadMap' <- readTVarIO threadMapTV
-  for_ (M.lookup actionName threadMap') $ \(_, async') -> cancel async'
+  for_ (M.lookup automationName threadMap') $ \(_, async') -> cancel async'
   atomically $ do
-    writeTVar threadMapTV $ M.delete actionName threadMap'
-    removeDeviceActions deviceMapTV (actionName :| [])
+    writeTVar threadMapTV $ M.delete automationName threadMap'
+    removeDeviceAutomations deviceMapTV (automationName :| [])
 
-cleanupActions
+cleanupAutomations
   :: (Logger m, MonadIO m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
   => IO ()
   -> DaemonState m
   -> m ()
-cleanupActions appCleanup' daemonState = do
+cleanupAutomations appCleanup' daemonState = do
   let threadMapTV = daemonState ^. threadMap
   threadMap' <- readTVarIO threadMapTV
-  for_ (M.assocs threadMap') $ \(actionName, (_, async')) -> do
-    info $ "Shutting down Action " <> serializeActionName actionName
+  for_ (M.assocs threadMap') $ \(automationName, (_, async')) -> do
+    info $ "Shutting down Automation " <> serializeAutomationName automationName
     cancel async'
   liftIO appCleanup'

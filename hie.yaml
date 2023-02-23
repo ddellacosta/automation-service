@@ -1,8 +1,8 @@
 cradle:
   cabal:
     - path: "./app/Main.hs"
-      component: "actions-service:exe:actions-service"
+      component: "automations-service:exe:automations-service"
     - path: "./src/"
-      component: "actions-service:lib:actions-service"
+      component: "automations-service:lib:automations-service"
     - path: "./test/"
-      component: "actions-service:test"
+      component: "automations-service:test"

@@ -1,10 +1,10 @@
 module Service.App
-  ( ActionsService
+  ( AutomationService
   , Logger(..)
   , MonadMQTT(..)
   , log
   , logDefault
-  , runActionsService
+  , runAutomationService
   , loggerConfig
   )
   where
@@ -41,7 +41,7 @@ import System.Log.FastLogger
   , simpleTimeFormat
   )
 
-newtype ActionsService a = ActionsService (ReaderT Env IO a)
+newtype AutomationService a = AutomationService (ReaderT Env IO a)
   deriving
     ( Functor
     , Applicative
@@ -51,8 +51,8 @@ newtype ActionsService a = ActionsService (ReaderT Env IO a)
     , MonadUnliftIO
     )
 
-runActionsService :: Env -> ActionsService a -> IO a
-runActionsService env (ActionsService x) = runReaderT x env
+runAutomationService :: Env -> AutomationService a -> IO a
+runAutomationService env (AutomationService x) = runReaderT x env
 
 
 -- Logger
@@ -63,7 +63,7 @@ class (Monad m) => Logger m where
   warn :: Text -> m ()
   error :: Text -> m ()
 
-instance Logger ActionsService where
+instance Logger AutomationService where
   debug = logDefault Debug
   info = logDefault Info
   warn = logDefault Warn
@@ -100,6 +100,6 @@ loggerConfig config' = do
 class (Monad m) => MonadMQTT m where
   publishMQTT :: Topic -> ByteString -> m ()
 
-instance MonadMQTT ActionsService where
+instance MonadMQTT AutomationService where
   publishMQTT topic msg =
     view mqttClient >>= \mc -> liftIO $ MQTT.publish mc topic msg False

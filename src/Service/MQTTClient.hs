@@ -27,7 +27,8 @@ import Network.TLS
 import Network.TLS.Extra.Cipher (ciphersuite_default)
 import qualified Service.App as App
 import Service.Env (MQTTConfig(..), LogLevel(..))
-import qualified Service.Messages.Action as Messages
+import qualified Service.Messages.Daemon as Daemon
+import qualified Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTTDevice
 import System.Log.FastLogger (TimedFastLogger)
 import UnliftIO.STM (TQueue, atomically, writeTQueue)
 
@@ -68,7 +69,7 @@ initMQTTClient msgCB (MQTTConfig {..}) = do
       }
 
     mkMQTTConfig clientParams = MQTT.mqttConfig
-      { MQTT._connID = "actions-service"
+      { MQTT._connID = "automation-service"
       , MQTT._tlsSettings = TLSSettings clientParams
       , MQTT._msgCB = msgCB
       }
@@ -81,14 +82,26 @@ initMQTTClient msgCB (MQTTConfig {..}) = do
       pure $ Just cred'
 
 
--- |
 -- | Returns a SimpleCallback which is an alias for type
--- | MQTTClient -> Topic -> ByteString -> [Property] -> IO ()
--- |
+-- MQTTClient -> Topic -> ByteString -> [Property] -> IO ()
+--
 mqttClientCallback
-  :: LogLevel -> TQueue Messages.Action -> TimedFastLogger -> MQTT.MessageCallback
-mqttClientCallback logLevelSet messagesQueue' logger' =
-  MQTT.SimpleCallback $ \_mc topic' msg _props -> do
+  :: LogLevel
+  -> TimedFastLogger
+  -> TQueue Daemon.Message
+  -> TQueue Zigbee2MQTTDevice.Message
+  -> MQTT.MessageCallback
+mqttClientCallback logLevelSet logger' messagesQueue deviceMessageQueue =
+  MQTT.SimpleCallback $ \_mc topic msg _props -> do
     when (Debug >= logLevelSet) $
-      App.log logger' Debug $ "Received message " <> show msg <> " to " <> show topic'
-    for_ (decode msg) $ atomically . writeTQueue messagesQueue'
+      App.log logger' Debug $ "Received message " <> show msg <> " to " <> show topic
+
+    let
+      write ::TQueue a -> (a -> IO ())
+      write tq = atomically . writeTQueue tq
+
+    if (topic /=  "zigbee2mqtt/bridge/devices")
+    then
+      for_ (decode msg) $ write messagesQueue
+    else
+      for_ (decode msg) $ write deviceMessageQueue
