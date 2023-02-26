@@ -12,10 +12,10 @@ import Service.Automations.Chrizmaz (chrizmazAutomation)
 import Service.Automations.Gold (goldAutomation)
 import Service.Automations.OnLow (onLowAutomation)
 import Service.Automations.Trinity (trinityAutomation)
-import Service.Env (Env')
+import Service.Env (Env)
 
 findAutomation
-  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
+  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
   => AutomationName
   -> Automation m
 findAutomation = \case

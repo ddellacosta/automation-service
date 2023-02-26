@@ -28,16 +28,19 @@ import Data.Text (Text)
 import Data.Maybe (fromMaybe)
 import GHC.Generics (Generic)
 import Service.AutomationName (AutomationName, parseAutomationName)
+import Service.Device (Device)
 
 type AutomationSchedule = Text
+type AutomationMessage = Value
 
 data Message where
   StopServer :: Message
   Start :: AutomationName -> Message
   StartLua :: FilePath -> Message
   Stop :: AutomationName -> Message
-  SendTo :: AutomationName -> Value -> Message
+  SendTo :: AutomationName -> AutomationMessage -> Message
   Schedule :: Message -> AutomationSchedule -> Message
+  DeviceUpdate :: [Device] -> Message
   Null :: Message
   deriving (Generic, Eq, Show)
 

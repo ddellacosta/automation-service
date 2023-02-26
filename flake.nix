@@ -72,6 +72,7 @@
           watchexec
           mosquitto
           jq
+          (lua5_4.withPackages(ps: with ps; [ cjson ]))
         ]);
       });
 }

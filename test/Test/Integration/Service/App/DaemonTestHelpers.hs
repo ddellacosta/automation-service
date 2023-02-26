@@ -9,12 +9,13 @@ module Test.Integration.Service.App.DaemonTestHelpers
 import Control.Lens ((^.), view)
 import qualified Data.Map.Strict as M
 import Control.Monad (void)
+import Service.App (AutomationService, runAutomationService)
 import qualified Service.App.Daemon as Daemon
 import Service.App.DaemonState (DaemonState, ServerResponse, initDaemonState)
-import Service.Env (appCleanup, messageQueue)
+import Service.Env (Env, appCleanup, messageQueue)
 import qualified Service.Messages.Daemon as Daemon
 import Test.Hspec (Expectation, expectationFailure)
-import Test.Integration.TestApp (Env, TestActionsService, initEnv, testActionsService)
+import Test.Integration.TestApp (initEnv)
 import UnliftIO.Async (withAsync)
 import UnliftIO.Exception (bracket)
 import UnliftIO.STM (TQueue, atomically, newTQueueIO, readTQueue)
@@ -70,7 +71,7 @@ lookupOrFail msg k m assertion =
 -- |
 testWithAsyncDaemon
   ::
-    (  DaemonState TestActionsService
+    (  DaemonState AutomationService
     -> TQueue Daemon.Message
     -> TQueue ServerResponse
     -> Expectation
@@ -81,5 +82,5 @@ testWithAsyncDaemon test env = do
   let messageQueue' = env ^. messageQueue
   responseQueue <- newTQueueIO
   daemonState <- initDaemonState
-  withAsync (testActionsService env $ Daemon.run' daemonState responseQueue) $
+  withAsync (runAutomationService env $ Daemon.run' daemonState responseQueue) $
     \_async -> test daemonState messageQueue' responseQueue

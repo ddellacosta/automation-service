@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Service.Device
@@ -5,6 +6,8 @@ module Service.Device
   , Device(..)
   , category
   , id
+  , manufacturer
+  , model
   , name
   )
 where
@@ -12,6 +15,7 @@ where
 import Prelude hiding (id)
 
 import Control.Lens ((^?), folded, filtered, makeFieldsNoPrefix)
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import GHC.Generics (Generic)
@@ -22,7 +26,9 @@ data Device = Device
   { _id :: DeviceId
   , _name :: Text
   , _category :: Text
+  , _manufacturer :: Maybe Text
+  , _model :: Maybe Text
   }
-  deriving (Generic, Show, Eq)
+  deriving (Generic, Show, Eq, ToJSON, FromJSON)
 
 makeFieldsNoPrefix ''Device

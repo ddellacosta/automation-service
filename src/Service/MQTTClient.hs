@@ -89,9 +89,8 @@ mqttClientCallback
   :: LogLevel
   -> TimedFastLogger
   -> TQueue Daemon.Message
-  -> TQueue Zigbee2MQTTDevice.Message
   -> MQTT.MessageCallback
-mqttClientCallback logLevelSet logger' messagesQueue deviceMessageQueue =
+mqttClientCallback logLevelSet logger' messagesQueue =
   MQTT.SimpleCallback $ \_mc topic msg _props -> do
     when (Debug >= logLevelSet) $
       App.log logger' Debug $ "Received message " <> show msg <> " to " <> show topic
@@ -100,8 +99,12 @@ mqttClientCallback logLevelSet logger' messagesQueue deviceMessageQueue =
       write ::TQueue a -> (a -> IO ())
       write tq = atomically . writeTQueue tq
 
-    if (topic /=  "zigbee2mqtt/bridge/devices")
+    if (topic /= Zigbee2MQTTDevice.topic)
     then
       for_ (decode msg) $ write messagesQueue
     else
-      for_ (decode msg) $ write deviceMessageQueue
+      case Zigbee2MQTTDevice.parseDevices msg of
+        Just [] -> pure ()
+        Nothing -> pure ()
+        Just dd -> do
+          write messagesQueue $ Daemon.DeviceUpdate dd

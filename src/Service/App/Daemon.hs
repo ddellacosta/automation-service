@@ -22,7 +22,6 @@ import qualified Service.Automation as Automation
 import Service.Automation
   ( Automation(_name)
   , Message(..)
-  , devices
   , name
   , wantsFullControlOver
   )
@@ -44,7 +43,7 @@ import Service.App.DaemonState
   , removeDeviceAutomations
   , threadMap
   )
-import Service.Env (Env', config, appCleanup, messageQueue)
+import Service.Env (Env, config, devices, appCleanup, messageQueue)
 import qualified Service.Messages.Daemon as Daemon
 import Service.Messages.Daemon (AutomationSchedule)
 import System.Cron (addJob, execSchedule)
@@ -65,12 +64,14 @@ import UnliftIO.STM
 
 
 run
-  :: (Logger m, MonadReader (Env' logger mqttClient) m, MonadMQTT m, MonadUnliftIO m)
+  :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m)
   => m ()
 run = do
   daemonState <- liftIO initDaemonState
   responseQueue <- newTQueueIO
   run' daemonState responseQueue
+  -- -- only once the Daemon is running do we want to trigger a call to zigbee2mqtt to load the devices:
+  -- publish Zigbee2MQTTDevice.topic 
 
 --
 -- Splitting this from `run` is a hack to allow me to test the main
@@ -80,7 +81,7 @@ run = do
 -- Env.
 --
 run'
-  :: (Logger m, MonadReader (Env' logger mqttClient) m, MonadMQTT m, MonadUnliftIO m)
+  :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m)
   => DaemonState m
   -> TQueue ServerResponse -- see note below about writing to responseQueue
   -> m ()
@@ -95,6 +96,7 @@ run' daemonState responseQueue = do
   where
     go = do
       messageQueue' <- view messageQueue
+      storedDevices <- view devices
       msg <- atomically $ readTQueue messageQueue'
       debug $ "Received Message in main Daemon thread: " <> T.pack (show msg)
 
@@ -102,30 +104,31 @@ run' daemonState responseQueue = do
         Daemon.StopServer -> do
           -- see note below about writing to responseQueue
           atomically $ writeTQueue responseQueue StoppingServer
-          pure ()
 
-        Daemon.StartLua filePath -> runServerStep $
+        Daemon.StartLua filePath -> runServerAction $
           initializeAndRunLuaScriptAutomation daemonState LuaScript filePath
 
-        Daemon.Start automationName -> runServerStep $
+        Daemon.Start automationName -> runServerAction $
           initializeAndRunAutomation daemonState automationName
 
-        Daemon.Stop automationName -> runServerStep $
+        Daemon.Stop automationName -> runServerAction $
           stopAutomation daemonState automationName
 
-        Daemon.SendTo automationName msg' -> runServerStep $
+        Daemon.SendTo automationName msg' -> runServerAction $
           sendClientMsg automationName (_serverChan daemonState) msg'
 
-        Daemon.Schedule automationMessage automationSchedule -> runServerStep $ do
+        Daemon.Schedule automationMessage automationSchedule -> runServerAction $ do
           addScheduleAutomationMessage
             automationMessage automationSchedule messageQueue'
-          pure ()
 
-        Daemon.Null -> runServerStep $
+        Daemon.DeviceUpdate devices' -> runServerAction $ do
+          atomically $ writeTVar storedDevices devices'
+
+        Daemon.Null -> runServerAction $
           debug "Null Automation"
 
-    runServerStep step = do
-      step
+    runServerAction action = do
+      action
       -- To be honest this is just here to allow me to write
       -- integration tests that exercise this entire daemon process
       -- while it's running in a separate thread. If there was another
@@ -152,7 +155,7 @@ addScheduleAutomationMessage automationMessage automationSchedule messageQueue' 
     atomically $ writeTQueue messageQueue' automationMessage
 
 initializeAndRunAutomation
-  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
+  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
   => DaemonState m
   -> AutomationName
   -> m ()
@@ -160,7 +163,7 @@ initializeAndRunAutomation daemonState automationName =
   initializeAndRunAutomation' daemonState automationName Nothing
 
 initializeAndRunLuaScriptAutomation
-  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
+  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
   => DaemonState m
   -> AutomationName
   -> FilePath
@@ -169,7 +172,7 @@ initializeAndRunLuaScriptAutomation daemonState automationName =
   initializeAndRunAutomation' daemonState automationName . Just
 
 initializeAndRunAutomation'
-  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
+  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
   => DaemonState m
   -> AutomationName
   -> Maybe FilePath
@@ -197,7 +200,7 @@ initializeAndRunAutomation'
 
     atomically $ do
       insertAutomation threadMapTV automationName (automation, clientAsync)
-      insertDeviceAutomation deviceMapTV (automation ^. devices) automationName
+      insertDeviceAutomation deviceMapTV (automation ^. Automation.devices) automationName
 
     where
       stopAutomation' (act, asyn) = do
@@ -216,7 +219,7 @@ stopAutomation daemonState automationName = do
     removeDeviceAutomations deviceMapTV (automationName :| [])
 
 cleanupAutomations
-  :: (Logger m, MonadIO m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
+  :: (Logger m, MonadIO m, MonadReader Env m, MonadUnliftIO m)
   => IO ()
   -> DaemonState m
   -> m ()

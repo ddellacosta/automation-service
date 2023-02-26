@@ -22,7 +22,9 @@ import Network.MQTT.Client (Topic)
 import Service.Env
   ( Config
   , Env
+  , LoggerVariant(..)
   , LogLevel(..)
+  , MQTTClientVariant(..)
   , config
   , logFilePath
   , logger
@@ -72,8 +74,11 @@ instance Logger AutomationService where
 logDefault :: (MonadIO m, MonadReader Env m) => LogLevel -> Text -> m ()
 logDefault level logStr = do
   setLevel <- view (config . logLevel)
-  when (level >= setLevel) $
-    view logger >>= \logger' -> liftIO $ log logger' level logStr
+  when (level >= setLevel) $ do
+    logger' <- view logger
+    case logger' of
+      TFLogger tfLogger -> liftIO $ log tfLogger level logStr
+      TQLogger _textTQ -> pure ()
 
 log :: (ToLogStr s) => TimedFastLogger -> LogLevel -> s -> IO ()
 log logger' level logStr = logger' $ \time ->
@@ -101,5 +106,8 @@ class (Monad m) => MonadMQTT m where
   publishMQTT :: Topic -> ByteString -> m ()
 
 instance MonadMQTT AutomationService where
-  publishMQTT topic msg =
-    view mqttClient >>= \mc -> liftIO $ MQTT.publish mc topic msg False
+  publishMQTT topic msg = do
+    mqttClient' <- view mqttClient
+    case mqttClient' of
+      MCClient mc -> liftIO $ MQTT.publish mc topic msg False
+      TQClient _textTQ -> pure ()

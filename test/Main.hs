@@ -10,7 +10,6 @@ import Test.Tasty.Hspec (testSpec)
 import qualified Test.Integration.Service.App.Daemon as Daemon
 import qualified Test.Unit.Service.App.Helpers as App.Helpers
 import qualified Test.Unit.Service.App.DaemonState as App.DaemonState
-import qualified Test.Unit.Service.Device as Device
 import qualified Test.Unit.Service.Messages.Daemon as Daemon.Messages
 import qualified Test.Unit.Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTTDevice.Messages
 
@@ -29,13 +28,11 @@ unit = do
   automationMessagesSpec <- testSpec "Daemon.Messages Spec" Daemon.Messages.spec
   appDaemonStateSpec <- testSpec "App.DaemonState Spec" App.DaemonState.spec
   appHelpersSpec <- testSpec "App.Helpers Spec" App.Helpers.spec
-  deviceSpec <- testSpec "Device Spec" Device.spec
   zigbee2mqttMessagesSpec <- testSpec "Zigbee2MQTTDevice.Messages Spec" Zigbee2MQTTDevice.Messages.spec
   pure $ testGroup "Unit Tests"
     [ automationMessagesSpec
     , appDaemonStateSpec
     , appHelpersSpec
-    , deviceSpec
     , zigbee2mqttMessagesSpec
     ]
 

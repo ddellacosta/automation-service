@@ -1,11 +1,12 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Service.Env
-  ( Env
-  , Env'(..)
+  ( Env(..)
   , Config(..)
+  , LoggerVariant(..)
   , LogLevel(..)
   , MQTTConfig(..)
+  , MQTTClientVariant(..)
   , automationServiceTopicFilter
   , caCertPath
   , clientCertPath
@@ -28,8 +29,10 @@ where
 import Control.Lens (makeFieldsNoPrefix)
 import Data.Aeson (Value)
 import Data.Functor ((<&>))
+import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
 import qualified Data.String as S
+import Data.Text (Text)
 import Dhall (Decoder, Generic, FromDhall(..), auto, field, record, string)
 import Network.MQTT.Client (MQTTClient)
 import Network.MQTT.Topic (Filter)
@@ -90,16 +93,22 @@ configDecoder =
         <*> field "luaScriptPath" string
     )
 
-data Env' logger mqttClient = Env'
+
+data LoggerVariant
+  = TFLogger TimedFastLogger
+  | TQLogger (TVar [Text])
+
+data MQTTClientVariant
+  = MCClient MQTTClient
+  | TQClient (TVar (Map Text [Text]))
+
+data Env = Env
   { _config :: Config
-  , _logger :: logger
-  , _mqttClient :: mqttClient
+  , _logger :: LoggerVariant
+  , _mqttClient :: MQTTClientVariant
   , _messageQueue :: TQueue Daemon.Message
   , _appCleanup :: IO ()
   , _devices :: TVar [Device]
-  , _deviceMessageQueue :: TQueue Zigbee2MQTTDevice.Message
   }
 
-makeFieldsNoPrefix ''Env'
-
-type Env = Env' TimedFastLogger MQTTClient
+makeFieldsNoPrefix ''Env

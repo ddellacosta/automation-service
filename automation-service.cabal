@@ -34,12 +34,16 @@ common shared
     , dhall ^>= 1.41.1
     , fast-logger ^>= 3.1.1
     , hslua ^>= 2.2.1
+    , hslua-marshalling ^>= 2.2.1
+    , hslua-packaging ^>= 2.2.1
     , lens ^>= 5.1.1
     , lens-aeson ^>= 1.2.2
     , mtl ^>= 2.2.2
     , net-mqtt ^>= 0.8.2.1
     , network-uri ^>= 2.6.4.1
+    , pretty-simple
     , random ^>= 1.2.1.1
+    , safe ^>= 0.3.19
     , scotty ^>= 0.12
     , text ^>= 1.2.5.0
     , tls ^>= 1.5.8
@@ -103,12 +107,12 @@ test-suite automation-service-tests
   -- from running successfully otherwise. Is other-modules really
   -- necessary?
   other-modules:
-      Test.Integration.TestApp
+      Test.Helpers
+    , Test.Integration.TestApp
     , Test.Integration.Service.App.Daemon
     , Test.Integration.Service.App.DaemonTestHelpers
     , Test.Unit.Service.App.DaemonState
     , Test.Unit.Service.App.Helpers
-    , Test.Unit.Service.Device
     , Test.Unit.Service.Messages.Daemon
     , Test.Unit.Service.Messages.Zigbee2MQTTDevice
   build-depends:

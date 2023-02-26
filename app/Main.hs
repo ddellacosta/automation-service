@@ -6,16 +6,19 @@ import Control.Lens ((^.))
 import Control.Lens.Unsound (lensProduct)
 import Dhall (inputFile)
 import qualified Network.MQTT.Client as MQTT
+import Network.MQTT.Topic (toFilter)
 import qualified Service.App.Daemon as Daemon
 import Service.App (loggerConfig, runAutomationService)
 import Service.Env
-  ( Env
-  , Env'(..)
+  ( Env(..)
+  , LoggerVariant(..)
+  , MQTTClientVariant(..)
   , automationServiceTopicFilter
   , configDecoder
   , logLevel
   , mqttConfig
   )
+import Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTTDevice
 import Service.MQTTClient (mqttClientCallback, initMQTTClient)
 import System.Log.FastLogger (newTimedFastLogger)
 import UnliftIO.STM (newTQueueIO, newTVarIO)
@@ -44,26 +47,23 @@ initialize = do
     (mqttConfig', logLevelSet) = config ^. lensProduct mqttConfig logLevel
     mqttSubs =
       [ (mqttConfig' ^. automationServiceTopicFilter, MQTT.subOptions)
-      , ("zigbee2mqtt/bridge/devices", MQTT.subOptions)
+      , (toFilter Zigbee2MQTTDevice.topic, MQTT.subOptions)
       ]
 
   -- handle failure to open/write to file, anything else?
   (logger, loggerCleanup) <- newTimedFastLogger fmtTime logType
   messageQueue <- newTQueueIO
-
   devices <- newTVarIO []
-  deviceMessageQueue <- newTQueueIO
 
   -- handle errors from not being able to connect, etc.?
-  mc <- initMQTTClient (mqttClientCallback logLevelSet logger messageQueue deviceMessageQueue) mqttConfig'
+  mc <- initMQTTClient (mqttClientCallback logLevelSet logger messageQueue) mqttConfig'
   (_eithers, _props) <- MQTT.subscribe mc mqttSubs []
 
   pure $
-    Env'
+    Env
       config
-      logger
-      mc
+      (TFLogger logger)
+      (MCClient mc)
       messageQueue
       (loggerCleanup >> MQTT.normalDisconnect mc)
       devices
-      deviceMessageQueue

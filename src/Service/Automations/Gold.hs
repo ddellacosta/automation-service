@@ -1,5 +1,6 @@
 module Service.Automations.Gold
   ( goldAutomation
+  , gledoptoLightStrip
   ,
   )
 where
@@ -14,10 +15,10 @@ import qualified Data.Text as T
 import Network.MQTT.Client (Topic)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
-import Service.Automation (Automation(..), Message(..))
+import Service.Automation as Automation
 import Service.AutomationName (AutomationName(..))
-import qualified Service.Device as Device
-import Service.Env (Env')
+import Service.Device (DeviceId)
+import Service.Env (Env)
 import Service.Messages.GledoptoController
   ( Effect(..)
   , effect'
@@ -29,69 +30,68 @@ import Service.Messages.GledoptoController
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan, atomically, tryReadTChan)
 
+gledoptoLightStrip :: DeviceId
+gledoptoLightStrip = "0xb4e3f9fffe14c707"
+
 goldAutomation
-  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
+  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
   => Automation m
 goldAutomation =
   Automation
     { _name = Gold
-    , _devices = []
-    , _wantsFullControlOver = []
+    , _devices = [gledoptoLightStrip]
+    , _wantsFullControlOver = [gledoptoLightStrip]
     , _cleanup = cleanupAutomation
     , _run = runAutomation
     }
 
-ledTopic :: Topic
-ledTopic = "zigbee2mqtt/Gledopto GL-C-007P RGBW LED Controller Pro/set" 
-
 cleanupAutomation
-  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
-  => TChan Message
+  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  => TChan Automation.Message
   -> m ()
 cleanupAutomation _broadcastChan = do
   info $ "Shutting down Gold"
 
-  -- TODO FAIL APPROPRIATELY, LOG IT, AND STOP THREAD IF WE CAN'T LOAD THE DEVICE
-  -- if gledoptoLedStrip = nullDevice then throwException and quit
-  --  (_gledoptoLedStrip, ledTopic) <- Helpers.findDeviceM Device.GledoptoGLC007P_1
+  lightStripTopic <- Helpers.findDeviceTopicM gledoptoLightStrip
 
   info "turning led strip off"
-  publishMQTT ledTopic "{\"state\": \"OFF\"}"
+  publishMQTT lightStripTopic "{\"state\": \"OFF\"}"
 
 runAutomation
-  :: (Logger m, MonadMQTT m, MonadReader (Env' logger mqttClient) m, MonadUnliftIO m)
-  => TChan Message
+  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  => TChan Automation.Message
   -> m ()
 runAutomation broadcastChan = do
   info "Running Gold"
 
-  -- TODO FAIL APPROPRIATELY, LOG IT, AND STOP THREAD IF WE CAN'T LOAD THE DEVICE
-  -- (_gledoptoLedStrip, ledTopic) <- Helpers.findDeviceM Device.GledoptoGLC007P_1
+  lightStripTopic <- Helpers.findDeviceTopicM gledoptoLightStrip
+
+  debug $ "topic? " <> (T.pack $ show lightStripTopic)
 
   debug "turning on"
-  publishMQTT ledTopic "{\"state\": \"ON\"}"
+  publishMQTT lightStripTopic "{\"state\": \"ON\"}"
 
   debug "setting color to orange"
-  publishMQTT ledTopic (hex' "be9fc1")
+  publishMQTT lightStripTopic (hex' "be9fc1")
 
   liftIO $ threadDelay (seconds 2)
 
   debug "setting color to pink with 3 second transition"
-  publishMQTT ledTopic (withTransition' 3 $ mkHex "F97C00")
+  publishMQTT lightStripTopic (withTransition' 3 $ mkHex "F97C00")
 
   debug "starting breathe loop"
-  go ledTopic broadcastChan
+  go lightStripTopic broadcastChan
 
   where
     go
-      :: (Logger m, MonadReader (Env' logger mqttClient) m, MonadMQTT m, MonadUnliftIO m)
+      :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m)
       => Topic
-      -> TChan Message
+      -> TChan Automation.Message
       -> m ()
-    go ledTopic broadcastChan' = do
+    go lightStripTopic broadcastChan' = do
       liftIO $ threadDelay $ seconds 60
       debug "Gold: breathe"
-      publishMQTT ledTopic $ effect' Breathe
+      publishMQTT lightStripTopic $ effect' Breathe
       --
       -- For now, this and GoldMsg below are just here to remind me
       -- how to create and use per-Automation message types...actually,
@@ -109,5 +109,5 @@ runAutomation broadcastChan = do
                 ", Fancy = " <>
                 show (msg' ^? key "fancy")
             )
-            >> go ledTopic broadcastChan'
-        _ -> go ledTopic broadcastChan'
+            >> go lightStripTopic broadcastChan'
+        _ -> go lightStripTopic broadcastChan'

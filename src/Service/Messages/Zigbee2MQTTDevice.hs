@@ -5,14 +5,16 @@ module Service.Messages.Zigbee2MQTTDevice
   , deviceGetterTopic
   , deviceSetterTopic
   , parseDevices
+  , topic
   )
   where
 
-import Control.Lens ((^..), folded, folding, toListOf)
+import Control.Lens ((^..), (^?), folded, folding, toListOf)
 import qualified Data.Aeson as Aeson
 import Data.Aeson (FromJSON, ToJSON, Value, decode)
 import Data.Aeson.Lens (key)
 import Data.ByteString.Lazy (ByteString)
+import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import GHC.Generics (Generic)
 import Service.Device (Device(..))
@@ -24,19 +26,38 @@ data Message where
 
 --
 -- TODO this should return something better than Maybe to let us know
--- what happened when this fails
+-- what happened when this fails, if possible
 --
 parseDevices :: ByteString -> Maybe [Device]
-parseDevices devicesRawJSON = parseDevices' <$> (decode devicesRawJSON :: Maybe [Value])
+parseDevices devicesRawJSON =
+  catMaybes <$> (fmap parseDevice) <$> (decode devicesRawJSON :: Maybe [Value])
+
   where
-    parseDevices' = toListOf $
-        folded
-      . folding
-        (\d ->
-           [d ^.. (key "type" <> key "friendly_name" <> key "ieee_address")])
-      . folding
-        (\[Aeson.String category, Aeson.String name, Aeson.String id] ->
-            [Device id name category])
+    parseDevice d = case (deviceFields d) of
+      -- I don't know what's up with this formatting either, but it
+      -- won't parse without it unless it's all on one line, and I'd
+      -- rather have this
+      [   Just (Aeson.String id)
+        , Just (Aeson.String name)
+        , Just (Aeson.String category)
+        , mManufacturer
+        , mModel
+        ] ->
+        Just $
+          Device id name category (toText <$> mManufacturer) (toText <$> mModel)
+
+      _ -> Nothing
+
+    deviceFields d =
+      [ d ^? key "ieee_address"
+      , d ^? key "friendly_name"
+      , d ^? key "type"
+      , d ^? key "manufacturer"
+      , d ^? key "model_id"
+      ]
+
+    toText (Aeson.String s) = s
+    toText _ = ""
 
 deviceTopicText :: Device -> Text
 deviceTopicText device = "zigbee2mqtt/" <> (_name device)
@@ -48,3 +69,6 @@ deviceSetterTopic device =
 deviceGetterTopic :: Device -> Maybe Topic
 deviceGetterTopic device =
   mkTopic $ deviceTopicText device <> "/get"
+
+topic :: Topic
+topic = "zigbee2mqtt/bridge/devices"

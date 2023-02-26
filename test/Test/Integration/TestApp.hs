@@ -1,8 +1,5 @@
 module Test.Integration.TestApp
-  ( Env
-  , TestActionsService
-  , testActionsService
-  , initEnv
+  ( initEnv
   )
 where
 
@@ -15,37 +12,9 @@ import qualified Network.MQTT.Client as MQTT
 import Network.MQTT.Client (MessageCallback(SimpleCallback), MQTTConfig(_msgCB))
 import Network.URI (parseURI)
 import qualified Service.App as App
-import Service.Env (Config, Env'(Env'), configDecoder)
+import Service.Env (Config, Env(Env), LoggerVariant(..), MQTTClientVariant(..), configDecoder)
+import Test.Helpers (loadTestDevices)
 import UnliftIO.STM (TVar, newTQueueIO, newTVarIO)
-
-type LogStore = TVar [Text]
-type MQTTMsgStore = TVar (M.Map Text [Text])
-
-type Env = Env' LogStore MQTTMsgStore
-
-newtype TestActionsService a = TestActionsService (ReaderT Env IO a)
-  deriving
-    ( Functor
-    , Applicative
-    , Monad
-    , MonadIO
-    , MonadReader Env
-    , MonadUnliftIO
-    )
-
--- TODO store values in LogStore for checking test results
-instance App.Logger TestActionsService where
-  debug = const $ pure ()
-  info = const $ pure ()
-  warn =  const $ pure ()
-  error = const $ pure ()
-
--- TODO store values in MQTTMsgStore for checking test results
-instance App.MonadMQTT TestActionsService where
-  publishMQTT _topic _msg = undefined
-
-testActionsService :: Env -> TestActionsService a -> IO a
-testActionsService env (TestActionsService x) = runReaderT x env
 
 testConfigFilePath :: FilePath
 testConfigFilePath = "./test/config.dhall"
@@ -56,7 +25,7 @@ initEnv = do
   logger <- newTVarIO []
   mc <- newTVarIO M.empty
   messagesChan' <- newTQueueIO
-  devices <- newTVarIO []
-  deviceMessagesChan <- newTQueueIO
+  testDevices <- loadTestDevices
+  devices <- newTVarIO testDevices
   pure $
-    Env' config' logger mc messagesChan' (pure ()) devices deviceMessagesChan
+    Env config' (TQLogger logger) (TQClient mc) messagesChan' (pure ()) devices

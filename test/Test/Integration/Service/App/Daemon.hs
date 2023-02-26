@@ -9,8 +9,8 @@ import Control.Monad (void)
 import qualified Data.Map.Strict as M
 import Service.App.DaemonState (DaemonState(_deviceMap, _threadMap))
 import Service.Automation (name)
+import qualified Service.Automations.Gold as Gold
 import Service.AutomationName (AutomationName(..))
-import qualified Service.Device as Device
 import qualified Service.Messages.Daemon as Daemon
 import Test.Hspec (Spec, around, it, shouldBe)
 import Test.Integration.Service.App.DaemonTestHelpers
@@ -77,8 +77,9 @@ deviceMapSpecs = do
         atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
         blockUntilNextEventLoop responseQueue
         deviceMap' <- readTVarIO $ _deviceMap daemonState
-        lookupOrFail "Should have an action at index AutomationName `Gold`" "Device" deviceMap'
-          (\testAutomationNames -> length testAutomationNames `shouldBe` 1)
+        lookupOrFail
+          "Should have an action at index AutomationName `Gold`" Gold.gledoptoLightStrip deviceMap'
+            (\testAutomationNames -> length testAutomationNames `shouldBe` 1)
 
     it "removes AutomationName from the DeviceMap entry when the Automation using it is shut down" $
       testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
@@ -88,7 +89,7 @@ deviceMapSpecs = do
         blockUntilNextEventLoop responseQueue
         deviceMap' <- readTVarIO $ _deviceMap daemonState
         -- see comments above about void hack
-        (void . M.lookup "Device") deviceMap' `shouldBe` Nothing
+        (void . M.lookup Gold.gledoptoLightStrip) deviceMap' `shouldBe` Nothing
 
     it "ensures proper bookkeeping for DeviceMap entries when an Automation is shut down due to another Automation starting" $
       testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
@@ -97,8 +98,9 @@ deviceMapSpecs = do
         atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
         blockUntilNextEventLoop responseQueue
         deviceMap' <- readTVarIO $ _deviceMap daemonState
-        lookupOrFail "Should have an action at index AutomationName `Gold`" "Device" deviceMap' $
-          \testAutomationNames -> length testAutomationNames `shouldBe` 1
+        lookupOrFail
+          "Should have an action at index AutomationName `Gold`" Gold.gledoptoLightStrip deviceMap' $
+            \testAutomationNames -> length testAutomationNames `shouldBe` 1
 
 _schedulerSpecs :: Spec
 _schedulerSpecs = do

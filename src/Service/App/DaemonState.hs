@@ -24,7 +24,8 @@ import Data.Foldable (for_)
 import Data.List.NonEmpty (NonEmpty(..), nonEmpty, toList)
 import qualified Data.Map.Strict as M
 import Data.Maybe (mapMaybe)
-import Service.Automation (Automation, Message)
+import Service.Automation as Automation
+import Service.Automation (Automation)
 import Service.AutomationName (AutomationName)
 import Service.Device (DeviceId)
 import UnliftIO.Async (Async)
@@ -54,8 +55,8 @@ type DeviceMap = M.Map DeviceId (NonEmpty AutomationName)
 data DaemonState m = DaemonState
   { _threadMap :: TVar (ThreadMap m)
   , _deviceMap :: TVar DeviceMap
-  , _broadcastChan :: TChan Message
-  , _serverChan :: TChan Message
+  , _broadcastChan :: TChan Automation.Message
+  , _serverChan :: TChan Automation.Message
   }
 
 makeFieldsNoPrefix ''DaemonState

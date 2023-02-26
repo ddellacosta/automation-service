@@ -218,7 +218,7 @@
         "scenes": []
       }
     },
-    "friendly_name": "frient temperature and humidity sensor - grow room",
+    "friendly_name": "frient temperature and humidity sensor",
     "ieee_address": "0x0015bc0035001e14",
     "interview_completed": true,
     "interviewing": false,
@@ -473,8 +473,8 @@
         "scenes": []
       }
     },
-    "friendly_name": "Gledopto GL-C-007P RGBW LED Controller Pro",
-    "ieee_address": "0x680ae2fffe4574e2",
+    "friendly_name": "Mirror Light Strip",
+    "ieee_address": "0xb4e3f9fffe14c707",
     "interview_completed": true,
     "interviewing": false,
     "manufacturer": "GLEDOPTO",
