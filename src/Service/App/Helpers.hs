@@ -4,14 +4,14 @@ module Service.App.Helpers
   )
   where
 
-import Control.Lens ((^.), view)
+import Control.Lens (view)
 import Control.Monad.Reader (MonadReader)
 import Control.Monad.IO.Unlift (MonadIO)
 import Data.Maybe (fromMaybe)
 import qualified Network.MQTT.Client as MQTT
 import Safe (headMay)
 import Service.Device (Device(_id), DeviceId)
-import Service.Env (Env, config, devices)
+import Service.Env (Env, devices)
 import Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTT
 import UnliftIO.STM (atomically, readTVar)
 

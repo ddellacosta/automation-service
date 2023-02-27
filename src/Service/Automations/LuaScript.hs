@@ -8,37 +8,34 @@ where
 
 import Prelude hiding (id, init)
 
--- import GHC.Exception (SomeException)
-
-import Control.Lens (makeFieldsNoPrefix, view)
+import Control.Lens (view)
 import Control.Lens.Unsound (lensProduct)
-import Control.Monad.Reader (MonadReader, ReaderT)
-import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO(..), liftIO)
+import Control.Monad.IO.Unlift (MonadUnliftIO(..), liftIO)
+import Control.Monad.Reader (MonadReader)
+import Data.Aeson (decode, encode)
+import Data.ByteString.Lazy (ByteString)
+import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Data.Text (Text)
+import qualified HsLua.Aeson as LA
 import qualified HsLua.Core as Lua
-import HsLua.Core
-  ( Lua
-  , LuaE
-  , NumResults(NumResults)
-  , dofile
-  , dostring
-  , openlibs
-  , pushHaskellFunction
-  , setglobal
-  )
-import HsLua.Marshalling
+import HsLua.Core (dofileTrace, openlibs, setglobal)
+import qualified HsLua.Marshalling as LM
 import HsLua.Packaging.Function
-import HsLua.Packaging.Convenience
+  ( DocumentedFunction
+  , (<#>), (###), (=#>)
+  , defun
+  , parameter
+  , pushDocumentedFunction
+  )
+import qualified Network.MQTT.Client as MQTT
+import Network.MQTT.Topic (mkTopic)
 import qualified Service.App as App
 import Service.App (Logger(..), MonadMQTT(..))
-import Service.App.DaemonState ()
 import Service.Automation (Automation(..), Message(..))
 import qualified Service.AutomationName as AutomationName
-import qualified Service.Device as Device
 import Service.Env
   ( Env
-  , LoggerVariant(..)
   , LogLevel(Debug)
   , MQTTClientVariant(..)
   , config
@@ -84,28 +81,60 @@ mkRunAutomation filePath = \_broadcastChan -> do
   messageQueue' <- view messageQueue
   luaScriptPath' <- view $ config . luaScriptPath
 
-  luaStatus <- liftIO $ Lua.run $ do
+  luaStatusString <- liftIO $ Lua.run $ do
     openlibs -- load the default Lua packages
-    pushDocumentedFunction (publish messageQueue')
-    setglobal "publish"
-    pushDocumentedFunction (logDebugMsg logger')
-    setglobal "logDebugMsg"
-    dofile $ luaScriptPath' <> filePath
-  debug $ "Lua finished with status '" <> T.pack (show luaStatus) <> "'."
+    pushDocumentedFunction (publish mqttClient') *> setglobal "publish"
+    pushDocumentedFunction (publishJSON mqttClient') *> setglobal "publishJSON"
+    pushDocumentedFunction (sendMessage messageQueue') *> setglobal "sendMessage"
+    pushDocumentedFunction (logDebugMsg logger') *> setglobal "logDebugMsg"
+    status <- dofileTrace $ luaScriptPath' <> filePath
+    if (status /= Lua.OK) then
+      show <$> Lua.popException
+    else
+      pure . show $ status
+
+  debug $ "Lua finished with status '" <> T.pack luaStatusString <> "'."
 
   where
-    logDebugMsg :: LoggerVariant -> DocumentedFunction Lua.Exception
-    logDebugMsg logger' =
-      defun "logDebugMsg"
-      ### (\ls -> case logger' of
-             TFLogger tfLogger -> liftIO $ App.log tfLogger Debug ls
-             TQLogger _textLogger -> pure ()
-          )
-      <#> parameter peekText "string" "logString" "string to log"
+    publishImpl :: MQTTClientVariant -> Text -> ByteString -> Lua.LuaE Lua.Exception ()
+    publishImpl mqttClient' topic msg =
+      let
+        topic' = fromMaybe "" $ mkTopic topic
+      in
+        -- this is testing-motivated boilerplate
+        case mqttClient' of
+          MCClient mc -> do
+            liftIO $ MQTT.publish mc topic' msg False
+          TQClient _textTQ -> pure ()
+
+    publish :: MQTTClientVariant -> DocumentedFunction Lua.Exception
+    publish mqttClient' =
+      defun "publish"
+      ### publishImpl mqttClient'
+      <#> parameter LM.peekText "string" "topic" "topic for device"
+      <#> parameter LM.peekLazyByteString "string" "msg" "MQTT JSON string msg to send"
       =#> []
 
-    publish :: TQueue Daemon.Message -> DocumentedFunction Lua.Exception
-    publish messageQueue' =
+    publishJSON :: MQTTClientVariant -> DocumentedFunction Lua.Exception
+    publishJSON mqttClient' =
       defun "publish"
-      ### (atomically $ writeTQueue messageQueue' (Daemon.Start AutomationName.Trinity))
+      ### (\topic -> publishImpl mqttClient' topic . encode)
+      <#> parameter LM.peekText "string" "topic" "topic for device"
+      <#> parameter LA.peekValue "table" "jsonMsg" "MQTT JSON string msg to send"
+      =#> []
+
+    sendMessage :: TQueue Daemon.Message -> DocumentedFunction Lua.Exception
+    sendMessage messageQueue' =
+      defun "publish"
+      ### (\msg -> fromMaybe (pure ()) $
+             atomically <$> writeTQueue messageQueue' <$> decode msg
+          )
+      <#> parameter LM.peekLazyByteString "string" "message" "string to log"
+      =#> []
+
+    logDebugMsg :: TimedFastLogger -> DocumentedFunction Lua.Exception
+    logDebugMsg logger' =
+      defun "logDebugMsg"
+      ### liftIO . App.log logger' Debug
+      <#> parameter LM.peekText "string" "logString" "string to log"
       =#> []

@@ -1,2 +1,2 @@
-constraints: lua +system-lua
+constraints: lua +system-lua +pkg-config
 ignore-project: False

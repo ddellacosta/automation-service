@@ -108,7 +108,6 @@ test-suite automation-service-tests
   -- necessary?
   other-modules:
       Test.Helpers
-    , Test.Integration.TestApp
     , Test.Integration.Service.App.Daemon
     , Test.Integration.Service.App.DaemonTestHelpers
     , Test.Unit.Service.App.DaemonState

@@ -9,8 +9,8 @@ let LogLevel = ./config/LogLevel.dhall
 
 in    { mqttBroker =
         { uri =
-            "mqtts://actions-service:wvwSWIXIKnpiI6qyR8Z7ojg9BH4RWPbHY6SHTGvLWd2AeYPifH@mosquitto:8883"
-        , actionsServiceTopic = "actions-service/set"
+            "mqtts://automation-service:wvwSWIXIKnpiI6qyR8Z7ojg9BH4RWPbHY6SHTGvLWd2AeYPifH@mosquitto:8883"
+        , automationServiceTopic = "automation-service/set"
         , caCertPath = Some
             "/home/dd/code/home-assistant/mosquitto_config/ca.crt"
         , clientCertPath = Some

@@ -4,24 +4,23 @@ import Prelude hiding (log)
 
 import Control.Lens ((^.))
 import Control.Lens.Unsound (lensProduct)
-import Dhall (inputFile)
 import qualified Network.MQTT.Client as MQTT
 import Network.MQTT.Topic (toFilter)
 import qualified Service.App.Daemon as Daemon
-import Service.App (loggerConfig, runAutomationService)
+import qualified Service.App as App
+import qualified Service.Env as Env
 import Service.Env
-  ( Env(..)
-  , LoggerVariant(..)
+  ( Config
   , MQTTClientVariant(..)
   , automationServiceTopicFilter
-  , configDecoder
   , logLevel
   , mqttConfig
   )
+import qualified Service.Messages.Daemon as Daemon
 import Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTTDevice
 import Service.MQTTClient (mqttClientCallback, initMQTTClient)
-import System.Log.FastLogger (newTimedFastLogger)
-import UnliftIO.STM (newTQueueIO, newTVarIO)
+import System.Log.FastLogger (TimedFastLogger, newTimedFastLogger)
+import UnliftIO.STM (TQueue)
 
 
 -- this needs to be more intelligent, in particular in terms of how we
@@ -33,16 +32,15 @@ import UnliftIO.STM (newTQueueIO, newTVarIO)
 configFilePath :: FilePath
 configFilePath = "./config.dhall"
 
-main :: IO ()
-main = initialize >>= flip runAutomationService Daemon.run
+mkLogger :: Config -> IO (TimedFastLogger, IO ())
+mkLogger config' = do
+  (fmtTime, logType) <- App.loggerConfig config'
+  -- TODO handle failure to open/write to file properly
+  newTimedFastLogger fmtTime logType
 
--- TODO this needs way better error handling
-initialize :: IO Env
-initialize = do
-  -- need to handle a configuration error? Dhall provides a lot of error output
-  config <- inputFile configDecoder configFilePath
-  (fmtTime, logType) <- loggerConfig config
-
+mkMQTTClient
+  :: Config -> TimedFastLogger -> TQueue Daemon.Message -> IO (MQTTClientVariant, IO ())
+mkMQTTClient config logger messageQueue = do
   let
     (mqttConfig', logLevelSet) = config ^. lensProduct mqttConfig logLevel
     mqttSubs =
@@ -50,20 +48,13 @@ initialize = do
       , (toFilter Zigbee2MQTTDevice.topic, MQTT.subOptions)
       ]
 
-  -- handle failure to open/write to file, anything else?
-  (logger, loggerCleanup) <- newTimedFastLogger fmtTime logType
-  messageQueue <- newTQueueIO
-  devices <- newTVarIO []
-
   -- handle errors from not being able to connect, etc.?
   mc <- initMQTTClient (mqttClientCallback logLevelSet logger messageQueue) mqttConfig'
   (_eithers, _props) <- MQTT.subscribe mc mqttSubs []
 
-  pure $
-    Env
-      config
-      (TFLogger logger)
-      (MCClient mc)
-      messageQueue
-      (loggerCleanup >> MQTT.normalDisconnect mc)
-      devices
+  pure (MCClient $ mc, MQTT.normalDisconnect mc)
+
+
+main :: IO ()
+main = Env.initialize configFilePath mkLogger mkMQTTClient
+  >>= flip App.runAutomationService Daemon.run

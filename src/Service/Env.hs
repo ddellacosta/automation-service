@@ -3,7 +3,6 @@
 module Service.Env
   ( Env(..)
   , Config(..)
-  , LoggerVariant(..)
   , LogLevel(..)
   , MQTTConfig(..)
   , MQTTClientVariant(..)
@@ -14,6 +13,7 @@ module Service.Env
   , config
   , configDecoder
   , devices
+  , initialize
   , logFilePath
   , logLevel
   , logger
@@ -27,21 +27,19 @@ module Service.Env
 where
 
 import Control.Lens (makeFieldsNoPrefix)
-import Data.Aeson (Value)
 import Data.Functor ((<&>))
 import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
 import qualified Data.String as S
 import Data.Text (Text)
-import Dhall (Decoder, Generic, FromDhall(..), auto, field, record, string)
+import Dhall (Decoder, Generic, FromDhall(..), auto, field, inputFile, record, string)
 import Network.MQTT.Client (MQTTClient)
 import Network.MQTT.Topic (Filter)
 import Network.URI (URI, nullURI, parseURI)
 import Service.Device (Device)
 import qualified Service.Messages.Daemon as Daemon
-import qualified Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTTDevice
 import System.Log.FastLogger (TimedFastLogger) 
-import UnliftIO.STM (TQueue, TVar)
+import UnliftIO.STM (TQueue, TVar, newTQueueIO, newTVarIO)
 
 data LogLevel = Debug | Info | Warn | Error
   deriving (Generic, Show, Eq, Ord)
@@ -93,18 +91,14 @@ configDecoder =
         <*> field "luaScriptPath" string
     )
 
-
-data LoggerVariant
-  = TFLogger TimedFastLogger
-  | TQLogger (TVar [Text])
-
+-- this is testing-motivated boilerplate
 data MQTTClientVariant
   = MCClient MQTTClient
   | TQClient (TVar (Map Text [Text]))
 
 data Env = Env
   { _config :: Config
-  , _logger :: LoggerVariant
+  , _logger :: TimedFastLogger
   , _mqttClient :: MQTTClientVariant
   , _messageQueue :: TQueue Daemon.Message
   , _appCleanup :: IO ()
@@ -112,3 +106,27 @@ data Env = Env
   }
 
 makeFieldsNoPrefix ''Env
+
+-- TODO this needs way better error handling
+initialize
+  :: FilePath
+  -> (Config -> IO (TimedFastLogger, IO ()))
+  -> (Config -> TimedFastLogger -> TQueue Daemon.Message -> IO (MQTTClientVariant, IO ()))
+  -> IO Env
+initialize configFilePath mkLogger mkMQTTClient = do
+  -- need to handle a configuration error? Dhall provides a lot of error output
+  config' <- inputFile configDecoder configFilePath
+
+  messageQueue' <- newTQueueIO
+  (logger', loggerCleanup) <- mkLogger config'
+  (mc, mcCleanup) <- mkMQTTClient config' logger' messageQueue'
+  devices' <- newTVarIO []
+
+  pure $
+    Env
+      config'
+      logger'
+      mc
+      messageQueue'
+      (loggerCleanup >> mcCleanup)
+      devices'

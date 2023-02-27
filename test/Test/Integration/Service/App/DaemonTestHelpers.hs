@@ -6,23 +6,54 @@ module Test.Integration.Service.App.DaemonTestHelpers
   )
   where
 
-import Control.Lens ((^.), view)
+import Control.Lens ((&), (^.), (%~), view)
 import qualified Data.Map.Strict as M
+import qualified Data.UUID as UUID
+import qualified Data.UUID.V4 as UUID
 import Control.Monad (void)
-import Service.App (AutomationService, runAutomationService)
+import qualified Service.App as App
+import Service.App (AutomationService)
 import qualified Service.App.Daemon as Daemon
 import Service.App.DaemonState (DaemonState, ServerResponse, initDaemonState)
-import Service.Env (Env, appCleanup, messageQueue)
+import qualified Service.Env as Env
+import Service.Env
+  ( Config
+  , Env
+  , MQTTClientVariant(..)
+  , appCleanup
+  , logFilePath
+  , messageQueue
+  )
 import qualified Service.Messages.Daemon as Daemon
+import System.Log.FastLogger (TimedFastLogger, newTimedFastLogger)
 import Test.Hspec (Expectation, expectationFailure)
-import Test.Integration.TestApp (initEnv)
 import UnliftIO.Async (withAsync)
 import UnliftIO.Exception (bracket)
-import UnliftIO.STM (TQueue, atomically, newTQueueIO, readTQueue)
+import UnliftIO.STM (TQueue, atomically, newTQueueIO, newTVarIO, readTQueue)
+
+testConfigFilePath :: FilePath
+testConfigFilePath = "./test/config.dhall"
+
+mkLogger :: Config -> IO (TimedFastLogger, IO ())
+mkLogger config = do
+  -- we make sure the logFilePath is distinct since Tasty will attempt
+  -- to run tests in parallel, and the different integration tests
+  -- will choke before they can begin as everything vies for control
+  -- over the single log file
+  randUUID <- UUID.nextRandom
+  let configUpdated = config & logFilePath %~ (<> UUID.toString randUUID)
+  (fmtTime, logType) <- App.loggerConfig configUpdated
+  newTimedFastLogger fmtTime logType
 
 initAndCleanup :: (Env -> IO ()) -> IO ()
-initAndCleanup runTests =
-  bracket initEnv (view appCleanup) runTests
+initAndCleanup runTests = bracket
+  (Env.initialize testConfigFilePath mkLogger mkMQTTClient)
+  (view appCleanup)
+  runTests
+  where
+    mkMQTTClient _ _ _ = do
+      fauxMQTTClient <- newTVarIO M.empty
+      pure (TQClient fauxMQTTClient, pure ())
 
 --
 -- This is part of a hack. In Daemon, at the end of every message loop it
@@ -82,5 +113,5 @@ testWithAsyncDaemon test env = do
   let messageQueue' = env ^. messageQueue
   responseQueue <- newTQueueIO
   daemonState <- initDaemonState
-  withAsync (runAutomationService env $ Daemon.run' daemonState responseQueue) $
+  withAsync (App.runAutomationService env $ Daemon.run' daemonState responseQueue) $
     \_async -> test daemonState messageQueue' responseQueue
