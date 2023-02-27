@@ -36,7 +36,6 @@ type AutomationMessage = Value
 data Message where
   StopServer :: Message
   Start :: AutomationName -> Message
-  StartLua :: FilePath -> Message
   Stop :: AutomationName -> Message
   SendTo :: AutomationName -> AutomationMessage -> Message
   Schedule :: Message -> AutomationSchedule -> Message
@@ -71,17 +70,14 @@ instance FromJSON Message where
   parseJSON = withObject "Automation" $ \o -> do
     startAutomation <- o .:? "start"
     stopAutomation <- o .:? "stop"
-
     sendTo <- o .:? "send"
     msg <- o .:? "msg"
-    luaScriptFilePath <- o .:? "filepath"
     pure $
       fromMaybe Null $
-        case (startAutomation, stopAutomation, sendTo, luaScriptFilePath) of
-          (Just "LuaScript", _, _, Just filePath) -> (Just . StartLua) filePath
-          (Just automationName, _, _, _) -> Start <$> parseAutomationName automationName
-          (_, Just automationName, _, _) -> Stop <$> parseAutomationName automationName
-          (_, _, Just automationName, _) -> do
+        case (startAutomation, stopAutomation, sendTo) of
+          (Just automationName, _, _) -> Start <$> parseAutomationName automationName
+          (_, Just automationName, _) -> Stop <$> parseAutomationName automationName
+          (_, _, Just automationName) -> do
             sendToAutomation <- parseAutomationName automationName
             SendTo sendToAutomation <$> msg
           _ -> Nothing

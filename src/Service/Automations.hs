@@ -10,6 +10,7 @@ import Service.Automation (Automation, nullAutomation)
 import Service.AutomationName (AutomationName(..))
 import Service.Automations.Chrizmaz (chrizmazAutomation)
 import Service.Automations.Gold (goldAutomation)
+import Service.Automations.LuaScript (luaAutomation)
 import Service.Automations.OnLow (onLowAutomation)
 import Service.Automations.Trinity (trinityAutomation)
 import Service.Env (Env)
@@ -23,8 +24,5 @@ findAutomation = \case
   Gold -> goldAutomation
   Chrizmaz -> chrizmazAutomation
   Trinity -> trinityAutomation
-  -- ...shouldn't get here because this isn't dispatched using
-  -- findAutomation. I could probably use the type system in a more
-  -- sophisticated way to implement this but, meh, for now at least
-  LuaScript -> nullAutomation
+  LuaScript filePath -> luaAutomation filePath
   OnLow -> onLowAutomation

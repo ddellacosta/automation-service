@@ -25,9 +25,8 @@ import Service.Automation
   , name
   , wantsFullControlOver
   )
-import Service.AutomationName (AutomationName(LuaScript), serializeAutomationName)
+import Service.AutomationName (AutomationName, serializeAutomationName)
 import Service.Automations (findAutomation)
-import Service.Automations.LuaScript (mkLuaAutomation)
 import Service.App (Logger(..), MonadMQTT)
 import Service.App.DaemonState
   ( DaemonState(..)
@@ -105,9 +104,6 @@ run' daemonState responseQueue = do
           -- see note below about writing to responseQueue
           atomically $ writeTQueue responseQueue StoppingServer
 
-        Daemon.StartLua filePath -> runServerAction $
-          initializeAndRunLuaScriptAutomation daemonState LuaScript filePath
-
         Daemon.Start automationName -> runServerAction $
           initializeAndRunAutomation daemonState automationName
 
@@ -159,32 +155,14 @@ initializeAndRunAutomation
   => DaemonState m
   -> AutomationName
   -> m ()
-initializeAndRunAutomation daemonState automationName =
-  initializeAndRunAutomation' daemonState automationName Nothing
-
-initializeAndRunLuaScriptAutomation
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
-  => DaemonState m
-  -> AutomationName
-  -> FilePath
-  -> m ()
-initializeAndRunLuaScriptAutomation daemonState automationName =
-  initializeAndRunAutomation' daemonState automationName . Just
-
-initializeAndRunAutomation'
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
-  => DaemonState m
-  -> AutomationName
-  -> Maybe FilePath
-  -> m ()
-initializeAndRunAutomation'
-  (DaemonState threadMapTV deviceMapTV broadcastChan' _) automationName mFilePath = do
+initializeAndRunAutomation
+  (DaemonState threadMapTV deviceMapTV broadcastChan' _) automationName = do
     clientChan <- atomically $ dupTChan broadcastChan'
     threadMap' <- readTVarIO threadMapTV
     deviceMap' <- readTVarIO deviceMapTV
 
     let
-      automation = maybe (findAutomation automationName) mkLuaAutomation mFilePath
+      automation = findAutomation automationName
       automationsToStop =
         findThreadsByDeviceId (automation ^. wantsFullControlOver) threadMap' deviceMap'
 

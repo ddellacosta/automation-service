@@ -12,7 +12,7 @@ import GHC.Generics (Generic)
 
 data AutomationName
   = Null
-  | LuaScript
+  | LuaScript FilePath
   | Gold
   | Chrizmaz
   | Trinity
@@ -31,7 +31,8 @@ parseAutomationName :: String -> Maybe AutomationName
 parseAutomationName = \case
   "Gold" -> Just Gold
   "Chrizmaz" -> Just Chrizmaz
-  "LuaScript" -> Just LuaScript
   "Trinity" -> Just Trinity
   "OnLow" -> Just OnLow
-  _ -> Nothing
+  maybeLuaScript -> case words maybeLuaScript of
+    ["LuaScript", filePath] -> Just . LuaScript $ filePath
+    _ -> Nothing

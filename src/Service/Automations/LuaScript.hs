@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Service.Automations.LuaScript
-  ( mkLuaAutomation
+  ( luaAutomation
   ,
   )
 where
@@ -48,13 +48,13 @@ import qualified Service.Messages.Daemon as Daemon
 import System.Log.FastLogger (TimedFastLogger)
 import UnliftIO.STM (TChan, TQueue, atomically, writeTQueue)
 
-mkLuaAutomation
+luaAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
   => FilePath
   -> Automation m
-mkLuaAutomation filePath =
+luaAutomation filePath =
   Automation
-    { _name = AutomationName.LuaScript
+    { _name = AutomationName.LuaScript filePath
     -- these two will need to be dynamically definable and resettable
     -- within this Automation if this is going to make sense for lua
     , _devices = []
