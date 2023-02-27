@@ -16,7 +16,6 @@ in    { mqttBroker =
         }
       , logFilePath = "logs/testlogfile"
       , logLevel = LogLevel.Debug
-      , luaScriptPath =
-          "/home/dd/code/home-assistant/automation-service/lua-actions/"
+      , luaScriptPath = "test/lua-automations/"
       }
     : ../config/Config.dhall

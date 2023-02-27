@@ -11,16 +11,12 @@ in    { mqttBroker =
         { uri =
             "mqtts://automation-service:wvwSWIXIKnpiI6qyR8Z7ojg9BH4RWPbHY6SHTGvLWd2AeYPifH@mosquitto:8883"
         , automationServiceTopic = "automation-service/set"
-        , caCertPath = Some
-            "/home/dd/code/home-assistant/mosquitto_config/ca.crt"
-        , clientCertPath = Some
-            "/home/dd/code/home-assistant/mosquitto_config/client.crt"
-        , clientKeyPath = Some
-            "/home/dd/code/home-assistant/mosquitto_config/client.key"
+        , caCertPath = Some "ca.crt"
+        , clientCertPath = Some "client.crt"
+        , clientKeyPath = Some "client.key"
         }
       , logFilePath = "logs/logfile"
       , logLevel = LogLevel.Debug
-      , luaScriptPath =
-          "/home/dd/code/home-assistant/automation-service/lua-automations/"
+      , luaScriptPath = "lua-automations/"
       }
     : ./config/Config.dhall
