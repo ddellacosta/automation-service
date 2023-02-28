@@ -2,7 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Service.Device
-  ( DeviceId(..)
+  ( DeviceId
   , Device(..)
   , category
   , id
@@ -14,9 +14,8 @@ where
 
 import Prelude hiding (id)
 
-import Control.Lens ((^?), folded, filtered, makeFieldsNoPrefix)
+import Control.Lens (makeFieldsNoPrefix)
 import Data.Aeson (FromJSON, ToJSON)
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import GHC.Generics (Generic)
 

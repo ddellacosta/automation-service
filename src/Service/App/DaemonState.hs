@@ -24,7 +24,7 @@ import Data.Foldable (for_)
 import Data.List.NonEmpty (NonEmpty(..), nonEmpty, toList)
 import qualified Data.Map.Strict as M
 import Data.Maybe (mapMaybe)
-import Service.Automation as Automation
+import qualified Service.Automation as Automation
 import Service.Automation (Automation)
 import Service.AutomationName (AutomationName)
 import Service.Device (DeviceId)
@@ -95,9 +95,9 @@ removeAutomations threadMapTV automations =
 -- all matching DeviceIds passed in.
 --
 insertDeviceAutomation :: TVar DeviceMap -> [DeviceId] -> AutomationName -> STM ()
-insertDeviceAutomation deviceMapTV devices automationName = do
+insertDeviceAutomation deviceMapTV devices' automationName = do
   deviceMap' <- readTVar deviceMapTV
-  for_ devices $ \deviceId ->
+  for_ devices' $ \deviceId ->
     writeTVar deviceMapTV $
       M.alter (Just . foldr (<>) (automationName :| [])) deviceId deviceMap'
 

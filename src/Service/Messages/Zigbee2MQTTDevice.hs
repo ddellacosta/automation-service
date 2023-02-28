@@ -9,7 +9,9 @@ module Service.Messages.Zigbee2MQTTDevice
   )
   where
 
-import Control.Lens ((^..), (^?), folded, folding, toListOf)
+import Prelude hiding (id)
+
+import Control.Lens ((^?))
 import qualified Data.Aeson as Aeson
 import Data.Aeson (FromJSON, ToJSON, Value, decode)
 import Data.Aeson.Lens (key)
