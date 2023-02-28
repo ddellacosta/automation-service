@@ -37,6 +37,7 @@ import qualified Service.AutomationName as AutomationName
 import Service.Env
   ( Env
   , LogLevel(Debug)
+  , LoggerVariant(TFLogger)
   , MQTTClientVariant(..)
   , config
   , logger
@@ -45,7 +46,6 @@ import Service.Env
   , mqttClient
   )
 import qualified Service.Messages.Daemon as Daemon
-import System.Log.FastLogger (TimedFastLogger)
 import UnliftIO.STM (TChan, TQueue, atomically, writeTQueue)
 
 luaAutomation
@@ -132,9 +132,12 @@ mkRunAutomation filePath = \_broadcastChan -> do
       <#> parameter LM.peekLazyByteString "string" "message" "string to log"
       =#> []
 
-    logDebugMsg :: TimedFastLogger -> DocumentedFunction Lua.Exception
+    logDebugMsg :: LoggerVariant -> DocumentedFunction Lua.Exception
     logDebugMsg logger' =
       defun "logDebugMsg"
-      ### liftIO . App.log logger' Debug
+      ### (\msg -> case logger' of
+             TFLogger tfLogger -> liftIO $ App.log tfLogger Debug msg
+             _ -> pure ()
+          )
       <#> parameter LM.peekText "string" "logString" "string to log"
       =#> []

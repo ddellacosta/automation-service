@@ -26,10 +26,9 @@ import Network.TLS
   )
 import Network.TLS.Extra.Cipher (ciphersuite_default)
 import qualified Service.App as App
-import Service.Env (MQTTConfig(..), LogLevel(..))
+import Service.Env (LogLevel(..), LoggerVariant(TFLogger), MQTTConfig(..))
 import qualified Service.Messages.Daemon as Daemon
 import qualified Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTTDevice
-import System.Log.FastLogger (TimedFastLogger)
 import UnliftIO.STM (TQueue, atomically, writeTQueue)
 
 
@@ -87,13 +86,16 @@ initMQTTClient msgCB (MQTTConfig {..}) = do
 --
 mqttClientCallback
   :: LogLevel
-  -> TimedFastLogger
+  -> LoggerVariant
   -> TQueue Daemon.Message
   -> MQTT.MessageCallback
-mqttClientCallback logLevelSet logger' messagesQueue =
+mqttClientCallback logLevelSet logger messagesQueue =
   MQTT.SimpleCallback $ \_mc topic msg _props -> do
     when (Debug >= logLevelSet) $
-      App.log logger' Debug $ "Received message " <> show msg <> " to " <> show topic
+      case logger of
+        TFLogger tfLogger ->
+          App.log tfLogger Debug $ "Received message " <> show msg <> " to " <> show topic
+        _ -> pure ()
 
     let
       write ::TQueue a -> (a -> IO ())

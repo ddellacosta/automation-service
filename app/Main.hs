@@ -11,6 +11,7 @@ import qualified Service.App as App
 import qualified Service.Env as Env
 import Service.Env
   ( Config
+  , LoggerVariant(TFLogger)
   , MQTTClientVariant(..)
   , automationServiceTopicFilter
   , logLevel
@@ -19,7 +20,7 @@ import Service.Env
 import qualified Service.Messages.Daemon as Daemon
 import Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTTDevice
 import Service.MQTTClient (mqttClientCallback, initMQTTClient)
-import System.Log.FastLogger (TimedFastLogger, newTimedFastLogger)
+import System.Log.FastLogger (newTimedFastLogger)
 import UnliftIO.STM (TQueue)
 
 
@@ -30,16 +31,17 @@ import UnliftIO.STM (TQueue)
 -- TODO probably need to provide a way to configure the config file path
 -- as an argument
 configFilePath :: FilePath
-configFilePath = "./config.dhall"
+configFilePath = "config.dhall"
 
-mkLogger :: Config -> IO (TimedFastLogger, IO ())
+mkLogger :: Config -> IO (LoggerVariant, IO ())
 mkLogger config' = do
   (fmtTime, logType) <- App.loggerConfig config'
   -- TODO handle failure to open/write to file properly
-  newTimedFastLogger fmtTime logType
+  (tfLogger, cleanup) <- newTimedFastLogger fmtTime logType
+  pure (TFLogger tfLogger, cleanup)
 
 mkMQTTClient
-  :: Config -> TimedFastLogger -> TQueue Daemon.Message -> IO (MQTTClientVariant, IO ())
+  :: Config -> LoggerVariant -> TQueue Daemon.Message -> IO (MQTTClientVariant, IO ())
 mkMQTTClient config logger messageQueue = do
   let
     (mqttConfig', logLevelSet) = config ^. lensProduct mqttConfig logLevel

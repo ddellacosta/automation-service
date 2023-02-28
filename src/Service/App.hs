@@ -23,6 +23,7 @@ import Service.Env
   ( Config
   , Env
   , LogLevel(..)
+  , LoggerVariant(TFLogger)
   , MQTTClientVariant(..)
   , config
   , logFilePath
@@ -74,7 +75,10 @@ logDefault :: (MonadIO m, MonadReader Env m) => LogLevel -> Text -> m ()
 logDefault level logStr = do
   setLevel <- view (config . logLevel)
   when (level >= setLevel) $ do
-    view logger >>= \logger' -> liftIO $ log logger' level logStr
+    logger' <- view logger
+    case logger' of
+      TFLogger tfLogger -> liftIO $ log tfLogger level logStr
+      _ -> pure()
 
 log :: (ToLogStr s) => TimedFastLogger -> LogLevel -> s -> IO ()
 log logger' level logStr = logger' $ \time ->

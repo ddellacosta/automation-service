@@ -4,6 +4,7 @@ module Service.Env
   ( Env(..)
   , Config(..)
   , LogLevel(..)
+  , LoggerVariant(..)
   , MQTTConfig(..)
   , MQTTClientVariant(..)
   , automationServiceTopicFilter
@@ -92,13 +93,18 @@ configDecoder =
     )
 
 -- this is testing-motivated boilerplate
+data LoggerVariant
+  = TFLogger TimedFastLogger
+  | QLogger (TQueue Text)
+
+-- this is testing-motivated boilerplate
 data MQTTClientVariant
   = MCClient MQTTClient
   | TQClient (TVar (Map Text [Text]))
 
 data Env = Env
   { _config :: Config
-  , _logger :: TimedFastLogger
+  , _logger :: LoggerVariant
   , _mqttClient :: MQTTClientVariant
   , _messageQueue :: TQueue Daemon.Message
   , _appCleanup :: IO ()
@@ -110,8 +116,8 @@ makeFieldsNoPrefix ''Env
 -- TODO this needs way better error handling
 initialize
   :: FilePath
-  -> (Config -> IO (TimedFastLogger, IO ()))
-  -> (Config -> TimedFastLogger -> TQueue Daemon.Message -> IO (MQTTClientVariant, IO ()))
+  -> (Config -> IO (LoggerVariant, IO ()))
+  -> (Config -> LoggerVariant -> TQueue Daemon.Message -> IO (MQTTClientVariant, IO ()))
   -> IO Env
 initialize configFilePath mkLogger mkMQTTClient = do
   -- need to handle a configuration error? Dhall provides a lot of error output
