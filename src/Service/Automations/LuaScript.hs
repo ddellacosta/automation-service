@@ -46,6 +46,7 @@ import Service.Env
   , mqttClient
   )
 import qualified Service.Messages.Daemon as Daemon
+import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan, TQueue, atomically, writeTQueue)
 
 luaAutomation
@@ -87,6 +88,7 @@ mkRunAutomation filePath = \_broadcastChan -> do
     pushDocumentedFunction (publishJSON mqttClient') *> setglobal "publishJSON"
     pushDocumentedFunction (sendMessage messageQueue') *> setglobal "sendMessage"
     pushDocumentedFunction (logDebugMsg logger') *> setglobal "logDebugMsg"
+    pushDocumentedFunction sleep *> setglobal "sleep"
     status <- dofileTrace $ luaScriptPath' <> filePath
     if (status /= Lua.OK) then
       show <$> Lua.popException
@@ -136,8 +138,16 @@ mkRunAutomation filePath = \_broadcastChan -> do
     logDebugMsg logger' =
       defun "logDebugMsg"
       ### (\msg -> case logger' of
+             -- this is testing-motivated boilerplate
              TFLogger tfLogger -> liftIO $ App.log tfLogger Debug msg
              _ -> pure ()
           )
       <#> parameter LM.peekText "string" "logString" "string to log"
+      =#> []
+
+    sleep :: DocumentedFunction Lua.Exception
+    sleep =
+      defun "sleep"
+      ### threadDelay . (* 1000000)
+      <#> parameter LM.peekIntegral "int" "seconds" "seconds to delay thread"
       =#> []
