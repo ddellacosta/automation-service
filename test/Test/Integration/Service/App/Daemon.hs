@@ -1,16 +1,19 @@
+{-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
+
 module Test.Integration.Service.App.Daemon
   ( spec
   ,
   )
 where
 
-import Control.Lens ((^?), _1)
+import Control.Lens ((^.), (^?), _1)
 import Control.Monad (void)
 import qualified Data.Map.Strict as M
 import Service.App.DaemonState (DaemonState(_deviceMap, _threadMap))
 import Service.Automation (name)
 import qualified Service.Automations.Gold as Gold
 import Service.AutomationName (AutomationName(..))
+import Service.Env (LoggerVariant(..), logger)
 import qualified Service.Messages.Daemon as Daemon
 import Test.Hspec (Spec, around, it, shouldBe)
 import Test.Integration.Service.App.DaemonTestHelpers
@@ -19,10 +22,11 @@ import Test.Integration.Service.App.DaemonTestHelpers
   , lookupOrFail
   , testWithAsyncDaemon
   )
-import UnliftIO.STM (atomically, readTVarIO, writeTQueue)
+import UnliftIO.STM (atomically, readTQueue, readTVarIO, writeTQueue)
 
 spec :: Spec
 spec = do
+  luaScriptSpecs
   threadMapSpecs
   deviceMapSpecs
   --
@@ -33,11 +37,34 @@ spec = do
   --
   -- _schedulerSpecs
 
+-- these fail every once in a while, which makes me think there is
+-- some kind of edge case race condition happening here somehow
+luaScriptSpecs :: Spec
+luaScriptSpecs = do
+  around initAndCleanup $ do
+    it "starts a Lua script" $
+      testWithAsyncDaemon $ \env _daemonState messageQueue' responseQueue -> do
+        let (QLogger qLogger) = env ^. logger
+        atomically $ writeTQueue messageQueue' $ Daemon.Start (LuaScript "test.lua")
+        blockUntilNextEventLoop responseQueue
+        lastLog <- atomically . readTQueue $ qLogger
+        lastLog `shouldBe` "test.lua: loopAutomation"
+
+    it "shuts down a Lua script" $
+      testWithAsyncDaemon $ \env _daemonState messageQueue' responseQueue -> do
+        let (QLogger qLogger) = env ^. logger
+        atomically $ writeTQueue messageQueue' $ Daemon.Start (LuaScript "test.lua")
+        blockUntilNextEventLoop responseQueue
+        atomically $ writeTQueue messageQueue' $ Daemon.Stop (LuaScript "test.lua")
+        blockUntilNextEventLoop responseQueue
+        lastLog <- atomically . readTQueue $ qLogger
+        lastLog `shouldBe` "test.lua: cleanup"
+
 threadMapSpecs :: Spec
 threadMapSpecs = do
   around initAndCleanup $ do
     it "adds an entry to the ThreadMap List indexed by AutomationName" $
-      testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
+      testWithAsyncDaemon $ \_env daemonState messageQueue' responseQueue -> do
         atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
         blockUntilNextEventLoop responseQueue
         threadMap' <- readTVarIO $ _threadMap daemonState
@@ -46,7 +73,7 @@ threadMapSpecs = do
 
   around initAndCleanup $ do
     it "removes conflicting Automation entries using 'owned' Devices from ThreadMap when starting" $
-      testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
+      testWithAsyncDaemon $ \_env daemonState messageQueue' responseQueue -> do
         atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
         blockUntilNextEventLoop responseQueue
         atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
@@ -57,7 +84,7 @@ threadMapSpecs = do
 
   around initAndCleanup $ do
     it "removes entries from ThreadMap when stopping" $
-      testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
+      testWithAsyncDaemon $ \_env daemonState messageQueue' responseQueue -> do
         atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
         blockUntilNextEventLoop responseQueue
         atomically $ writeTQueue messageQueue' $ Daemon.Stop Gold
@@ -69,11 +96,25 @@ threadMapSpecs = do
         -- value
         (void . M.lookup Gold) threadMap' `shouldBe` Nothing
 
+  around initAndCleanup $ do
+    it "removes entries from ThreadMap for LuaScript automations as well after stopping" $
+      testWithAsyncDaemon $ \_env daemonState messageQueue' responseQueue -> do
+        atomically $ writeTQueue messageQueue' $ Daemon.Start (LuaScript "test.lua")
+        blockUntilNextEventLoop responseQueue
+        atomically $ writeTQueue messageQueue' $ Daemon.Stop (LuaScript "test.lua")
+        blockUntilNextEventLoop responseQueue
+        threadMap' <- readTVarIO $ _threadMap daemonState
+        -- the void hack here is because there is no Show
+        -- instance for Just Automation, but there is one for Just (), and
+        -- all I care about with this test is the effect, not the
+        -- value
+        (void . M.lookup (LuaScript "test.lua")) threadMap' `shouldBe` Nothing
+
 deviceMapSpecs :: Spec
 deviceMapSpecs = do
   around initAndCleanup $ do
     it "adds an entry to the DeviceMap List indexed by DeviceId" $
-      testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
+      testWithAsyncDaemon $ \_env daemonState messageQueue' responseQueue -> do
         atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
         blockUntilNextEventLoop responseQueue
         deviceMap' <- readTVarIO $ _deviceMap daemonState
@@ -82,7 +123,7 @@ deviceMapSpecs = do
             (\testAutomationNames -> length testAutomationNames `shouldBe` 1)
 
     it "removes AutomationName from the DeviceMap entry when the Automation using it is shut down" $
-      testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
+      testWithAsyncDaemon $ \_env daemonState messageQueue' responseQueue -> do
         atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
         blockUntilNextEventLoop responseQueue
         atomically $ writeTQueue messageQueue' $ Daemon.Stop Gold
@@ -92,7 +133,7 @@ deviceMapSpecs = do
         (void . M.lookup Gold.gledoptoLightStrip) deviceMap' `shouldBe` Nothing
 
     it "ensures proper bookkeeping for DeviceMap entries when an Automation is shut down due to another Automation starting" $
-      testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
+      testWithAsyncDaemon $ \_env daemonState messageQueue' responseQueue -> do
         atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
         blockUntilNextEventLoop responseQueue
         atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
@@ -102,11 +143,12 @@ deviceMapSpecs = do
           "Should have an action at index AutomationName `Gold`" Gold.gledoptoLightStrip deviceMap' $
             \testAutomationNames -> length testAutomationNames `shouldBe` 1
 
+
 _schedulerSpecs :: Spec
 _schedulerSpecs = do
   around initAndCleanup $ do
     it "schedules an action to be run at a later date" $
-      testWithAsyncDaemon $ \daemonState messageQueue' responseQueue -> do
+      testWithAsyncDaemon $ \_env daemonState messageQueue' responseQueue -> do
         atomically $
           writeTQueue messageQueue' $ Daemon.Schedule (Daemon.Start Gold) "* * * * *"
         -- we want to wait for two event loops--one for handling the

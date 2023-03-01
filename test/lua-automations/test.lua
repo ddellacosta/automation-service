@@ -1,4 +1,9 @@
 
-local topic = "test/topic/set"
 
-publish(topic, { test = "works" })
+function loopAutomation ()
+   logDebugMsg("loopAutomation")
+end
+
+function cleanup ()
+   logDebugMsg("cleanup")
+end

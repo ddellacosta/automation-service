@@ -93,7 +93,8 @@ lookupOrFail msg k m assertion =
 -- |
 testWithAsyncDaemon
   ::
-    (  DaemonState AutomationService
+    (  Env
+    -> DaemonState AutomationService
     -> TQueue Daemon.Message
     -> TQueue ServerResponse
     -> Expectation
@@ -105,4 +106,4 @@ testWithAsyncDaemon test env = do
   responseQueue <- newTQueueIO
   daemonState <- initDaemonState
   withAsync (App.runAutomationService env $ Daemon.run' daemonState responseQueue) $
-    \_async -> test daemonState messageQueue' responseQueue
+    \_async -> test env daemonState messageQueue' responseQueue

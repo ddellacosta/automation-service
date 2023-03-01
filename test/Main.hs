@@ -5,7 +5,7 @@ module Main
   )
 where
 
-import Test.Tasty (TestTree, defaultMain, testGroup)
+import Test.Tasty (TestTree, defaultMain, localOption, mkTimeout, testGroup)
 import Test.Tasty.Hspec (testSpec)
 import qualified Test.Integration.Service.App.Daemon as Daemon
 import qualified Test.Unit.Service.App.Helpers as App.Helpers
@@ -37,6 +37,8 @@ unit = do
     ]
 
 integration :: IO TestTree
-integration = do
+integration = localOption (mkTimeout . (micros *) $ 5) <$> do
   daemonSpec <- testSpec "Service.App.Daemon specs" Daemon.spec
   pure $ testGroup "Integration Tests" [ daemonSpec ]
+  where
+    micros = 1000000

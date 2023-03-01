@@ -186,11 +186,12 @@ initializeAndRunAutomation
           <> (T.pack . show $ act ^. name)
         cancel asyn
 
-stopAutomation :: (MonadUnliftIO m) => DaemonState m -> AutomationName -> m ()
+stopAutomation :: (Logger m, MonadUnliftIO m) => DaemonState m -> AutomationName -> m ()
 stopAutomation daemonState automationName = do
   let
     (threadMapTV, deviceMapTV) = daemonState ^. lensProduct threadMap deviceMap
   threadMap' <- readTVarIO threadMapTV
+  info $ "Shutting down Automation " <> serializeAutomationName automationName
   for_ (M.lookup automationName threadMap') $ \(_, async') -> cancel async'
   atomically $ do
     writeTVar threadMapTV $ M.delete automationName threadMap'
