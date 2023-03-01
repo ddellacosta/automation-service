@@ -33,7 +33,7 @@ testConfigFilePath = "test/config.dhall"
 
 mkLogger :: Config -> IO (LoggerVariant, IO ())
 mkLogger _config = do
-  qLogger <- newTQueueIO
+  qLogger <- newTVarIO []
   pure (QLogger qLogger, pure ())
 
 initAndCleanup :: (Env -> IO ()) -> IO ()

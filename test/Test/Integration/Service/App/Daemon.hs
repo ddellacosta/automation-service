@@ -9,6 +9,8 @@ where
 import Control.Lens ((^.), (^?), _1)
 import Control.Monad (void)
 import qualified Data.Map.Strict as M
+import Data.Text (Text)
+import Safe (headMay)
 import Service.App.DaemonState (DaemonState(_deviceMap, _threadMap))
 import Service.Automation (name)
 import qualified Service.Automations.Gold as Gold
@@ -22,7 +24,8 @@ import Test.Integration.Service.App.DaemonTestHelpers
   , lookupOrFail
   , testWithAsyncDaemon
   )
-import UnliftIO.STM (atomically, readTQueue, readTVarIO, writeTQueue)
+import Text.Regex.TDFA ((=~))
+import UnliftIO.STM (TVar, atomically, readTVar, readTVarIO, writeTQueue)
 
 spec :: Spec
 spec = do
@@ -42,23 +45,30 @@ spec = do
 luaScriptSpecs :: Spec
 luaScriptSpecs = do
   around initAndCleanup $ do
-    it "starts a Lua script" $
+    it "starts and shuts down a Lua script" $
       testWithAsyncDaemon $ \env _daemonState messageQueue' responseQueue -> do
         let (QLogger qLogger) = env ^. logger
-        atomically $ writeTQueue messageQueue' $ Daemon.Start (LuaScript "test.lua")
-        blockUntilNextEventLoop responseQueue
-        lastLog <- atomically . readTQueue $ qLogger
-        lastLog `shouldBe` "test.lua: loopAutomation"
 
-    it "shuts down a Lua script" $
-      testWithAsyncDaemon $ \env _daemonState messageQueue' responseQueue -> do
-        let (QLogger qLogger) = env ^. logger
         atomically $ writeTQueue messageQueue' $ Daemon.Start (LuaScript "test.lua")
         blockUntilNextEventLoop responseQueue
+
+        foundLoopLogEntry <- checkUntil qLogger "test.lua: loopAutomation"
+        foundLoopLogEntry `shouldBe` True
+
         atomically $ writeTQueue messageQueue' $ Daemon.Stop (LuaScript "test.lua")
         blockUntilNextEventLoop responseQueue
-        lastLog <- atomically . readTQueue $ qLogger
-        lastLog `shouldBe` "test.lua: cleanup"
+
+        foundCleanupLogEntry <- checkUntil qLogger "test.lua: cleanup"
+        foundCleanupLogEntry `shouldBe` True
+
+  where
+    -- this assumes we have a sane timeout in place in case this fails
+    checkUntil :: TVar [Text] -> Text -> IO Bool
+    checkUntil qLogger matchText = do
+      logs <- atomically $ readTVar qLogger
+      case headMay . filter (=~ matchText) $ logs of
+        Just _ -> pure True
+        Nothing -> checkUntil qLogger matchText
 
 threadMapSpecs :: Spec
 threadMapSpecs = do

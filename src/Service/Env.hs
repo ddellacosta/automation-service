@@ -95,7 +95,7 @@ configDecoder =
 -- this is testing-motivated boilerplate
 data LoggerVariant
   = TFLogger TimedFastLogger
-  | QLogger (TQueue Text)
+  | QLogger (TVar [Text])
 
 -- this is testing-motivated boilerplate
 data MQTTClientVariant

@@ -16,6 +16,7 @@ import Control.Monad (when)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Control.Monad.Reader (MonadIO, MonadReader(..), ReaderT, liftIO, runReaderT)
 import Data.ByteString.Lazy (ByteString)
+import qualified Data.Text as T
 import Data.Text (Text)
 import qualified Network.MQTT.Client as MQTT
 import Network.MQTT.Client (Topic)
@@ -23,7 +24,7 @@ import Service.Env
   ( Config
   , Env
   , LogLevel(..)
-  , LoggerVariant(TFLogger)
+  , LoggerVariant(..)
   , MQTTClientVariant(..)
   , config
   , logFilePath
@@ -42,6 +43,7 @@ import System.Log.FastLogger
   , newTimeCache
   , simpleTimeFormat
   )
+import UnliftIO.STM (atomically, modifyTVar')
 
 newtype AutomationService a = AutomationService (ReaderT Env IO a)
   deriving
@@ -55,7 +57,6 @@ newtype AutomationService a = AutomationService (ReaderT Env IO a)
 
 runAutomationService :: Env -> AutomationService a -> IO a
 runAutomationService env (AutomationService x) = runReaderT x env
-
 
 -- Logger
 
@@ -77,8 +78,9 @@ logDefault level logStr = do
   when (level >= setLevel) $ do
     logger' <- view logger
     case logger' of
-      TFLogger tfLogger -> liftIO $ log tfLogger level logStr
-      _ -> pure()
+      TFLogger tfLogger -> liftIO . log tfLogger level $ logStr
+      QLogger qLogger -> liftIO . atomically . modifyTVar' qLogger $ \msgs ->
+        msgs <> [ T.pack (show level) <> ": " <> logStr ]
 
 log :: (ToLogStr s) => TimedFastLogger -> LogLevel -> s -> IO ()
 log logger' level logStr = logger' $ \time ->

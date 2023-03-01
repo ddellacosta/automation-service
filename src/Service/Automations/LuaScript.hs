@@ -47,7 +47,7 @@ import Service.Env
   )
 import qualified Service.Messages.Daemon as Daemon
 import UnliftIO.Concurrent (threadDelay)
-import UnliftIO.STM (TChan, TQueue, atomically, writeTQueue)
+import UnliftIO.STM (TChan, TQueue, atomically, modifyTVar', writeTQueue)
 
 
 luaAutomation
@@ -189,7 +189,8 @@ logDebugMsg' :: FilePath -> LoggerVariant -> Text -> IO ()
 logDebugMsg' filepath logger' msg =
   -- this is testing-motivated boilerplate
   case logger' of
-    TFLogger tfLogger -> liftIO $
+    TFLogger tfLogger ->
       App.log tfLogger Debug (T.pack filepath <>  " : " <> msg)
-    QLogger qLogger -> do
-      atomically . writeTQueue qLogger $ T.pack filepath <> ": " <> msg
+    QLogger qLogger -> atomically . modifyTVar' qLogger $ \msgs ->
+      msgs <> [ T.pack (show Debug) <> " - " <> T.pack filepath <> ": " <> msg ]
+
