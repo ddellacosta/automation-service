@@ -26,8 +26,6 @@ onLowAutomation
 onLowAutomation =
   Automation
     { _name = OnLow
-    , _devices = [gledoptoLightStrip]
-    , _wantsFullControlOver = [gledoptoLightStrip]
     , _cleanup = cleanupAutomation
     , _run = runAutomation
     }

@@ -26,8 +26,6 @@ trinityAutomation
 trinityAutomation =
   Automation
     { _name = Trinity
-    , _devices = [gledoptoLightStrip]
-    , _wantsFullControlOver = [gledoptoLightStrip]
     , _cleanup = cleanupAutomation
     , _run = runAutomation
     }

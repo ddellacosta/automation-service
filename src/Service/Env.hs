@@ -3,32 +3,38 @@
 module Service.Env
   ( Env(..)
   , Config(..)
+  , DeviceRegistrations
   , LogLevel(..)
   , LoggerVariant(..)
-  , MQTTConfig(..)
   , MQTTClientVariant(..)
+  , MQTTConfig(..)
+  , appCleanup
+  , automationBroadcast
   , automationServiceTopicFilter
   , caCertPath
   , clientCertPath
   , clientKeyPath
   , config
   , configDecoder
+  , daemonBroadcast
+  , deviceRegistrations
   , devices
   , initialize
   , logFilePath
   , logLevel
   , logger
   , luaScriptPath
-  , appCleanup
-  , messageQueue
+  , messageChan
   , mqttClient
   , mqttConfig
+  , serverChan
   , uri
   )
 where
 
 import Control.Lens (makeFieldsNoPrefix)
 import Data.Functor ((<&>))
+import qualified Data.Map.Strict as M
 import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
 import qualified Data.String as S
@@ -37,10 +43,12 @@ import Dhall (Decoder, Generic, FromDhall(..), auto, field, inputFile, record, s
 import Network.MQTT.Client (MQTTClient)
 import Network.MQTT.Topic (Filter)
 import Network.URI (URI, nullURI, parseURI)
-import Service.Device (Device)
+import qualified Service.Automation as Automation
+import Service.AutomationName (AutomationName)
+import Service.Device (Device, DeviceId)
 import qualified Service.Messages.Daemon as Daemon
 import System.Log.FastLogger (TimedFastLogger) 
-import UnliftIO.STM (TQueue, TVar, newTQueueIO, newTVarIO)
+import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO)
 
 data LogLevel = Debug | Info | Warn | Error
   deriving (Generic, Show, Eq, Ord)
@@ -102,13 +110,19 @@ data MQTTClientVariant
   = MCClient MQTTClient
   | TQClient (TVar (Map Text [Text]))
 
+type DeviceRegistrations = Map DeviceId AutomationName
+
 data Env = Env
   { _config :: Config
   , _logger :: LoggerVariant
   , _mqttClient :: MQTTClientVariant
-  , _messageQueue :: TQueue Daemon.Message
+  , _daemonBroadcast :: TChan Daemon.Message
+  , _messageChan :: TChan Daemon.Message
+  , _devices :: TVar (Map DeviceId Device)
+  , _deviceRegistrations :: TVar DeviceRegistrations
+  , _automationBroadcast :: TChan Automation.Message
+  , _serverChan :: TChan Automation.Message
   , _appCleanup :: IO ()
-  , _devices :: TVar [Device]
   }
 
 makeFieldsNoPrefix ''Env
@@ -117,22 +131,34 @@ makeFieldsNoPrefix ''Env
 initialize
   :: FilePath
   -> (Config -> IO (LoggerVariant, IO ()))
-  -> (Config -> LoggerVariant -> TQueue Daemon.Message -> IO (MQTTClientVariant, IO ()))
+  -> (Config -> LoggerVariant -> TChan Daemon.Message -> IO (MQTTClientVariant, IO ()))
   -> IO Env
 initialize configFilePath mkLogger mkMQTTClient = do
   -- need to handle a configuration error? Dhall provides a lot of error output
   config' <- inputFile configDecoder configFilePath
 
-  messageQueue' <- newTQueueIO
+  daemonBroadcast' <- newBroadcastTChanIO
+  messageChan' <- atomically $ dupTChan daemonBroadcast'
+
   (logger', loggerCleanup) <- mkLogger config'
-  (mc, mcCleanup) <- mkMQTTClient config' logger' messageQueue'
-  devices' <- newTVarIO []
+
+  (mc, mcCleanup) <- mkMQTTClient config' logger' messageChan'
+
+  devices' <- newTVarIO M.empty
+  deviceRegistrations' <- newTVarIO M.empty
+
+  automationBroadcast' <- newBroadcastTChanIO
+  serverChan' <- atomically $ dupTChan automationBroadcast'
 
   pure $
     Env
       config'
       logger'
       mc
-      messageQueue'
-      (loggerCleanup >> mcCleanup)
+      daemonBroadcast'
+      messageChan'
       devices'
+      deviceRegistrations'
+      automationBroadcast'
+      serverChan'
+      (loggerCleanup >> mcCleanup)

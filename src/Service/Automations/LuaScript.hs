@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Service.Automations.LuaScript
   ( luaAutomation
   ,
@@ -9,12 +7,14 @@ where
 import Prelude hiding (id, init)
 
 import Control.Lens (view)
-import Control.Lens.Unsound (lensProduct)
 import Control.Monad.IO.Unlift (MonadUnliftIO(..), liftIO)
 import Control.Monad.Reader (MonadReader)
 import Data.Aeson (decode, encode)
 import Data.ByteString.Lazy (ByteString)
+import Data.Foldable (forM_)
 import Data.Maybe (fromMaybe)
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import Data.Text (Text)
 import qualified HsLua.Aeson as LA
@@ -24,6 +24,7 @@ import HsLua.Packaging.Function
   ( DocumentedFunction
   , (<#>), (###), (=#>)
   , defun
+  , functionResult
   , parameter
   , pushDocumentedFunction
   )
@@ -34,20 +35,23 @@ import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Automation as Automation
 import Service.Automation (Automation(..))
 import qualified Service.AutomationName as AutomationName
+import Service.Device (Device, DeviceId)
 import Service.Env
   ( Env
   , LogLevel(Debug)
   , LoggerVariant(..)
   , MQTTClientVariant(..)
   , config
+  , daemonBroadcast
+  , devices
   , logger
   , luaScriptPath
-  , messageQueue
   , mqttClient
   )
 import qualified Service.Messages.Daemon as Daemon
 import UnliftIO.Concurrent (threadDelay)
-import UnliftIO.STM (TChan, TQueue, atomically, modifyTVar', writeTQueue)
+import UnliftIO.Exception (throwIO)
+import UnliftIO.STM (TChan, TVar, atomically, readTVar, writeTChan)
 
 
 luaAutomation
@@ -57,10 +61,6 @@ luaAutomation
 luaAutomation filepath =
   Automation
     { _name = AutomationName.LuaScript filepath
-    -- these two will need to be dynamically definable and resettable
-    -- within this Automation if this is going to make sense for lua
-    , _devices = []
-    , _wantsFullControlOver = []
     , _cleanup = mkCleanupAutomation filepath
     , _run = mkRunAutomation filepath
     }
@@ -72,20 +72,24 @@ mkCleanupAutomation
   -> m ()
 mkCleanupAutomation filepath = \_broadcastChan -> do
   debug $ "Cleaning up LuaScript Automation for script " <> T.pack filepath
-  (logger', mqttClient') <- view $ lensProduct logger mqttClient
-  messageQueue' <- view messageQueue
+
+  logger' <- view logger
+  mqttClient' <- view mqttClient
+  daemonBroadcast' <- view daemonBroadcast
+  devices' <- view devices
+
   luaScriptPath' <- view $ config . luaScriptPath
   luaState <- liftIO Lua.newstate
 
   luaStatusString <- liftIO . Lua.unsafeRunWith luaState $ do
     Lua.openlibs -- load the default Lua packages
-    loadDSL filepath logger' mqttClient' messageQueue'
+    loadDSL filepath logger' mqttClient' daemonBroadcast' devices'
     (Lua.loadfile $ luaScriptPath' <> filepath) *> Lua.callTrace 0 0
+    -- should probably test that this actually exists
     _ <- Lua.getglobal "cleanup"
     Lua.callTrace 0 1
 
   debug $ "Lua cleanup finished with status '" <> T.pack (show luaStatusString) <> "'."
-
 
 mkRunAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
@@ -94,14 +98,18 @@ mkRunAutomation
   -> m ()
 mkRunAutomation filepath = \_broadcastChan -> do
   debug $ "Initializing a LuaScript Automation for script " <> T.pack filepath
-  (logger', mqttClient') <- view $ lensProduct logger mqttClient
-  messageQueue' <- view messageQueue
+
+  logger' <- view logger
+  mqttClient' <- view mqttClient
+  daemonBroadcast' <- view daemonBroadcast
+  devices' <- view devices
+
   luaScriptPath' <- view $ config . luaScriptPath
   luaState <- liftIO Lua.newstate
 
   luaStatusString <- liftIO . Lua.unsafeRunWith luaState $ do
     Lua.openlibs -- load the default Lua packages
-    loadDSL filepath logger' mqttClient' messageQueue'
+    loadDSL filepath logger' mqttClient' daemonBroadcast' devices'
     -- apparently you need call/callTrace after loadfile to execute
     -- the chunk (whatever this actually means, it's not clear to
     -- me--is it running the script?), otherwise you can't load a
@@ -110,6 +118,8 @@ mkRunAutomation filepath = \_broadcastChan -> do
     -- clue for an hour before spelunking in the HsLua test code
     -- happened to yield results (see
     -- hslua-core/test/HsLua/CoreTests.hs)
+    --
+    -- ...also TODO this needs error handling
     (Lua.loadfile $ luaScriptPath' <> filepath) *> Lua.callTrace 0 0
     loopAutomation
 
@@ -121,20 +131,32 @@ mkRunAutomation filepath = \_broadcastChan -> do
     -- in Lua which blocks forever.
     loopAutomation :: Lua.LuaE Lua.Exception ()
     loopAutomation = do
+      -- TODO needs error handling
       _ <- Lua.getglobal "loopAutomation"
       Lua.callTrace 0 1
       loopAutomation
 
-loadDSL ::
-  FilePath -> LoggerVariant -> MQTTClientVariant -> TQueue Daemon.Message -> Lua.LuaE Lua.Exception ()
-loadDSL filepath logger' mqttClient' messageQueue' = do
-    pushDocumentedFunction publish *> Lua.setglobal "publish"
-    pushDocumentedFunction publishJSON *> Lua.setglobal "publishJSON"
-    pushDocumentedFunction sendMessage *> Lua.setglobal "sendMessage"
-    pushDocumentedFunction logDebugMsg *> Lua.setglobal "logDebugMsg"
-    pushDocumentedFunction sleep *> Lua.setglobal "sleep"
+loadDSL
+  :: FilePath
+  -> LoggerVariant
+  -> MQTTClientVariant
+  -> TChan Daemon.Message
+  -> TVar (Map DeviceId Device)
+  -> Lua.LuaE Lua.Exception ()
+loadDSL filepath logger' mqttClient' daemonBroadcast' devices' = do
+  forM_ functions $ \(fn, fnName) ->
+    pushDocumentedFunction fn *> Lua.setglobal fnName
 
   where
+    functions =
+      [ (publish, "publish")
+      , (publishJSON, "publishJSON")
+      , (sendMessage, "sendMessage")
+      , (logDebugMsg, "logDebugMsg")
+      , (sleep, "sleep")
+      , (register, "register")
+      ]
+
     publishImpl :: Text -> ByteString -> Lua.LuaE Lua.Exception ()
     publishImpl topic msg =
       let
@@ -166,7 +188,7 @@ loadDSL filepath logger' mqttClient' messageQueue' = do
     sendMessage =
       defun "publish"
       ### (\msg -> fromMaybe (pure ()) $
-             atomically <$> writeTQueue messageQueue' <$> decode msg
+             atomically <$> writeTChan daemonBroadcast' <$> decode msg
           )
       <#> parameter LM.peekLazyByteString "string" "message" "string to log"
       =#> []
@@ -185,12 +207,24 @@ loadDSL filepath logger' mqttClient' messageQueue' = do
       <#> parameter LM.peekIntegral "int" "seconds" "seconds to delay thread"
       =#> []
 
+    register :: DocumentedFunction Lua.Exception
+    register =
+      defun "register"
+      ### (\deviceId -> do
+              let registrationMsg = Daemon.Register deviceId (AutomationName.LuaScript filepath)
+              atomically $ writeTChan daemonBroadcast' registrationMsg
+              deviceMap <- atomically . readTVar $ devices'
+              case M.lookup deviceId deviceMap of
+                Just device -> do
+                  pure device
+                -- I REALLY need to think through the error handling here more
+                Nothing -> throwIO (Lua.Exception "device doesn't exist")
+          )
+      <#> parameter LM.peekText "string" "deviceId" "Id for device to register"
+      =#> functionResult LA.pushViaJSON "device" "device"
+
+-- this is here because it's useful for throwing into other
+-- Lua-Monad functions during debugging
 logDebugMsg' :: FilePath -> LoggerVariant -> Text -> IO ()
 logDebugMsg' filepath logger' msg =
-  -- this is testing-motivated boilerplate
-  case logger' of
-    TFLogger tfLogger ->
-      App.log tfLogger Debug (T.pack filepath <>  " : " <> msg)
-    QLogger qLogger -> atomically . modifyTVar' qLogger $ \msgs ->
-      msgs <> [ T.pack (show Debug) <> " - " <> T.pack filepath <> ": " <> msg ]
-
+  App.logWithVariant logger' Debug (T.pack filepath <> ": " <> msg)

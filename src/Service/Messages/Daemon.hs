@@ -9,7 +9,6 @@ module Service.Messages.Daemon
   , _SendTo
   , _Start
   , _Stop
-  , _StopServer
   )
 where
 
@@ -28,18 +27,18 @@ import Data.Text (Text)
 import Data.Maybe (fromMaybe)
 import GHC.Generics (Generic)
 import Service.AutomationName (AutomationName, parseAutomationName)
-import Service.Device (Device)
+import Service.Device (Device, DeviceId)
 
 type AutomationSchedule = Text
 type AutomationMessage = Value
 
 data Message where
-  StopServer :: Message
   Start :: AutomationName -> Message
   Stop :: AutomationName -> Message
   SendTo :: AutomationName -> AutomationMessage -> Message
   Schedule :: Message -> AutomationSchedule -> Message
   DeviceUpdate :: [Device] -> Message
+  Register :: DeviceId -> AutomationName -> Message
   Null :: Message
   deriving (Generic, Eq, Show)
 

@@ -1,139 +1,169 @@
 module Service.App.Daemon
-  ( DeviceMap
-  , ThreadMap
+  ( ThreadMap
+  , loadDevices -- exported for test use
   , run
-  , run'
+  , run' -- exported for test use
   )
 where
 
 import Prelude hiding (filter)
 
-import Control.Lens ((^.), view)
-import Control.Lens.Unsound (lensProduct)
+import Control.Lens (view)
 import Control.Monad (void)
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
 import Data.Aeson (Value)
-import Data.Foldable (for_, forM_)
-import Data.List.NonEmpty (NonEmpty((:|)), nonEmpty)
+import Data.Foldable (for_)
 import qualified Data.Map.Strict as M
+import Data.Map.Strict (Map)
 import qualified Data.Text as T
 import qualified Service.Automation as Automation
-import Service.Automation
-  ( Automation(_name)
-  , Message(..)
-  , name
-  , wantsFullControlOver
-  )
+import Service.Automation (Automation, Message(..))
 import Service.AutomationName (AutomationName, serializeAutomationName)
 import Service.Automations (findAutomation)
 import Service.App (Logger(..), MonadMQTT)
-import Service.App.DaemonState
-  ( DaemonState(..)
-  , DeviceMap
-  , ServerResponse(..)
-  , ThreadMap
-  , deviceMap
-  , findThreadsByDeviceId
-  , initDaemonState
-  , insertAutomation
-  , insertDeviceAutomation
-  , removeAutomations
-  , removeDeviceAutomations
-  , threadMap
+import qualified Service.Device as Device
+import Service.Device (Device, DeviceId)
+import Service.Env
+  ( Env
+  , appCleanup
+  , automationBroadcast
+  , config
+  , deviceRegistrations
+  , devices
+  , messageChan
+  , serverChan
   )
-import Service.Env (Env, config, devices, appCleanup, messageQueue)
 import qualified Service.Messages.Daemon as Daemon
 import Service.Messages.Daemon (AutomationSchedule)
 import System.Cron (addJob, execSchedule)
-import UnliftIO.Async (async, cancel)
-import UnliftIO.Exception (bracket, bracket_)
+import UnliftIO.Async (Async, async, cancel)
+import UnliftIO.Exception (bracket, finally)
 import UnliftIO.STM
-  ( TChan
-  , TQueue
+  ( STM
+  , TChan
+  , TVar
   , atomically
   , dupTChan
-  , newTQueueIO
-  , readTQueue
-  , readTVarIO
+  , newTVarIO
+  , readTChan
+  , readTVar
+  , stateTVar
   , writeTChan
-  , writeTQueue
   , writeTVar
   )
 
+type AutomationEntry m = (Automation m, Async ())
+
+type ThreadMap m = M.Map AutomationName (AutomationEntry m)
 
 run
   :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m)
   => m ()
 run = do
-  daemonState <- liftIO initDaemonState
-  responseQueue <- newTQueueIO
-  run' daemonState responseQueue
-  -- -- only once the Daemon is running do we want to trigger a call to zigbee2mqtt to load the devices:
-  -- publish Zigbee2MQTTDevice.topic 
+  threadMapTV <- newTVarIO M.empty
+  run' threadMapTV
 
 --
--- Splitting this from `run` is a hack to allow me to test the main
--- logic more easily. I suppose I could move the initialization above
--- to Main but it feels more natural to wrap it in this module, and by
--- the same token I don't feel like DaemonState should be stored in
--- Env.
+-- Splitting this from the above is a bit of a hack to enable easily
+-- testing threadMapTV without needing to include it in Env, which
+-- brings the Monad m type variable into play, which makes it a pain
+-- to deal with. Anyways ThreadMap is really only a concern of this
+-- module anyways, so it's probably for the best regardless.
 --
 run'
   :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m)
-  => DaemonState m
-  -> TQueue ServerResponse -- see note below about writing to responseQueue
+  => TVar (ThreadMap m)
   -> m ()
-run' daemonState responseQueue = do
+run' threadMapTV = do
   config' <- view config
   appCleanup' <- view appCleanup
 
-  bracket_ (pure ()) (cleanupAutomations appCleanup' daemonState) $ do
+  flip finally (cleanupAutomations appCleanup' threadMapTV) $ do
     debug . T.pack . show $ config'
     go
 
   where
     go = do
-      messageQueue' <- view messageQueue
+      messageChan' <- view messageChan
       storedDevices <- view devices
-      msg <- atomically $ readTQueue messageQueue'
+      serverChan' <- view serverChan
+      msg <- atomically $ readTChan messageChan'
       debug $ "Received Message in main Daemon thread: " <> T.pack (show msg)
 
       case msg of
-        Daemon.StopServer -> do
-          -- see note below about writing to responseQueue
-          atomically $ writeTQueue responseQueue StoppingServer
+        Daemon.Start automationName ->
+          initializeAndRunAutomation threadMapTV automationName *> go
 
-        Daemon.Start automationName -> runServerAction $
-          initializeAndRunAutomation daemonState automationName
+        Daemon.Stop automationName ->
+          stopAutomation threadMapTV automationName *> go
 
-        Daemon.Stop automationName -> runServerAction $
-          stopAutomation daemonState automationName
+        Daemon.SendTo automationName msg' ->
+          sendClientMsg automationName serverChan' msg' *> go
 
-        Daemon.SendTo automationName msg' -> runServerAction $
-          sendClientMsg automationName (_serverChan daemonState) msg'
-
-        Daemon.Schedule automationMessage automationSchedule -> runServerAction $ do
+        Daemon.Schedule automationMessage automationSchedule ->
           addScheduleAutomationMessage
-            automationMessage automationSchedule messageQueue'
+            automationMessage automationSchedule messageChan' *> go
 
-        Daemon.DeviceUpdate devices' -> runServerAction $ do
-          atomically $ writeTVar storedDevices devices'
+        Daemon.DeviceUpdate devices' -> do
+          loadDevices storedDevices devices'
+          go
 
-        Daemon.Null -> runServerAction $
-          debug "Null Automation"
+        Daemon.Register deviceId automationName ->
+          addRegisteredDevice messageChan' deviceId automationName *> go
 
-    runServerAction action = do
-      action
-      -- To be honest this is just here to allow me to write
-      -- integration tests that exercise this entire daemon process
-      -- while it's running in a separate thread. If there was another
-      -- way to ensure that I can block on checking assertions while
-      -- running this process in a thread, I'd get rid of this,
-      -- because it doesn't actually provide any functionality in a
-      -- production context.
-      atomically $ writeTQueue responseQueue MsgLoopEnd
-      go
+        Daemon.Null -> debug "Null Automation" *> go
+
+initializeAndRunAutomation
+  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  => TVar (ThreadMap m)
+  -> AutomationName
+  -> m ()
+initializeAndRunAutomation
+  threadMapTV automationName = do
+    automationBroadcast' <- view automationBroadcast
+    clientChan <- atomically $ dupTChan automationBroadcast'
+
+    let automation = findAutomation automationName
+
+    clientAsync <- async $
+      bracket (pure clientChan) (Automation._cleanup automation) (Automation._run automation)
+
+    atomically $
+      insertAutomation threadMapTV automationName (automation, clientAsync)
+
+  where
+    --
+    -- Given a TVar ThreadMap and a (AutomationName, (Automation m, Async ()))
+    -- pair, inserts a new entry into the ThreadMap. If the ThreadMap
+    -- already contains a List of (Automation m, Async ()) pairs at that
+    -- index it will append a new one to the end of that List, otherwise
+    -- it will add a new List with the new entry as its first member.
+    --
+    insertAutomation :: TVar (ThreadMap m) -> AutomationName -> AutomationEntry m -> STM ()
+    insertAutomation threadMapTV' automationName' automationEntry = do
+      threadMap' <- readTVar threadMapTV'
+      writeTVar threadMapTV' $ M.insert automationName' automationEntry threadMap'
+
+stopAutomation :: (Logger m, MonadUnliftIO m) => TVar (ThreadMap m) -> AutomationName -> m ()
+stopAutomation threadMapTV automationName = do
+  threadMap <- atomically . readTVar $ threadMapTV
+  info $ "Shutting down Automation " <> serializeAutomationName automationName
+  for_ (M.lookup automationName threadMap) $ \(_, async') -> cancel async'
+  atomically $ do
+    writeTVar threadMapTV $ M.delete automationName threadMap
+
+cleanupAutomations
+  :: (Logger m, MonadIO m, MonadReader Env m, MonadUnliftIO m)
+  => IO ()
+  -> TVar (ThreadMap m)
+  -> m ()
+cleanupAutomations appCleanup' threadMapTV = do
+  threadMap <- atomically . readTVar $ threadMapTV
+  for_ (M.assocs threadMap) $ \(automationName, (_, async')) -> do
+    info $ "Shutting down Automation " <> serializeAutomationName automationName
+    cancel async'
+  liftIO appCleanup'
 
 sendClientMsg
   :: (MonadUnliftIO m) => AutomationName -> TChan Message -> Value -> m ()
@@ -144,68 +174,30 @@ addScheduleAutomationMessage
   :: (MonadIO m)
   => Daemon.Message
   -> AutomationSchedule
-  -> TQueue Daemon.Message
+  -> TChan Daemon.Message
   -> m ()
-addScheduleAutomationMessage automationMessage automationSchedule messageQueue' = do
+addScheduleAutomationMessage automationMessage automationSchedule messageChan' = do
   void $ liftIO $ execSchedule $ flip addJob automationSchedule $ do
-    atomically $ writeTQueue messageQueue' automationMessage
+    atomically $ writeTChan messageChan' automationMessage
 
-initializeAndRunAutomation
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
-  => DaemonState m
+loadDevices
+  :: (MonadUnliftIO m) => TVar (Map DeviceId Device) -> [Device] -> m ()
+loadDevices storedDevices devices' =
+  atomically . writeTVar storedDevices . M.fromList $
+    (\d -> (Device._id d, d)) <$> devices'
+
+addRegisteredDevice
+  :: (MonadReader Env m, MonadUnliftIO m)
+  => TChan Daemon.Message
+  -> DeviceId
   -> AutomationName
   -> m ()
-initializeAndRunAutomation
-  (DaemonState threadMapTV deviceMapTV broadcastChan' _) automationName = do
-    clientChan <- atomically $ dupTChan broadcastChan'
-    threadMap' <- readTVarIO threadMapTV
-    deviceMap' <- readTVarIO deviceMapTV
-
-    let
-      automation = findAutomation automationName
-      automationsToStop =
-        findThreadsByDeviceId (automation ^. wantsFullControlOver) threadMap' deviceMap'
-
-    mapM_ stopAutomation' automationsToStop
-    atomically $ do
-      let stopped = _name . fst <$> automationsToStop
-      removeAutomations threadMapTV stopped
-      forM_ (nonEmpty stopped) $ \stopped' ->
-        removeDeviceAutomations deviceMapTV stopped'
-
-    clientAsync <- async $
-      bracket (pure clientChan) (Automation._cleanup automation) (Automation._run automation)
-
-    atomically $ do
-      insertAutomation threadMapTV automationName (automation, clientAsync)
-      insertDeviceAutomation deviceMapTV (automation ^. Automation.devices) automationName
-
-    where
-      stopAutomation' (act, asyn) = do
-        debug $ "Conflicting Device usage: Shutting down threads running automation "
-          <> (T.pack . show $ act ^. name)
-        cancel asyn
-
-stopAutomation :: (Logger m, MonadUnliftIO m) => DaemonState m -> AutomationName -> m ()
-stopAutomation daemonState automationName = do
-  let
-    (threadMapTV, deviceMapTV) = daemonState ^. lensProduct threadMap deviceMap
-  threadMap' <- readTVarIO threadMapTV
-  info $ "Shutting down Automation " <> serializeAutomationName automationName
-  for_ (M.lookup automationName threadMap') $ \(_, async') -> cancel async'
+addRegisteredDevice daemonBroadcast' deviceId newAutoName = do
+  deviceRegs <- view deviceRegistrations
   atomically $ do
-    writeTVar threadMapTV $ M.delete automationName threadMap'
-    removeDeviceAutomations deviceMapTV (automationName :| [])
-
-cleanupAutomations
-  :: (Logger m, MonadIO m, MonadReader Env m, MonadUnliftIO m)
-  => IO ()
-  -> DaemonState m
-  -> m ()
-cleanupAutomations appCleanup' daemonState = do
-  let threadMapTV = daemonState ^. threadMap
-  threadMap' <- readTVarIO threadMapTV
-  for_ (M.assocs threadMap') $ \(automationName, (_, async')) -> do
-    info $ "Shutting down Automation " <> serializeAutomationName automationName
-    cancel async'
-  liftIO appCleanup'
+    mPrevAutoName <- stateTVar deviceRegs $ \deviceRegs' ->
+      let mPrevAutoName' = M.lookup deviceId deviceRegs'
+      in
+        (mPrevAutoName', M.insert deviceId newAutoName deviceRegs')
+    flip (maybe $ pure ()) mPrevAutoName $ \prevAutoName ->
+      writeTChan daemonBroadcast' $ Daemon.Stop prevAutoName

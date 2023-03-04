@@ -26,8 +26,6 @@ chrizmazAutomation
 chrizmazAutomation =
   Automation
     { _name = Chrizmaz
-    , _devices = [gledoptoLightStrip]
-    , _wantsFullControlOver = [gledoptoLightStrip]
     , _cleanup = cleanupAutomation
     , _run = runAutomation
     }

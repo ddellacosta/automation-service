@@ -4,6 +4,7 @@ module Service.App
   , MonadMQTT(..)
   , log
   , logDefault
+  , logWithVariant
   , runAutomationService
   , loggerConfig
   )
@@ -77,10 +78,17 @@ logDefault level logStr = do
   setLevel <- view (config . logLevel)
   when (level >= setLevel) $ do
     logger' <- view logger
-    case logger' of
-      TFLogger tfLogger -> liftIO . log tfLogger level $ logStr
-      QLogger qLogger -> liftIO . atomically . modifyTVar' qLogger $ \msgs ->
-        msgs <> [ T.pack (show level) <> ": " <> logStr ]
+    liftIO $ logWithVariant logger' level logStr
+
+logWithVariant :: LoggerVariant -> LogLevel -> Text -> IO ()
+logWithVariant logger' level logStr =
+  -- this is all for testing purposes, mostly because spinning up
+  -- multiple TimedFastLogger instances at the same time seems to
+  -- scramble tests ONLY when building with nix (╯°□°）╯︵ ┻━┻
+  case logger' of
+    TFLogger tfLogger -> log tfLogger level $ logStr
+    QLogger qLogger -> atomically . modifyTVar' qLogger $ \msgs ->
+      msgs <> [ T.pack (show level) <> ": " <> logStr ]
 
 log :: (ToLogStr s) => TimedFastLogger -> LogLevel -> s -> IO ()
 log logger' level logStr = logger' $ \time ->

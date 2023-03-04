@@ -6,167 +6,141 @@ module Test.Integration.Service.App.Daemon
   )
 where
 
-import Control.Lens ((^.), (^?), _1)
+import Control.Lens ((^.), _1, ix, preview)
 import Control.Monad (void)
 import qualified Data.Map.Strict as M
-import Data.Text (Text)
-import Safe (headMay)
-import Service.App.DaemonState (DaemonState(_deviceMap, _threadMap))
 import Service.Automation (name)
-import qualified Service.Automations.Gold as Gold
 import Service.AutomationName (AutomationName(..))
-import Service.Env (LoggerVariant(..), logger)
+import Service.Env (daemonBroadcast, deviceRegistrations)
 import qualified Service.Messages.Daemon as Daemon
 import Test.Hspec (Spec, around, it, shouldBe)
 import Test.Integration.Service.App.DaemonTestHelpers
-  ( blockUntilNextEventLoop
-  , initAndCleanup
-  , lookupOrFail
+  ( initAndCleanup
   , testWithAsyncDaemon
+  , waitUntilEq
   )
-import Text.Regex.TDFA ((=~))
-import UnliftIO.STM (TVar, atomically, readTVar, readTVarIO, writeTQueue)
+import UnliftIO.STM (atomically, readTChan, readTVar, writeTChan)
 
 spec :: Spec
 spec = do
+  deviceRegistrationSpecs
+  -- this was timing out a bunch but now seems fine...?
   luaScriptSpecs
   threadMapSpecs
-  deviceMapSpecs
-  --
-  -- this test is SOOOOOOOPER slow, because the soonest I can
-  -- schedule anything is within a minute. I'm probably going to
-  -- turn it off and only run it occasionally, gotta figure out a
-  -- good build process for that
-  --
-  -- _schedulerSpecs
 
--- these fail every once in a while, which makes me think there is
--- some kind of edge case race condition happening here somehow
+  -- TODO: Haven't yet figured out how to test scheduler
+  -- functionality. Would like to be able to do something similar to
+  -- Ruby's timecop but haven't worked out the details there yet.
+  -- Used to have some super slow tests that showed the scheduler is
+  -- correct at least on a basic level, but due to some refactoring
+  -- the way it worked didn't make sense any more, and rather than
+  -- refactor a pointlessly slow test, I just scrapped it.
+
+deviceRegistrationSpecs :: Spec
+deviceRegistrationSpecs = do
+  around initAndCleanup $ do
+    it "allows for device registration" $
+      testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
+        let
+          mirrorLightID = "0xb4e3f9fffe14c707"
+          daemonBroadcast' = env ^. daemonBroadcast
+          deviceRegs = env ^. deviceRegistrations
+          regGoldMsgIn = Daemon.Register mirrorLightID Gold
+
+        atomically $ writeTChan daemonBroadcast' regGoldMsgIn
+
+        regGoldMsgOut <- atomically $ readTChan daemonSnooper
+        regGoldMsgOut `shouldBe` regGoldMsgIn
+
+        waitUntilEq (Just Gold) $
+          (readTVar deviceRegs >>= pure . M.lookup mirrorLightID)
+
+  around initAndCleanup $ do
+    it "sends a Stop message to the daemonBroadcast TChan for running automation when device is registered" $
+      testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
+        let
+          mirrorLightID = "0xb4e3f9fffe14c707"
+          daemonBroadcast' = env ^. daemonBroadcast
+          deviceRegs = env ^. deviceRegistrations
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Register mirrorLightID Gold
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Register mirrorLightID (LuaScript "test.lua")
+
+        regStopGoldMsg <- atomically $ do
+          void $ readTChan daemonSnooper -- register Gold
+          void $ readTChan daemonSnooper -- register LuaScript
+          readTChan daemonSnooper
+
+        regStopGoldMsg `shouldBe` Daemon.Stop Gold
+
+        waitUntilEq (Just (LuaScript "test.lua")) $
+          readTVar deviceRegs >>= pure . M.lookup mirrorLightID
+
 luaScriptSpecs :: Spec
 luaScriptSpecs = do
   around initAndCleanup $ do
+    it "allows scripts to register devices" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          mirrorLightID = "0xb4e3f9fffe14c707"
+          registrations = env ^. deviceRegistrations
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testDSL.lua")
+
+        waitUntilEq (Just (LuaScript "testDSL.lua")) $
+          readTVar registrations >>= pure . M.lookup mirrorLightID
+
+  around initAndCleanup $ do
     it "starts and shuts down a Lua script" $
-      testWithAsyncDaemon $ \env _daemonState messageQueue' responseQueue -> do
-        let (QLogger qLogger) = env ^. logger
+      testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
 
-        atomically $ writeTQueue messageQueue' $ Daemon.Start (LuaScript "test.lua")
-        blockUntilNextEventLoop responseQueue
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test.lua")
 
-        foundLoopLogEntry <- checkUntil qLogger "test.lua: loopAutomation"
-        foundLoopLogEntry `shouldBe` True
+        waitUntilEq (Just (LuaScript "test.lua")) $
+          readTVar threadMapTV >>= pure . preview (ix (LuaScript "test.lua") . _1 . name)
 
-        atomically $ writeTQueue messageQueue' $ Daemon.Stop (LuaScript "test.lua")
-        blockUntilNextEventLoop responseQueue
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "test.lua")
 
-        foundCleanupLogEntry <- checkUntil qLogger "test.lua: cleanup"
-        foundCleanupLogEntry `shouldBe` True
-
-  where
-    -- this assumes we have a sane timeout in place in case this fails
-    checkUntil :: TVar [Text] -> Text -> IO Bool
-    checkUntil qLogger matchText = do
-      logs <- atomically $ readTVar qLogger
-      case headMay . filter (=~ matchText) $ logs of
-        Just _ -> pure True
-        Nothing -> checkUntil qLogger matchText
+        waitUntilEq Nothing $
+          readTVar threadMapTV >>= pure . preview (ix (LuaScript "test.lua") . _1 . name)
 
 threadMapSpecs :: Spec
 threadMapSpecs = do
   around initAndCleanup $ do
     it "adds an entry to the ThreadMap List indexed by AutomationName" $
-      testWithAsyncDaemon $ \_env daemonState messageQueue' responseQueue -> do
-        atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
-        blockUntilNextEventLoop responseQueue
-        threadMap' <- readTVarIO $ _threadMap daemonState
-        lookupOrFail "Should have an action at index AutomationName `Gold`" Gold threadMap' $
-          \testAutomations -> testAutomations ^? _1 . name `shouldBe` Just Gold
+      testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
+        let daemonBroadcast' = env ^. daemonBroadcast
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
 
-  around initAndCleanup $ do
-    it "removes conflicting Automation entries using 'owned' Devices from ThreadMap when starting" $
-      testWithAsyncDaemon $ \_env daemonState messageQueue' responseQueue -> do
-        atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
-        blockUntilNextEventLoop responseQueue
-        atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
-        blockUntilNextEventLoop responseQueue
-        threadMap' <- readTVarIO $ _threadMap daemonState
-        lookupOrFail "Should have an action at index AutomationName `Gold`" Gold threadMap' $
-          \testAutomations -> length testAutomations `shouldBe` 1
+        waitUntilEq (Just Gold) $
+          readTVar threadMapTV >>= pure . preview (ix Gold . _1 . name)
 
   around initAndCleanup $ do
     it "removes entries from ThreadMap when stopping" $
-      testWithAsyncDaemon $ \_env daemonState messageQueue' responseQueue -> do
-        atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
-        blockUntilNextEventLoop responseQueue
-        atomically $ writeTQueue messageQueue' $ Daemon.Stop Gold
-        blockUntilNextEventLoop responseQueue
-        threadMap' <- readTVarIO $ _threadMap daemonState
+      testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
+        let daemonBroadcast' = env ^. daemonBroadcast
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Stop Gold
+        threadMap <- atomically . readTVar $ threadMapTV
         -- the void hack here is because there is no Show
         -- instance for Just Automation, but there is one for Just (), and
         -- all I care about with this test is the effect, not the
         -- value
-        (void . M.lookup Gold) threadMap' `shouldBe` Nothing
+        (void . M.lookup Gold) threadMap `shouldBe` Nothing
 
   around initAndCleanup $ do
     it "removes entries from ThreadMap for LuaScript automations as well after stopping" $
-      testWithAsyncDaemon $ \_env daemonState messageQueue' responseQueue -> do
-        atomically $ writeTQueue messageQueue' $ Daemon.Start (LuaScript "test.lua")
-        blockUntilNextEventLoop responseQueue
-        atomically $ writeTQueue messageQueue' $ Daemon.Stop (LuaScript "test.lua")
-        blockUntilNextEventLoop responseQueue
-        threadMap' <- readTVarIO $ _threadMap daemonState
+      testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
+        let daemonBroadcast' = env ^. daemonBroadcast
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test.lua")
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "test.lua")
+        threadMap <- atomically . readTVar $ threadMapTV
         -- the void hack here is because there is no Show
         -- instance for Just Automation, but there is one for Just (), and
         -- all I care about with this test is the effect, not the
         -- value
-        (void . M.lookup (LuaScript "test.lua")) threadMap' `shouldBe` Nothing
-
-deviceMapSpecs :: Spec
-deviceMapSpecs = do
-  around initAndCleanup $ do
-    it "adds an entry to the DeviceMap List indexed by DeviceId" $
-      testWithAsyncDaemon $ \_env daemonState messageQueue' responseQueue -> do
-        atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
-        blockUntilNextEventLoop responseQueue
-        deviceMap' <- readTVarIO $ _deviceMap daemonState
-        lookupOrFail
-          "Should have an action at index AutomationName `Gold`" Gold.gledoptoLightStrip deviceMap'
-            (\testAutomationNames -> length testAutomationNames `shouldBe` 1)
-
-    it "removes AutomationName from the DeviceMap entry when the Automation using it is shut down" $
-      testWithAsyncDaemon $ \_env daemonState messageQueue' responseQueue -> do
-        atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
-        blockUntilNextEventLoop responseQueue
-        atomically $ writeTQueue messageQueue' $ Daemon.Stop Gold
-        blockUntilNextEventLoop responseQueue
-        deviceMap' <- readTVarIO $ _deviceMap daemonState
-        -- see comments above about void hack
-        (void . M.lookup Gold.gledoptoLightStrip) deviceMap' `shouldBe` Nothing
-
-    it "ensures proper bookkeeping for DeviceMap entries when an Automation is shut down due to another Automation starting" $
-      testWithAsyncDaemon $ \_env daemonState messageQueue' responseQueue -> do
-        atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
-        blockUntilNextEventLoop responseQueue
-        atomically $ writeTQueue messageQueue' $ Daemon.Start Gold
-        blockUntilNextEventLoop responseQueue
-        deviceMap' <- readTVarIO $ _deviceMap daemonState
-        lookupOrFail
-          "Should have an action at index AutomationName `Gold`" Gold.gledoptoLightStrip deviceMap' $
-            \testAutomationNames -> length testAutomationNames `shouldBe` 1
-
-
-_schedulerSpecs :: Spec
-_schedulerSpecs = do
-  around initAndCleanup $ do
-    it "schedules an action to be run at a later date" $
-      testWithAsyncDaemon $ \_env daemonState messageQueue' responseQueue -> do
-        atomically $
-          writeTQueue messageQueue' $ Daemon.Schedule (Daemon.Start Gold) "* * * * *"
-        -- we want to wait for two event loops--one for handling the
-        -- Schedule message, and one for the Start message that will
-        -- be sent later--so we call this twice:
-        blockUntilNextEventLoop responseQueue
-        blockUntilNextEventLoop responseQueue
-
-        threadMap' <- readTVarIO $ _threadMap daemonState
-        let goldAutomationEntry = M.lookup Gold threadMap'
-        (void $ goldAutomationEntry) `shouldBe` (Just ())
+        (void . M.lookup (LuaScript "test.lua")) threadMap `shouldBe` Nothing

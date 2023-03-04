@@ -1,13 +1,12 @@
 module Service.Automations.Gold
   ( goldAutomation
-  , gledoptoLightStrip
   ,
   )
 where
 
 import Prelude hiding (id, init)
 
-import Control.Lens ((^?))
+import Control.Lens ((^?), view)
 import Control.Monad.Reader (MonadReader, liftIO)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Data.Aeson.Lens (key)
@@ -18,7 +17,8 @@ import qualified Service.App.Helpers as Helpers
 import Service.Automation as Automation
 import Service.AutomationName (AutomationName(..))
 import Service.Device (DeviceId)
-import Service.Env (Env)
+import Service.Env (Env, daemonBroadcast)
+import qualified Service.Messages.Daemon as Daemon
 import Service.Messages.GledoptoController
   ( Effect(..)
   , effect'
@@ -28,10 +28,10 @@ import Service.Messages.GledoptoController
   , withTransition'
   )
 import UnliftIO.Concurrent (threadDelay)
-import UnliftIO.STM (TChan, atomically, tryReadTChan)
+import UnliftIO.STM (TChan, atomically, tryReadTChan, writeTChan)
 
-gledoptoLightStrip :: DeviceId
-gledoptoLightStrip = "0xb4e3f9fffe14c707"
+mirrorLightID :: DeviceId
+mirrorLightID = "0xb4e3f9fffe14c707"
 
 goldAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
@@ -39,8 +39,6 @@ goldAutomation
 goldAutomation =
   Automation
     { _name = Gold
-    , _devices = [gledoptoLightStrip]
-    , _wantsFullControlOver = [gledoptoLightStrip]
     , _cleanup = cleanupAutomation
     , _run = runAutomation
     }
@@ -52,7 +50,7 @@ cleanupAutomation
 cleanupAutomation _broadcastChan = do
   info $ "Shutting down Gold"
 
-  lightStripTopic <- Helpers.findDeviceTopicM gledoptoLightStrip
+  lightStripTopic <- Helpers.findDeviceTopicM mirrorLightID
 
   info "turning led strip off"
   publishMQTT lightStripTopic "{\"state\": \"OFF\"}"
@@ -64,7 +62,11 @@ runAutomation
 runAutomation broadcastChan = do
   info "Running Gold"
 
-  lightStripTopic <- Helpers.findDeviceTopicM gledoptoLightStrip
+  daemonBroadcast' <- view daemonBroadcast
+  let registrationMsg = Daemon.Register mirrorLightID Gold
+  atomically $ writeTChan daemonBroadcast' registrationMsg
+
+  lightStripTopic <- Helpers.findDeviceTopicM mirrorLightID
 
   debug $ "topic? " <> (T.pack $ show lightStripTopic)
 

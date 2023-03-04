@@ -21,7 +21,7 @@ import qualified Service.Messages.Daemon as Daemon
 import Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTTDevice
 import Service.MQTTClient (mqttClientCallback, initMQTTClient)
 import System.Log.FastLogger (newTimedFastLogger)
-import UnliftIO.STM (TQueue)
+import UnliftIO.STM (TChan)
 
 
 -- this needs to be more intelligent, in particular in terms of how we
@@ -41,8 +41,8 @@ mkLogger config' = do
   pure (TFLogger tfLogger, cleanup)
 
 mkMQTTClient
-  :: Config -> LoggerVariant -> TQueue Daemon.Message -> IO (MQTTClientVariant, IO ())
-mkMQTTClient config logger messageQueue = do
+  :: Config -> LoggerVariant -> TChan Daemon.Message -> IO (MQTTClientVariant, IO ())
+mkMQTTClient config logger messageChan = do
   let
     (mqttConfig', logLevelSet) = config ^. lensProduct mqttConfig logLevel
     mqttSubs =
@@ -51,7 +51,7 @@ mkMQTTClient config logger messageQueue = do
       ]
 
   -- handle errors from not being able to connect, etc.?
-  mc <- initMQTTClient (mqttClientCallback logLevelSet logger messageQueue) mqttConfig'
+  mc <- initMQTTClient (mqttClientCallback logLevelSet logger messageChan) mqttConfig'
   (_eithers, _props) <- MQTT.subscribe mc mqttSubs []
 
   pure (MCClient $ mc, MQTT.normalDisconnect mc)

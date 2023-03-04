@@ -11,6 +11,7 @@ import Data.Aeson (decode)
 import Data.Either (fromRight)
 import Data.Foldable (for_)
 import Data.Maybe (fromMaybe)
+import qualified Data.Text as T
 import Data.X509.CertificateStore (makeCertificateStore, readCertificateStore)
 import Network.Connection (TLSSettings(..))
 import qualified Network.MQTT.Client as MQTT
@@ -26,10 +27,10 @@ import Network.TLS
   )
 import Network.TLS.Extra.Cipher (ciphersuite_default)
 import qualified Service.App as App
-import Service.Env (LogLevel(..), LoggerVariant(TFLogger), MQTTConfig(..))
+import Service.Env (LogLevel(..), LoggerVariant, MQTTConfig(..))
 import qualified Service.Messages.Daemon as Daemon
 import qualified Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTTDevice
-import UnliftIO.STM (TQueue, atomically, writeTQueue)
+import UnliftIO.STM (TChan, atomically, writeTChan)
 
 
 initMQTTClient :: MQTT.MessageCallback -> MQTTConfig -> IO MQTT.MQTTClient
@@ -87,26 +88,24 @@ initMQTTClient msgCB (MQTTConfig {..}) = do
 mqttClientCallback
   :: LogLevel
   -> LoggerVariant
-  -> TQueue Daemon.Message
+  -> TChan Daemon.Message
   -> MQTT.MessageCallback
-mqttClientCallback logLevelSet logger messagesQueue =
+mqttClientCallback logLevelSet logger daemonBroadcast =
   MQTT.SimpleCallback $ \_mc topic msg _props -> do
     when (Debug >= logLevelSet) $
-      case logger of
-        TFLogger tfLogger ->
-          App.log tfLogger Debug $ "Received message " <> show msg <> " to " <> show topic
-        _ -> pure ()
+      App.logWithVariant logger Debug $
+        "Received message " <> T.pack (show msg) <> " to " <> T.pack (show topic)
 
     let
-      write ::TQueue a -> (a -> IO ())
-      write tq = atomically . writeTQueue tq
+      write :: Daemon.Message -> IO ()
+      write = atomically . writeTChan daemonBroadcast
 
     if (topic /= Zigbee2MQTTDevice.topic)
     then
-      for_ (decode msg) $ write messagesQueue
+      for_ (decode msg) write
     else
       case Zigbee2MQTTDevice.parseDevices msg of
         Just [] -> pure ()
         Nothing -> pure ()
-        Just dd -> do
-          write messagesQueue $ Daemon.DeviceUpdate dd
+        Just devices -> do
+          write $ Daemon.DeviceUpdate devices
