@@ -90,20 +90,6 @@ deviceRegistrationSpecs = do
 luaScriptSpecs :: Spec
 luaScriptSpecs = do
   around initAndCleanup $ do
-    it "allows scripts to register devices" $
-      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
-        let
-          daemonBroadcast' = env ^. daemonBroadcast
-          mirrorLightID = "0xb4e3f9fffe14c707"
-          registrations = env ^. deviceRegistrations
-
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testDSL.lua")
-
-        waitUntilEq (Just (LuaScript "testDSL.lua")) $
-          readTVar registrations >>= pure . M.lookup mirrorLightID
-
-  around initAndCleanup $ do
     it "starts and shuts down a Lua script" $
       testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
         let
@@ -118,6 +104,20 @@ luaScriptSpecs = do
 
         waitUntilEq Nothing $
           readTVar threadMapTV >>= pure . preview (ix (LuaScript "test.lua") . _1 . name)
+
+  around initAndCleanup $ do
+    it "allows scripts to register devices" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          mirrorLightID = "0xb4e3f9fffe14c707"
+          registrations = env ^. deviceRegistrations
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testDSL.lua")
+
+        waitUntilEq (Just (LuaScript "testDSL.lua")) $
+          readTVar registrations >>= pure . M.lookup mirrorLightID
 
   around initAndCleanup $ do
     it "subscribes to topic and receives topic messages" $

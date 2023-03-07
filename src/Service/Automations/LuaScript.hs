@@ -131,19 +131,26 @@ mkRunAutomation filepath = \_broadcastChan -> do
     --
     -- ...also TODO this needs error handling
     (Lua.loadfile $ luaScriptPath' <> filepath) *> Lua.callTrace 0 0
+
+    callWhenPresent "setup"
     loopAutomation
 
   debug $ "Lua loopAutomation finished with status '" <> T.pack (show luaStatusString) <> "'."
 
   where
+    callWhenPresent :: Lua.Name -> Lua.LuaE Lua.Exception ()
+    callWhenPresent fnName = do
+      setupFn <- Lua.getglobal fnName
+      case setupFn of
+        Lua.TypeFunction -> Lua.callTrace 0 1
+        _ -> pure ()
+
     -- this is here so we can have an event-loop kinda thing that is
     -- interruptible by AsyncExceptions, vs. doing `while (true) ...`
     -- in Lua which blocks forever.
     loopAutomation :: Lua.LuaE Lua.Exception ()
     loopAutomation = do
-      -- TODO needs error handling
-      _ <- Lua.getglobal "loopAutomation"
-      Lua.callTrace 0 1
+      callWhenPresent "loop"
       loopAutomation
 
 loadDSL

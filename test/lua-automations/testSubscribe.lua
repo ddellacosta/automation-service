@@ -1,4 +1,5 @@
-function loopAutomation ()
+
+function loop ()
   topicChannel = subscribe("a/b/c")
   sleep(1)
   response = topicChannel()

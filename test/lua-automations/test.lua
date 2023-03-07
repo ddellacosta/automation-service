@@ -1,7 +1,10 @@
 
+function setup ()
+   logDebugMsg("setup")
+end
 
-function loopAutomation ()
-   logDebugMsg("loopAutomation")
+function loop ()
+   logDebugMsg("loop")
 end
 
 function cleanup ()
