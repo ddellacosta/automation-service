@@ -8,10 +8,11 @@ where
 
 import Control.Lens ((^.), (^?), _1, ix, preview)
 import Control.Monad (void)
-import Data.Aeson (decode)
 import Data.Foldable (for_, forM_)
 import qualified Data.Map.Strict as M
+import Data.Maybe (fromMaybe)
 import Network.MQTT.Topic (mkTopic)
+import Safe (headMay)
 import Service.Automation (name)
 import Service.AutomationName (AutomationName(..))
 import Service.Env
@@ -119,31 +120,34 @@ luaScriptSpecs = do
           readTVar threadMapTV >>= pure . preview (ix (LuaScript "test.lua") . _1 . name)
 
   around initAndCleanup $ do
-    it "foo bars" $
+    it "subscribes to topic and receives topic messages" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
-          mirrorLightID = "0xb4e3f9fffe14c707"
-          registrations = env ^. deviceRegistrations
           (QLogger qLogger) = env ^. logger
           mqttDispatch' = env ^. mqttDispatch
           Just topic = mkTopic "a/b/c"
+          expectedLogEntry = "Debug: testSubscribe.lua: Msg: hey"
 
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testFOO.lua")
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testSubscribe.lua")
 
-        threadDelay 3000000
+        -- seems like without a small wait here, the read on
+        -- mqttDispatch' below produces a deadlock on that TVar and
+        -- makes this time out
+        threadDelay 10000
 
         dispatchStore <- atomically $ readTVar mqttDispatch'
         let maybeActions = dispatchStore ^? ix topic
         for_ maybeActions $ \actions ->
-          forM_ actions $ ($ "{\"msg\": \"hey\"}")
+          forM_ actions ($ "{\"msg\": \"hey\"}")
 
-        threadDelay 3000000
+        let logEntryFind = do
+              logs <- readTVar qLogger
+              pure . fromMaybe "" . headMay . filter (== expectedLogEntry) $ logs
 
-        logs <- atomically $ readTVar qLogger
-        print logs
-
-        (1 :: Int) `shouldBe` (2 :: Int)
+        -- Probably the slowest part of the entire test suite. Would
+        -- be good to find another way to test this.
+        waitUntilEq expectedLogEntry logEntryFind
 
 threadMapSpecs :: Spec
 threadMapSpecs = do
