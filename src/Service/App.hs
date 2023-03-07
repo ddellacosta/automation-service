@@ -5,8 +5,9 @@ module Service.App
   , log
   , logDefault
   , logWithVariant
-  , runAutomationService
   , loggerConfig
+  , publish
+  , runAutomationService
   )
   where
 
@@ -17,6 +18,7 @@ import Control.Monad (when)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Control.Monad.Reader (MonadIO, MonadReader(..), ReaderT, liftIO, runReaderT)
 import Data.ByteString.Lazy (ByteString)
+import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import Data.Text (Text)
 import qualified Network.MQTT.Client as MQTT
@@ -82,9 +84,10 @@ logDefault level logStr = do
 
 logWithVariant :: LoggerVariant -> LogLevel -> Text -> IO ()
 logWithVariant logger' level logStr =
-  -- this is all for testing purposes, mostly because spinning up
-  -- multiple TimedFastLogger instances at the same time seems to
-  -- scramble tests ONLY when building with nix (╯°□°）╯︵ ┻━┻
+  -- LoggerVariant and related boilerplate is all for testing
+  -- purposes, mostly because spinning up multiple TimedFastLogger
+  -- instances at the same time seems to scramble tests ONLY when
+  -- building with nix (╯°□°）╯︵ ┻━┻
   case logger' of
     TFLogger tfLogger -> log tfLogger level $ logStr
     QLogger qLogger -> atomically . modifyTVar' qLogger $ \msgs ->
@@ -116,9 +119,13 @@ class (Monad m) => MonadMQTT m where
   publishMQTT :: Topic -> ByteString -> m ()
 
 instance MonadMQTT AutomationService where
-  publishMQTT topic msg = do
-    mqttClient' <- view mqttClient
-    -- this is testing-motivated boilerplate
-    case mqttClient' of
-      MCClient mc -> liftIO $ MQTT.publish mc topic msg False
-      TQClient _textTQ -> pure ()
+  publishMQTT topic msg =
+    liftIO . publish topic msg =<< view mqttClient
+
+publish :: Topic -> ByteString -> MQTTClientVariant -> IO ()
+publish topic msg mqttClient' =
+  -- MQTTClientVariant and related boilerplate is motivated by testing
+  case mqttClient' of
+    MCClient mc -> liftIO $ MQTT.publish mc topic msg False
+    TVClient tvClient -> atomically $ modifyTVar' tvClient $ \mqttMsgs ->
+      M.insert topic msg mqttMsgs

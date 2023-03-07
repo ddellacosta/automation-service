@@ -12,8 +12,9 @@ import Control.Lens (view)
 import Control.Monad (void)
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
-import Data.Aeson (Value)
+import Data.Aeson (Value, decode)
 import Data.Foldable (for_)
+import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.Map.Strict as M
 import Data.Map.Strict (Map)
 import qualified Data.Text as T
@@ -32,6 +33,7 @@ import Service.Env
   , deviceRegistrations
   , devices
   , messageChan
+  , mqttDispatch
   , serverChan
   )
 import qualified Service.Messages.Daemon as Daemon
@@ -45,6 +47,7 @@ import UnliftIO.STM
   , TVar
   , atomically
   , dupTChan
+  , modifyTVar'
   , newTVarIO
   , readTChan
   , readTVar
@@ -86,9 +89,8 @@ run' threadMapTV = do
   where
     go = do
       messageChan' <- view messageChan
-      storedDevices <- view devices
-      serverChan' <- view serverChan
       msg <- atomically $ readTChan messageChan'
+
       debug $ "Received Message in main Daemon thread: " <> T.pack (show msg)
 
       case msg of
@@ -98,7 +100,8 @@ run' threadMapTV = do
         Daemon.Stop automationName ->
           stopAutomation threadMapTV automationName *> go
 
-        Daemon.SendTo automationName msg' ->
+        Daemon.SendTo automationName msg' -> do
+          serverChan' <- view serverChan
           sendClientMsg automationName serverChan' msg' *> go
 
         Daemon.Schedule automationMessage automationSchedule ->
@@ -106,13 +109,23 @@ run' threadMapTV = do
             automationMessage automationSchedule messageChan' *> go
 
         Daemon.DeviceUpdate devices' -> do
-          loadDevices storedDevices devices'
-          go
+          storedDevices <- view devices
+          loadDevices storedDevices devices' *> go
 
         Daemon.Register deviceId automationName ->
           addRegisteredDevice messageChan' deviceId automationName *> go
 
+        Daemon.Subscribe mTopic automationBroadcastChan ->
+          for_ mTopic $ \topic -> do
+            mqttDispatch' <- view mqttDispatch
+            atomically . modifyTVar' mqttDispatch' $
+              M.insertWith (<>) topic $
+                mkDefaultTopicMsgAction automationBroadcastChan :| []
+
         Daemon.Null -> debug "Null Automation" *> go
+
+    mkDefaultTopicMsgAction automationBroadcastChan = \topicMsg ->
+      for_ (decode topicMsg) $ atomically . writeTChan automationBroadcastChan
 
 initializeAndRunAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)

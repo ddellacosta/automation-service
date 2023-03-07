@@ -48,9 +48,9 @@ initAndCleanup runTests = bracket
       qLogger <- newTVarIO []
       pure (QLogger qLogger, pure ())
 
-    mkMQTTClient _config _loggerVariant _daemonBroadcast = do
+    mkMQTTClient _config _loggerVariant _mqttDispatch = do
       fauxMQTTClient <- newTVarIO M.empty
-      pure (TQClient fauxMQTTClient, pure ())
+      pure (TVClient fauxMQTTClient, pure ())
 
 -- |
 -- | Takes a function accepting a bunch of state and returning an

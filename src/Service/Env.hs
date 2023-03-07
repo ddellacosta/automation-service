@@ -8,6 +8,7 @@ module Service.Env
   , LoggerVariant(..)
   , MQTTClientVariant(..)
   , MQTTConfig(..)
+  , MQTTDispatch
   , appCleanup
   , automationBroadcast
   , automationServiceTopicFilter
@@ -27,13 +28,18 @@ module Service.Env
   , messageChan
   , mqttClient
   , mqttConfig
+  , mqttDispatch
   , serverChan
   , uri
   )
 where
 
 import Control.Lens (makeFieldsNoPrefix)
+import Data.Aeson (decode)
+import Data.ByteString.Lazy (ByteString)
+import Data.Foldable (for_)
 import Data.Functor ((<&>))
+import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.Map.Strict as M
 import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
@@ -41,14 +47,15 @@ import qualified Data.String as S
 import Data.Text (Text)
 import Dhall (Decoder, Generic, FromDhall(..), auto, field, inputFile, record, string)
 import Network.MQTT.Client (MQTTClient)
-import Network.MQTT.Topic (Filter)
+import Network.MQTT.Topic (Filter, Topic)
 import Network.URI (URI, nullURI, parseURI)
 import qualified Service.Automation as Automation
 import Service.AutomationName (AutomationName)
 import Service.Device (Device, DeviceId)
 import qualified Service.Messages.Daemon as Daemon
+import qualified Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTTDevice
 import System.Log.FastLogger (TimedFastLogger) 
-import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO)
+import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO, writeTChan)
 
 data LogLevel = Debug | Info | Warn | Error
   deriving (Generic, Show, Eq, Ord)
@@ -108,14 +115,18 @@ data LoggerVariant
 -- this is testing-motivated boilerplate
 data MQTTClientVariant
   = MCClient MQTTClient
-  | TQClient (TVar (Map Text [Text]))
+  | TVClient (TVar (Map Topic ByteString))
 
 type DeviceRegistrations = Map DeviceId AutomationName
+
+type MsgAction = ByteString -> IO ()
+type MQTTDispatch = Map Topic (NonEmpty MsgAction)
 
 data Env = Env
   { _config :: Config
   , _logger :: LoggerVariant
   , _mqttClient :: MQTTClientVariant
+  , _mqttDispatch :: TVar MQTTDispatch
   , _daemonBroadcast :: TChan Daemon.Message
   , _messageChan :: TChan Daemon.Message
   , _devices :: TVar (Map DeviceId Device)
@@ -131,7 +142,7 @@ makeFieldsNoPrefix ''Env
 initialize
   :: FilePath
   -> (Config -> IO (LoggerVariant, IO ()))
-  -> (Config -> LoggerVariant -> TChan Daemon.Message -> IO (MQTTClientVariant, IO ()))
+  -> (Config -> LoggerVariant -> TVar MQTTDispatch -> IO (MQTTClientVariant, IO ()))
   -> IO Env
 initialize configFilePath mkLogger mkMQTTClient = do
   -- need to handle a configuration error? Dhall provides a lot of error output
@@ -142,7 +153,19 @@ initialize configFilePath mkLogger mkMQTTClient = do
 
   (logger', loggerCleanup) <- mkLogger config'
 
-  (mc, mcCleanup) <- mkMQTTClient config' logger' messageChan'
+  mqttDispatch' <- newTVarIO $ M.fromList
+    [ ("default", (\msg -> for_ (decode msg) $ write daemonBroadcast') :| [])
+    , (Zigbee2MQTTDevice.topic, (\msg ->
+          case Zigbee2MQTTDevice.parseDevices msg of
+            Just [] -> pure ()
+            Nothing -> pure ()
+            Just devicesJSON -> do
+              write daemonBroadcast' $ Daemon.DeviceUpdate devicesJSON
+          ) :| []
+      )
+    ]
+
+  (mc, mcCleanup) <- mkMQTTClient config' logger' mqttDispatch'
 
   devices' <- newTVarIO M.empty
   deviceRegistrations' <- newTVarIO M.empty
@@ -155,6 +178,7 @@ initialize configFilePath mkLogger mkMQTTClient = do
       config'
       logger'
       mc
+      mqttDispatch'
       daemonBroadcast'
       messageChan'
       devices'
@@ -162,3 +186,7 @@ initialize configFilePath mkLogger mkMQTTClient = do
       automationBroadcast'
       serverChan'
       (loggerCleanup >> mcCleanup)
+
+  where
+    write :: TChan Daemon.Message -> Daemon.Message -> IO ()
+    write daemonBroadcast' = atomically . writeTChan daemonBroadcast'

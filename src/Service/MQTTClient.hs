@@ -7,9 +7,9 @@ module Service.MQTTClient
 where
 
 import Control.Monad (when)
-import Data.Aeson (decode)
 import Data.Either (fromRight)
-import Data.Foldable (for_)
+import Data.Foldable (forM_)
+import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Data.X509.CertificateStore (makeCertificateStore, readCertificateStore)
@@ -27,10 +27,8 @@ import Network.TLS
   )
 import Network.TLS.Extra.Cipher (ciphersuite_default)
 import qualified Service.App as App
-import Service.Env (LogLevel(..), LoggerVariant, MQTTConfig(..))
-import qualified Service.Messages.Daemon as Daemon
-import qualified Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTTDevice
-import UnliftIO.STM (TChan, atomically, writeTChan)
+import Service.Env (LogLevel(..), LoggerVariant, MQTTConfig(..), MQTTDispatch)
+import UnliftIO.STM (TVar, atomically, readTVar)
 
 
 initMQTTClient :: MQTT.MessageCallback -> MQTTConfig -> IO MQTT.MQTTClient
@@ -88,24 +86,18 @@ initMQTTClient msgCB (MQTTConfig {..}) = do
 mqttClientCallback
   :: LogLevel
   -> LoggerVariant
-  -> TChan Daemon.Message
+  -> TVar MQTTDispatch
   -> MQTT.MessageCallback
-mqttClientCallback logLevelSet logger daemonBroadcast =
+mqttClientCallback logLevelSet logger mqttDispatch =
   MQTT.SimpleCallback $ \_mc topic msg _props -> do
     when (Debug >= logLevelSet) $
       App.logWithVariant logger Debug $
         "Received message " <> T.pack (show msg) <> " to " <> T.pack (show topic)
+    mqttDispatch' <- atomically $ readTVar mqttDispatch
+    case M.lookup topic mqttDispatch' of
+      Just msgAction -> forM_ msgAction ($ msg)
+      Nothing -> runDefaultMsgAction msg mqttDispatch'
 
-    let
-      write :: Daemon.Message -> IO ()
-      write = atomically . writeTChan daemonBroadcast
-
-    if (topic /= Zigbee2MQTTDevice.topic)
-    then
-      for_ (decode msg) write
-    else
-      case Zigbee2MQTTDevice.parseDevices msg of
-        Just [] -> pure ()
-        Nothing -> pure ()
-        Just devices -> do
-          write $ Daemon.DeviceUpdate devices
+  where
+    runDefaultMsgAction msg mqttDispatch' =
+      maybe (pure ()) (mapM_ ($ msg)) $ M.lookup "default" mqttDispatch'

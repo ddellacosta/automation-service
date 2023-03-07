@@ -13,6 +13,7 @@ module Service.Messages.Daemon
 where
 
 import Control.Lens (makePrisms)
+import qualified Data.Aeson as Aeson
 import Data.Aeson
   ( FromJSON(..)
   , ToJSON(..)
@@ -26,8 +27,10 @@ import Data.Aeson.Types (Parser)
 import Data.Text (Text)
 import Data.Maybe (fromMaybe)
 import GHC.Generics (Generic)
+import Network.MQTT.Topic (Topic)
 import Service.AutomationName (AutomationName, parseAutomationName)
 import Service.Device (Device, DeviceId)
+import UnliftIO.STM (TChan)
 
 type AutomationSchedule = Text
 type AutomationMessage = Value
@@ -39,13 +42,32 @@ data Message where
   Schedule :: Message -> AutomationSchedule -> Message
   DeviceUpdate :: [Device] -> Message
   Register :: DeviceId -> AutomationName -> Message
+  Subscribe :: Maybe Topic -> TChan Value -> Message
   Null :: Message
-  deriving (Generic, Eq, Show)
+  deriving (Generic, Eq) -- , Show)
+
+instance Show Message where
+  show = \case
+    Start automationName -> "Start " <> show automationName
+    Stop automationName -> "Stop " <> show automationName
+    SendTo automationName msg -> "SendTo " <> show automationName <> " " <> show msg
+    Schedule msg schedule -> "Schedule " <> show msg <> " " <> show schedule
+    DeviceUpdate devices -> "DeviceUpdate " <> show devices
+    Register deviceId automationName ->
+      "Register " <> show deviceId <> " " <> show automationName
+    Subscribe mTopic _automationListenerChannel ->
+      "Subscribe " <> show mTopic <> ", with listener channel"
+    Null -> "Null"
 
 makePrisms ''Message
 
 instance ToJSON Message where
-  toEncoding = genericToEncoding defaultOptions
+  -- at the moment I don't care what this produces, because this thing
+  -- doesn't emit Message values as JSON for any reason. Right now I
+  -- can't imagine why it ever would, but at that time I can implement
+  -- something. Right now I just want it to work with the TChan Value
+  -- in Subscribe because it keeps the design cleaner.
+  toJSON _ = Aeson.String "Message"
 
 instance FromJSON Message where
   --

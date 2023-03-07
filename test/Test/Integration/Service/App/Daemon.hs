@@ -6,12 +6,21 @@ module Test.Integration.Service.App.Daemon
   )
 where
 
-import Control.Lens ((^.), _1, ix, preview)
+import Control.Lens ((^.), (^?), _1, ix, preview)
 import Control.Monad (void)
+import Data.Aeson (decode)
+import Data.Foldable (for_, forM_)
 import qualified Data.Map.Strict as M
+import Network.MQTT.Topic (mkTopic)
 import Service.Automation (name)
 import Service.AutomationName (AutomationName(..))
-import Service.Env (daemonBroadcast, deviceRegistrations)
+import Service.Env
+  ( LoggerVariant(..)
+  , daemonBroadcast
+  , deviceRegistrations
+  , logger
+  , mqttDispatch
+  )
 import qualified Service.Messages.Daemon as Daemon
 import Test.Hspec (Spec, around, it, shouldBe)
 import Test.Integration.Service.App.DaemonTestHelpers
@@ -19,6 +28,7 @@ import Test.Integration.Service.App.DaemonTestHelpers
   , testWithAsyncDaemon
   , waitUntilEq
   )
+import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (atomically, readTChan, readTVar, writeTChan)
 
 spec :: Spec
@@ -107,6 +117,33 @@ luaScriptSpecs = do
 
         waitUntilEq Nothing $
           readTVar threadMapTV >>= pure . preview (ix (LuaScript "test.lua") . _1 . name)
+
+  around initAndCleanup $ do
+    it "foo bars" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          mirrorLightID = "0xb4e3f9fffe14c707"
+          registrations = env ^. deviceRegistrations
+          (QLogger qLogger) = env ^. logger
+          mqttDispatch' = env ^. mqttDispatch
+          Just topic = mkTopic "a/b/c"
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testFOO.lua")
+
+        threadDelay 3000000
+
+        dispatchStore <- atomically $ readTVar mqttDispatch'
+        let maybeActions = dispatchStore ^? ix topic
+        for_ maybeActions $ \actions ->
+          forM_ actions $ ($ "{\"msg\": \"hey\"}")
+
+        threadDelay 3000000
+
+        logs <- atomically $ readTVar qLogger
+        print logs
+
+        (1 :: Int) `shouldBe` (2 :: Int)
 
 threadMapSpecs :: Spec
 threadMapSpecs = do
