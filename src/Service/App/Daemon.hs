@@ -158,13 +158,13 @@ initializeAndRunAutomation
       threadMap' <- readTVar threadMapTV'
       writeTVar threadMapTV' $ M.insert automationName' automationEntry threadMap'
 
-stopAutomation :: (Logger m, MonadUnliftIO m) => TVar (ThreadMap m) -> AutomationName -> m ()
+stopAutomation
+  :: (Logger m, MonadUnliftIO m) => TVar (ThreadMap m) -> AutomationName -> m ()
 stopAutomation threadMapTV automationName = do
   threadMap <- atomically . readTVar $ threadMapTV
   info $ "Shutting down Automation " <> serializeAutomationName automationName
   for_ (M.lookup automationName threadMap) $ \(_, async') -> cancel async'
-  atomically $ do
-    writeTVar threadMapTV $ M.delete automationName threadMap
+  atomically . writeTVar threadMapTV . M.delete automationName $ threadMap
 
 cleanupAutomations
   :: (Logger m, MonadIO m, MonadReader Env m, MonadUnliftIO m)
@@ -190,8 +190,8 @@ addScheduleAutomationMessage
   -> TChan Daemon.Message
   -> m ()
 addScheduleAutomationMessage automationMessage automationSchedule messageChan' = do
-  void $ liftIO $ execSchedule $ flip addJob automationSchedule $ do
-    atomically $ writeTChan messageChan' automationMessage
+  void . liftIO . execSchedule $ flip addJob automationSchedule $
+    atomically . writeTChan messageChan' $ automationMessage
 
 loadDevices
   :: (MonadUnliftIO m) => TVar (Map DeviceId Device) -> [Device] -> m ()
@@ -209,8 +209,6 @@ addRegisteredDevice daemonBroadcast' deviceId newAutoName = do
   deviceRegs <- view deviceRegistrations
   atomically $ do
     mPrevAutoName <- stateTVar deviceRegs $ \deviceRegs' ->
-      let mPrevAutoName' = M.lookup deviceId deviceRegs'
-      in
-        (mPrevAutoName', M.insert deviceId newAutoName deviceRegs')
+      (M.lookup deviceId deviceRegs', M.insert deviceId newAutoName deviceRegs')
     flip (maybe $ pure ()) mPrevAutoName $ \prevAutoName ->
       writeTChan daemonBroadcast' $ Daemon.Stop prevAutoName

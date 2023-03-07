@@ -4,25 +4,20 @@
 module Service.Messages.Daemon
   ( Message(..)
   , AutomationSchedule
+  , _DeviceUpdate
   , _Null
+  , _Register
   , _Schedule
   , _SendTo
   , _Start
   , _Stop
+  , _Subscribe
   )
 where
 
 import Control.Lens (makePrisms)
 import qualified Data.Aeson as Aeson
-import Data.Aeson
-  ( FromJSON(..)
-  , ToJSON(..)
-  , Value
-  , (.:?)
-  , defaultOptions
-  , genericToEncoding
-  , withObject
-  )
+import Data.Aeson (FromJSON(..), ToJSON(..), Value, (.:?), withObject)
 import Data.Aeson.Types (Parser)
 import Data.Text (Text)
 import Data.Maybe (fromMaybe)
@@ -44,14 +39,24 @@ data Message where
   Register :: DeviceId -> AutomationName -> Message
   Subscribe :: Maybe Topic -> TChan Value -> Message
   Null :: Message
-  deriving (Generic, Eq) -- , Show)
+  deriving (Generic, Eq)
 
+makePrisms ''Message
+
+--
+-- This is tedious but it's not a big deal compared to having to do
+-- some other nonsense to independently pass the TChan Value around so
+-- that I can automatically generate a Show and ToJSON instance for
+-- Message. Also see the comment for ToJSON below.
+--
 instance Show Message where
   show = \case
     Start automationName -> "Start " <> show automationName
     Stop automationName -> "Stop " <> show automationName
-    SendTo automationName msg -> "SendTo " <> show automationName <> " " <> show msg
-    Schedule msg schedule -> "Schedule " <> show msg <> " " <> show schedule
+    SendTo automationName msg ->
+      "SendTo " <> show automationName <> " " <> show msg
+    Schedule msg schedule ->
+      "Schedule " <> show msg <> " " <> show schedule
     DeviceUpdate devices -> "DeviceUpdate " <> show devices
     Register deviceId automationName ->
       "Register " <> show deviceId <> " " <> show automationName
@@ -59,14 +64,14 @@ instance Show Message where
       "Subscribe " <> show mTopic <> ", with listener channel"
     Null -> "Null"
 
-makePrisms ''Message
-
 instance ToJSON Message where
-  -- at the moment I don't care what this produces, because this thing
+  --
+  -- At the moment I don't care what this produces, because this thing
   -- doesn't emit Message values as JSON for any reason. Right now I
   -- can't imagine why it ever would, but at that time I can implement
   -- something. Right now I just want it to work with the TChan Value
   -- in Subscribe because it keeps the design cleaner.
+  --
   toJSON _ = Aeson.String "Message"
 
 instance FromJSON Message where
