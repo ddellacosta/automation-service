@@ -2,8 +2,6 @@
 
 module Service.Messages.Zigbee2MQTTDevice
   ( Message(..)
-  , deviceGetterTopic
-  , deviceSetterTopic
   , parseDevices
   , topic
   )
@@ -17,10 +15,9 @@ import Data.Aeson (FromJSON, ToJSON, Value, decode)
 import Data.Aeson.Lens (key)
 import Data.ByteString.Lazy (ByteString)
 import Data.Maybe (catMaybes)
-import Data.Text (Text)
 import GHC.Generics (Generic)
-import Service.Device (Device(..))
-import Network.MQTT.Topic (Topic, mkTopic)
+import Service.Device (Device(..), parseTopic)
+import Network.MQTT.Topic (Topic(..))
 
 data Message where
   BridgeDevices :: [Value] -> Message
@@ -46,7 +43,14 @@ parseDevices devicesRawJSON =
         , mModel
         ] ->
         Just $
-          Device id name category (toText <$> mManufacturer) (toText <$> mModel)
+          Device
+            id
+            name
+            category
+            (toText <$> mManufacturer)
+            (toText <$> mModel)
+            (parseTopic . toGetTopicString $ name)
+            (parseTopic . toSetTopicString $ name)
 
       _ -> Nothing
 
@@ -61,16 +65,9 @@ parseDevices devicesRawJSON =
     toText (Aeson.String s) = s
     toText _ = ""
 
-deviceTopicText :: Device -> Text
-deviceTopicText device = "zigbee2mqtt/" <> (_name device)
+    toGetTopicString friendlyName = "zigbee2mqtt/" <> friendlyName <> "/get"
+    toSetTopicString friendlyName = "zigbee2mqtt/" <> friendlyName <> "/set"
 
-deviceSetterTopic :: Device -> Maybe Topic
-deviceSetterTopic device =
-  mkTopic $ deviceTopicText device <> "/set"
-
-deviceGetterTopic :: Device -> Maybe Topic
-deviceGetterTopic device =
-  mkTopic $ deviceTopicText device <> "/get"
-
+-- https://www.zigbee2mqtt.io/guide/usage/mqtt_topics_and_messages.html#zigbee2mqtt-bridge-devices
 topic :: Topic
 topic = "zigbee2mqtt/bridge/devices"

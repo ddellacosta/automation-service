@@ -1,24 +1,31 @@
 
-function sleep(n)
-  os.execute("sleep " .. tonumber(n))
-end
+local standingLampBulbTopId = "0x001788010c9941c5"
+local standingLampBulbMidId = "0x001788010c3b2e53"
+local standingLampBulbLowId = "0x001788010c3b38af"
 
-local livingRoomStandingLamp1Topic = "zigbee2mqtt/Living Room Standing 40W 1/set"
-local livingRoomStandingLamp2Topic = "zigbee2mqtt/Living Room Standing 40W 2/set"
-local livingRoomStandingLamp3Topic = "zigbee2mqtt/Living Room Standing 40W 3/set"
+local standingLampBulbTop = nil
+local standingLampBulbMid = nil
+local standingLampBulbLow = nil
 
-publishJSON(livingRoomStandingLamp1Topic, { state = "ON" })
-publishJSON(livingRoomStandingLamp2Topic, { state = "ON" })
-publishJSON(livingRoomStandingLamp3Topic, { state = "ON" })
-
+-- does it make sense to have this here?
 math.randomseed(os.time())
+
+function setup ()
+   standingLampBulbTop = register(standingLampBulbTopId)
+   standingLampBulbMid = register(standingLampBulbMidId)
+   standingLampBulbLow = register(standingLampBulbLowId)
+
+   publish(standingLampBulbTop, { state = "ON" })
+   publish(standingLampBulbMid, { state = "ON" })
+   publish(standingLampBulbLow, { state = "ON" })
+end
 
 function changeBulbColor (bulbTopic)
    local red = math.random(1,255)
    local blue = math.random(1,255)
    local green = math.random(1,255)
 
-   publishJSON(
+   publish(
       bulbTopic, {
          transition = 2,
          color = {
@@ -28,9 +35,9 @@ function changeBulbColor (bulbTopic)
    )
 end
 
-while (true) do
-   changeBulbColor(livingRoomStandingLamp1Topic)
-   changeBulbColor(livingRoomStandingLamp2Topic)
-   changeBulbColor(livingRoomStandingLamp3Topic)
+function loop ()
+   changeBulbColor(standingLampBulbTop._setTopic)
+   changeBulbColor(standingLampBulbMid._setTopic)
+   changeBulbColor(standingLampBulbLow._setTopic)
    sleep(6)
 end

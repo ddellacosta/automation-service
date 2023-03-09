@@ -22,7 +22,7 @@ import qualified Service.Automation as Automation
 import Service.Automation (Automation, Message(..))
 import Service.AutomationName (AutomationName, serializeAutomationName)
 import Service.Automations (findAutomation)
-import Service.App (Logger(..), MonadMQTT)
+import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Device as Device
 import Service.Device (Device, DeviceId)
 import Service.Env
@@ -115,17 +115,19 @@ run' threadMapTV = do
         Daemon.Register deviceId automationName ->
           addRegisteredDevice messageChan' deviceId automationName *> go
 
-        Daemon.Subscribe mTopic automationBroadcastChan ->
+        Daemon.Subscribe mTopic listenerBcastChan ->
           for_ mTopic $ \topic -> do
             mqttDispatch' <- view mqttDispatch
             atomically . modifyTVar' mqttDispatch' $
               M.insertWith (<>) topic $
-                mkDefaultTopicMsgAction automationBroadcastChan :| []
+                mkDefaultTopicMsgAction listenerBcastChan :| []
+            subscribeMQTT topic
+          *> go
 
         Daemon.Null -> debug "Null Automation" *> go
 
-    mkDefaultTopicMsgAction automationBroadcastChan = \topicMsg ->
-      for_ (decode topicMsg) $ atomically . writeTChan automationBroadcastChan
+    mkDefaultTopicMsgAction listenerBcastChan = \topicMsg ->
+      for_ (decode topicMsg) $ atomically . writeTChan listenerBcastChan
 
 initializeAndRunAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
@@ -139,6 +141,16 @@ initializeAndRunAutomation
 
     let automation = findAutomation automationName
 
+    --
+    -- > The more subtle difference is that this function will use
+    -- > uninterruptible masking for its cleanup handler. This is a
+    -- > subtle distinction, but at a high level, means that resource
+    -- > cleanup has more guarantees to complete. This comes at the cost
+    -- > that an incorrectly written cleanup function cannot be
+    -- > interrupted.
+    --
+    -- https://hackage.haskell.org/package/unliftio-0.2.24.0/docs/UnliftIO-Exception.html#v:bracket
+    --
     clientAsync <- async $
       bracket (pure clientChan) (Automation._cleanup automation) (Automation._run automation)
 

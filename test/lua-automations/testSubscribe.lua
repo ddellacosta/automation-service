@@ -1,7 +1,13 @@
 
+local topicChannel = nil
+
+function setup ()
+  topicChannel = subscribe("testTopic")
+end
+
 function loop ()
-  topicChannel = subscribe("a/b/c")
-  sleep(1)
-  response = topicChannel()
-  logDebugMsg("Msg: " .. response.msg)
+   response = topicChannel()
+   logDebugMsg("Msg: " .. response.msg)
+
+   sleep(1)
 end

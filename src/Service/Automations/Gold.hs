@@ -6,17 +6,18 @@ where
 
 import Prelude hiding (id, init)
 
-import Control.Lens ((^?), view)
+import Control.Lens ((^.), (^?), view)
 import Control.Monad.Reader (MonadReader, liftIO)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Data.Aeson.Lens (key)
+import Data.Foldable (for_)
 import qualified Data.Text as T
 import Network.MQTT.Client (Topic)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
 import Service.Automation as Automation
 import Service.AutomationName (AutomationName(..))
-import Service.Device (DeviceId)
+import Service.Device (DeviceId, setTopic)
 import Service.Env (Env, daemonBroadcast)
 import qualified Service.Messages.Daemon as Daemon
 import Service.Messages.GledoptoController
@@ -50,10 +51,13 @@ cleanupAutomation
 cleanupAutomation _broadcastChan = do
   info $ "Shutting down Gold"
 
-  lightStripTopic <- Helpers.findDeviceTopicM mirrorLightID
+  lightStrip <- Helpers.findDeviceM mirrorLightID
 
-  info "turning led strip off"
-  publishMQTT lightStripTopic "{\"state\": \"OFF\"}"
+  for_ lightStrip $ \lightStrip' -> do
+    let lightStripTopic = lightStrip' ^. setTopic
+
+    info "turning led strip off"
+    publishMQTT lightStripTopic "{\"state\": \"OFF\"}"
 
 runAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
@@ -66,23 +70,24 @@ runAutomation broadcastChan = do
   let registrationMsg = Daemon.Register mirrorLightID Gold
   atomically $ writeTChan daemonBroadcast' registrationMsg
 
-  lightStripTopic <- Helpers.findDeviceTopicM mirrorLightID
+  lightStrip <- Helpers.findDeviceM mirrorLightID
 
-  debug $ "topic? " <> (T.pack $ show lightStripTopic)
+  for_ lightStrip $ \lightStrip' -> do
+    let lightStripTopic = lightStrip' ^. setTopic
 
-  debug "turning on"
-  publishMQTT lightStripTopic "{\"state\": \"ON\"}"
+    debug "turning on"
+    publishMQTT lightStripTopic "{\"state\": \"ON\"}"
 
-  debug "setting color to orange"
-  publishMQTT lightStripTopic (hex' "be9fc1")
+    debug "setting color to orange"
+    publishMQTT lightStripTopic (hex' "be9fc1")
 
-  liftIO $ threadDelay (seconds 2)
+    liftIO $ threadDelay (seconds 2)
 
-  debug "setting color to pink with 3 second transition"
-  publishMQTT lightStripTopic (withTransition' 3 $ mkHex "F97C00")
+    debug "setting color to pink with 3 second transition"
+    publishMQTT lightStripTopic (withTransition' 3 $ mkHex "F97C00")
 
-  debug "starting breathe loop"
-  go lightStripTopic broadcastChan
+    debug "starting breathe loop"
+    go lightStripTopic broadcastChan
 
   where
     go

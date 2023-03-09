@@ -6,10 +6,13 @@ where
 
 import Prelude hiding (id)
 
+import Data.Aeson (encode)
 import Control.Lens ((^.))
 import Network.MQTT.Topic (mkTopic)
-import Service.Device (id, category, manufacturer, model, name)
-import Service.Messages.Zigbee2MQTTDevice (deviceSetterTopic)
+import Service.Device (category, getTopic, id, manufacturer, model, name, setTopic)
+-- actual code under test, but it's happening via loadTestDevices
+-- below, implicitly through the JSON instances defined here:
+-- import Service.Messages.Zigbee2MQTTDevice
 import Test.Helpers (loadTestDevices)
 import Test.Hspec (Spec, describe, it, shouldBe)
 
@@ -24,14 +27,12 @@ spec = describe "Zigbee2MQTT device info message parsing" $ do
     -- can point to larger system-wide breakage, potentially.
     devices <- loadTestDevices
 
-    let
-      mirrorLight = devices !! 2
-      topic = mkTopic "zigbee2mqtt/Mirror Light Strip/set"
+    let mirrorLight = devices !! 2
 
     (mirrorLight ^. id) `shouldBe` "0xb4e3f9fffe14c707"
     (mirrorLight ^. name) `shouldBe` "Mirror Light Strip"
     (mirrorLight ^. category) `shouldBe` "Router"
     (mirrorLight ^. manufacturer) `shouldBe` Just "GLEDOPTO"
     (mirrorLight ^. model) `shouldBe` Just "GL-C-007P"
-
-    deviceSetterTopic mirrorLight `shouldBe` topic
+    (mirrorLight ^. getTopic) `shouldBe` "zigbee2mqtt/Mirror Light Strip/get"
+    (mirrorLight ^. setTopic) `shouldBe` "zigbee2mqtt/Mirror Light Strip/set"

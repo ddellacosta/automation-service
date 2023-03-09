@@ -43,6 +43,7 @@ common shared
     , network-uri ^>= 2.6.4.1
     , pretty-simple
     , random ^>= 1.2.1.1
+    , retry ^>= 0.9.3.0
     , safe ^>= 0.3.19
     , scotty ^>= 0.12
     , text ^>= 1.2.5.0
@@ -52,6 +53,7 @@ common shared
     , transformers ^>= 0.5.6.2
     , unliftio ^>= 0.2.24.0
     , unliftio-core ^>= 0.2.1.0
+    , unordered-containers ^>= 0.2.19.1
     , uuid ^>= 1.3.15
     , x509-store ^>= 1.6.9
 
@@ -70,11 +72,8 @@ library
       Service.Automation
     , Service.AutomationName
     , Service.Automations
-    , Service.Automations.Chrizmaz
     , Service.Automations.Gold
     , Service.Automations.LuaScript
-    , Service.Automations.OnLow
-    , Service.Automations.Trinity
     , Service.App
     , Service.App.Daemon
     , Service.App.Helpers
@@ -110,6 +109,7 @@ test-suite automation-service-tests
     , Test.Integration.Service.App.Daemon
     , Test.Integration.Service.App.DaemonTestHelpers
     , Test.Unit.Service.App.Helpers
+    , Test.Unit.Service.Device
     , Test.Unit.Service.Messages.Daemon
     , Test.Unit.Service.Messages.Zigbee2MQTTDevice
   build-depends:

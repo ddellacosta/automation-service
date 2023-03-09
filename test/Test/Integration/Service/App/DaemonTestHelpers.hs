@@ -2,6 +2,7 @@ module Test.Integration.Service.App.DaemonTestHelpers
   ( initAndCleanup
   , testWithAsyncDaemon
   , waitUntilEq
+  , waitUntilEqSTM
   )
   where
 
@@ -99,9 +100,18 @@ testWithAsyncDaemon test env = do
 -- wrapped in a timeout so that it will fail if this expectation is
 -- not met, because otherwise this will run forever.
 --
-waitUntilEq :: (Eq a, Show a) => a -> STM a -> Expectation
+-- TODO: this ends up producing fairly unreadable code insofar as it
+-- needs to look like a test assertion. Need to improve the syntax so
+-- that this ends up looking like it's testing an assertion rather
+-- than waiting for something to somehow be equal after executing some
+-- incomprehensible STM code.
+--
+waitUntilEq :: (Eq a, Show a) => a -> IO a -> Expectation
 waitUntilEq expected action = do
-  actual <- atomically action
+  actual <- action
   if actual == expected
     then actual `shouldBe` expected
     else waitUntilEq expected action
+
+waitUntilEqSTM :: (Eq a, Show a) => a -> STM a -> Expectation
+waitUntilEqSTM e = waitUntilEq e . atomically

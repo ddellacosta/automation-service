@@ -14,7 +14,7 @@ module Service.App
 import Prelude hiding (log)
 
 import Control.Lens ((^.), view)
-import Control.Monad (when)
+import Control.Monad (void, when)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Control.Monad.Reader (MonadIO, MonadReader(..), ReaderT, liftIO, runReaderT)
 import Data.ByteString.Lazy (ByteString)
@@ -22,7 +22,8 @@ import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import Data.Text (Text)
 import qualified Network.MQTT.Client as MQTT
-import Network.MQTT.Client (Topic)
+import Network.MQTT.Client (Topic, subOptions)
+import Network.MQTT.Topic (toFilter)
 import Service.Env
   ( Config
   , Env
@@ -117,15 +118,24 @@ loggerConfig config' = do
 
 class (Monad m) => MonadMQTT m where
   publishMQTT :: Topic -> ByteString -> m ()
+  subscribeMQTT :: Topic -> m ()
 
 instance MonadMQTT AutomationService where
   publishMQTT topic msg =
     liftIO . publish topic msg =<< view mqttClient
+  subscribeMQTT topic =
+    liftIO . subscribe topic =<< view mqttClient
 
 publish :: Topic -> ByteString -> MQTTClientVariant -> IO ()
 publish topic msg mqttClient' =
   -- MQTTClientVariant and related boilerplate is motivated by testing
   case mqttClient' of
-    MCClient mc -> liftIO $ MQTT.publish mc topic msg False
+    MCClient mc -> MQTT.publish mc topic msg False
     TVClient tvClient -> atomically $ modifyTVar' tvClient $ \mqttMsgs ->
       M.insert topic msg mqttMsgs
+
+subscribe :: Topic -> MQTTClientVariant -> IO ()
+subscribe topic mqttClient' =
+  case mqttClient' of
+    MCClient mc -> void $ MQTT.subscribe mc [(toFilter topic, subOptions)] []
+    TVClient _tvClient -> pure ()

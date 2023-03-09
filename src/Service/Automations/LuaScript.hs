@@ -4,15 +4,17 @@ module Service.Automations.LuaScript
   )
 where
 
+
 import Prelude hiding (id, init)
 
 import Control.Lens (view)
+import Control.Monad (void)
 import Control.Monad.IO.Unlift (MonadUnliftIO(..), liftIO)
 import Control.Monad.Reader (MonadReader)
 import Data.Aeson (Value, decode, encode, object)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Char8 as BS
-import Data.Foldable (forM_)
+import Data.Foldable (for_)
 import Data.Maybe (fromMaybe)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
@@ -37,7 +39,7 @@ import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Automation as Automation
 import Service.Automation (Automation(..))
 import qualified Service.AutomationName as AutomationName
-import Service.Device (Device, DeviceId)
+import Service.Device (Device, DeviceId, toLuaDevice)
 import Service.Env
   ( Env
   , LogLevel(Debug)
@@ -45,6 +47,7 @@ import Service.Env
   , MQTTClientVariant(..)
   , config
   , daemonBroadcast
+  , deviceRegistrations
   , devices
   , logger
   , luaScriptPath
@@ -58,6 +61,7 @@ import UnliftIO.STM
   , TVar
   , atomically
   , dupTChan
+  , modifyTVar'
   , newBroadcastTChan
   , readTVar
   , tryReadTChan
@@ -94,10 +98,18 @@ mkCleanupAutomation filepath = \_broadcastChan -> do
   luaStatusString <- liftIO . Lua.unsafeRunWith luaState $ do
     Lua.openlibs -- load the default Lua packages
     loadDSL filepath logger' mqttClient' daemonBroadcast' devices'
-    (Lua.loadfile $ luaScriptPath' <> filepath) *> Lua.callTrace 0 0
-    -- should probably test that this actually exists
-    _ <- Lua.getglobal "cleanup"
-    Lua.callTrace 0 1
+    loadScript luaScriptPath' filepath *> Lua.callTrace 0 0
+    callWhenExists "cleanup"
+
+  --
+  -- I would mask here but bracket in UnliftIO.Exception uses
+  -- uninterruptible masking for the cleanup handler so it's
+  -- unnecessary...have to be careful about what we allow in cleanup
+  -- functions though. Also see comment in Service.App.Daemon.
+  --
+  deviceRegs <- view deviceRegistrations
+  atomically $ modifyTVar' deviceRegs $
+    M.filter (/= AutomationName.LuaScript filepath)
 
   debug $ "Lua cleanup finished with status '" <> T.pack (show luaStatusString) <> "'."
 
@@ -130,28 +142,36 @@ mkRunAutomation filepath = \_broadcastChan -> do
     -- hslua-core/test/HsLua/CoreTests.hs)
     --
     -- ...also TODO this needs error handling
-    (Lua.loadfile $ luaScriptPath' <> filepath) *> Lua.callTrace 0 0
+    loadScript luaScriptPath' filepath *> Lua.callTrace 0 0
 
-    callWhenPresent "setup"
+    void $ callWhenExists "setup"
     loopAutomation
 
   debug $ "Lua loopAutomation finished with status '" <> T.pack (show luaStatusString) <> "'."
 
   where
-    callWhenPresent :: Lua.Name -> Lua.LuaE Lua.Exception ()
-    callWhenPresent fnName = do
-      setupFn <- Lua.getglobal fnName
-      case setupFn of
-        Lua.TypeFunction -> Lua.callTrace 0 1
-        _ -> pure ()
-
     -- this is here so we can have an event-loop kinda thing that is
     -- interruptible by AsyncExceptions, vs. doing `while (true) ...`
     -- in Lua which blocks forever.
     loopAutomation :: Lua.LuaE Lua.Exception ()
     loopAutomation = do
-      callWhenPresent "loop"
-      loopAutomation
+      result <- callWhenExists "loop"
+      maybe (pure ()) (const loopAutomation) result
+
+loadScript :: FilePath -> FilePath -> Lua.LuaE Lua.Exception Lua.Status
+loadScript luaScriptPath' filepath =
+  Lua.loadfile $ luaScriptPath' <> filepath <> ".lua"
+
+-- the Maybe here is a little bit hacky, just to let me match on
+-- it in loopAutomation in mkRunAutomation so that doesn't run
+-- endlessly. I would like some better error handling for the
+-- callTrace too:
+callWhenExists :: Lua.Name -> Lua.LuaE Lua.Exception (Maybe ())
+callWhenExists fnName = do
+  setupFn <- Lua.getglobal fnName
+  case setupFn of
+    Lua.TypeFunction -> Just <$> Lua.callTrace 0 1
+    _ -> pure Nothing
 
 loadDSL
   :: FilePath
@@ -161,100 +181,67 @@ loadDSL
   -> TVar (Map DeviceId Device)
   -> Lua.LuaE Lua.Exception ()
 loadDSL filepath logger' mqttClient' daemonBroadcast' devices' = do
-  forM_ functions $ \(fn, fnName) ->
+  for_ functions $ \(fn, fnName) ->
     pushDocumentedFunction fn *> Lua.setglobal fnName
 
   where
     functions =
       [ (logDebugMsg, "logDebugMsg")
-      , (publishJSON, "publishJSON")
+      , (publish, "publish")
+      , (publishString, "publishString")
       , (register, "register")
       , (sendMessage, "sendMessage")
       , (sleep, "sleep")
       , (subscribe, "subscribe")
-      , (publish, "publish")
       ]
 
     logDebugMsg :: DocumentedFunction Lua.Exception
     logDebugMsg =
       defun "logDebugMsg"
+      -- I'll be honest with you, I have no idea what types any of
+      -- these combinators are, other than having a bunch of LuaE in
+      -- there
       ### liftIO . logDebugMsg' filepath logger'
       <#> parameter LM.peekText "string" "logString" "string to log"
       =#> []
-
-    register :: DocumentedFunction Lua.Exception
-    register =
-      defun "register"
-      ### (\deviceId -> do
-              let registrationMsg =
-                    Daemon.Register deviceId (AutomationName.LuaScript filepath)
-              atomically . writeTChan daemonBroadcast' $ registrationMsg
-              deviceMap <- atomically . readTVar $ devices'
-              case M.lookup deviceId deviceMap of
-                Just device -> do
-                  pure device
-                -- I REALLY need to think through the error handling here more
-                Nothing -> throwIO (Lua.Exception "device doesn't exist")
-          )
-      <#> parameter LM.peekText "string" "deviceId" "Id for device to register"
-      =#> functionResult LA.pushViaJSON "device" "device"
 
     publishImpl :: Text -> ByteString -> Lua.LuaE Lua.Exception ()
     publishImpl topic msg = liftIO $
       App.publish (fromMaybe "" $ mkTopic topic) msg mqttClient'
 
-    mkListenerFn :: TChan Value -> IO (DocumentedFunction Lua.Exception)
-    mkListenerFn incomingChan = do
-      fnName' <- liftIO UUID.nextRandom
-      let fnName = BS.pack . UUID.toString $ fnName'
-      pure $
-        defun (Lua.Name fnName)
-        -- we don't want this to block, it prevents LuaScript threads
-        -- from being interruptible
-        ### (atomically $ do
-                tryReadTChan incomingChan >>= \mMsg ->
-                  -- TODO: make the default response better
-                  pure $ fromMaybe (object [("msg", "NoMsg")]) mMsg
-            )
-        =#> functionResult LA.pushViaJSON "incoming" "incoming data from subscribed topic"
-
-    subscribe :: DocumentedFunction Lua.Exception
-    subscribe =
-      defun "subscribe"
-      ### (\topic -> do
-              automationBroadcastChan <- atomically newBroadcastTChan
-              listenerChan <- atomically . dupTChan $ automationBroadcastChan
-              let subscribeMsg = Daemon.Subscribe (mkTopic topic) automationBroadcastChan
-              atomically . writeTChan daemonBroadcast' $ subscribeMsg
-              liftIO $ mkListenerFn listenerChan
-          )
-      <#> parameter LM.peekText "string" "topic" "topic to subscribe to"
-      =#> functionResult pushDocumentedFunction "function" "fn"
-
     publish :: DocumentedFunction Lua.Exception
     publish =
-      defun "publish"
-      ### publishImpl
-      <#> parameter LM.peekText "string" "topic" "topic for device"
-      <#> parameter LM.peekLazyByteString "string" "msg" "MQTT JSON string msg to send"
-      =#> []
-
-    publishJSON :: DocumentedFunction Lua.Exception
-    publishJSON =
       defun "publish"
       ### (\topic -> publishImpl topic . encode)
       <#> parameter LM.peekText "string" "topic" "topic for device"
       <#> parameter LA.peekValue "table" "jsonMsg" "MQTT JSON string msg to send"
       =#> []
 
-    sendMessage :: DocumentedFunction Lua.Exception
-    sendMessage =
-      defun "publish"
-      ### (\msg -> fromMaybe (pure ()) $
-             atomically <$> writeTChan daemonBroadcast' <$> decode msg
-          )
-      <#> parameter LM.peekLazyByteString "string" "message" "string to log"
+    publishString :: DocumentedFunction Lua.Exception
+    publishString =
+      defun "publishString"
+      ### publishImpl
+      <#> parameter LM.peekText "string" "topic" "topic for device"
+      <#> parameter LM.peekLazyByteString "string" "msg" "MQTT JSON string msg to send"
       =#> []
+
+    register :: DocumentedFunction Lua.Exception
+    register =
+      defun "register"
+      ### (\deviceId -> do
+              mDevice <- atomically $ do
+                let registrationMsg =
+                      Daemon.Register deviceId (AutomationName.LuaScript filepath)
+                writeTChan daemonBroadcast' $ registrationMsg
+                M.lookup deviceId <$> readTVar devices'
+
+              case mDevice of
+                Just device -> pure . toLuaDevice $ device
+                -- I REALLY need to think through the error handling here more
+                Nothing -> throwIO (Lua.Exception "device doesn't exist")
+          )
+      <#> parameter LM.peekText "string" "deviceId" "Id for device to register"
+      =#> functionResult LA.pushViaJSON "device" "device"
 
     sleep :: DocumentedFunction Lua.Exception
     sleep =
@@ -262,6 +249,52 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' = do
       ### threadDelay . (* 1000000)
       <#> parameter LM.peekIntegral "int" "seconds" "seconds to delay thread"
       =#> []
+
+    sendMessage :: DocumentedFunction Lua.Exception
+    sendMessage =
+      defun "sendMessage"
+      ### (\msg -> fromMaybe (pure ()) $
+             atomically <$> writeTChan daemonBroadcast' <$> decode msg
+          )
+      <#> parameter LM.peekLazyByteString "string" "message" "string to log"
+      =#> []
+
+    subscribe :: DocumentedFunction Lua.Exception
+    subscribe =
+      defun "subscribe"
+      ### (\topic -> do
+              listenerChan' <- atomically $ do
+                automationBroadcastChan <- newBroadcastTChan
+                listenerChan <- dupTChan $ automationBroadcastChan
+                writeTChan daemonBroadcast' $
+                  Daemon.Subscribe (mkTopic topic) automationBroadcastChan
+                pure listenerChan
+              liftIO . mkListenerFn $ listenerChan'
+
+              -- listenerChan <- atomically . dupTChan $ automationBroadcastChan
+              -- automationBroadcastChan <- newBroadcastTChan
+              -- atomically . writeTChan daemonBroadcast' $
+              --   Daemon.Subscribe (mkTopic topic) automationBroadcastChan
+              -- liftIO $ mkListenerFn listenerChan
+          )
+      <#> parameter LM.peekText "string" "topic" "topic to subscribe to"
+      =#> functionResult pushDocumentedFunction "function" "fn"
+
+    mkListenerFn :: TChan Value -> IO (DocumentedFunction Lua.Exception)
+    mkListenerFn listenerChan = do
+      fnName' <- liftIO UUID.nextRandom
+      let fnName = BS.pack . UUID.toString $ fnName'
+      pure $
+        defun (Lua.Name fnName)
+        -- we don't want this to block, it prevents LuaScript threads
+        -- from being interruptible
+        ### (atomically $ do
+                tryReadTChan listenerChan >>= \mMsg ->
+                  -- TODO: make the default response better
+                  pure $ fromMaybe (object [("msg", "NoMsg")]) mMsg
+            )
+        =#> functionResult LA.pushViaJSON "msg" "incoming data from subscribed topic"
+
 
 -- this is here because it's useful for throwing into other
 -- Lua-Monad functions during debugging

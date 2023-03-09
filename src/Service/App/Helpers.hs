@@ -1,6 +1,5 @@
 module Service.App.Helpers
   ( findDeviceM
-  , findDeviceTopicM
   )
   where
 
@@ -23,9 +22,3 @@ findDeviceM deviceId = do
   storedDevices <- view devices
   storedDevices' <- atomically $ readTVar storedDevices
   pure $ M.lookup deviceId storedDevices'
-
-findDeviceTopicM
-  :: (MonadIO m, MonadReader Env m) => DeviceId -> m MQTT.Topic
-findDeviceTopicM deviceId = do
-  device <- findDeviceM deviceId
-  pure $ fromMaybe "" $ Zigbee2MQTT.deviceSetterTopic =<< device

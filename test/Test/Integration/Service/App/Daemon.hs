@@ -6,11 +6,11 @@ module Test.Integration.Service.App.Daemon
   )
 where
 
-import Control.Lens ((^.), (^?), _1, ix, preview)
+import Control.Lens ((^.), (<&>), _1, ix, preview)
 import Control.Monad (void)
-import Data.Foldable (for_, forM_)
+import Data.Foldable (for_)
 import qualified Data.Map.Strict as M
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromJust, fromMaybe)
 import Network.MQTT.Topic (mkTopic)
 import Safe (headMay)
 import Service.Automation (name)
@@ -28,9 +28,10 @@ import Test.Integration.Service.App.DaemonTestHelpers
   ( initAndCleanup
   , testWithAsyncDaemon
   , waitUntilEq
+  , waitUntilEqSTM
   )
 import UnliftIO.Concurrent (threadDelay)
-import UnliftIO.STM (atomically, readTChan, readTVar, writeTChan)
+import UnliftIO.STM (atomically, readTChan, readTVar, readTVarIO, writeTChan)
 
 spec :: Spec
 spec = do
@@ -63,8 +64,8 @@ deviceRegistrationSpecs = do
         regGoldMsgOut <- atomically $ readTChan daemonSnooper
         regGoldMsgOut `shouldBe` regGoldMsgIn
 
-        waitUntilEq (Just Gold) $
-          (readTVar deviceRegs >>= pure . M.lookup mirrorLightID)
+        waitUntilEqSTM (Just Gold) $
+          readTVar deviceRegs <&> M.lookup mirrorLightID
 
   around initAndCleanup $ do
     it "sends a Stop message to the daemonBroadcast TChan for running automation when device is registered" $
@@ -75,7 +76,7 @@ deviceRegistrationSpecs = do
           deviceRegs = env ^. deviceRegistrations
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Register mirrorLightID Gold
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Register mirrorLightID (LuaScript "test.lua")
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Register mirrorLightID (LuaScript "test")
 
         regStopGoldMsg <- atomically $ do
           void $ readTChan daemonSnooper -- register Gold
@@ -84,8 +85,8 @@ deviceRegistrationSpecs = do
 
         regStopGoldMsg `shouldBe` Daemon.Stop Gold
 
-        waitUntilEq (Just (LuaScript "test.lua")) $
-          readTVar deviceRegs >>= pure . M.lookup mirrorLightID
+        waitUntilEqSTM (Just (LuaScript "test")) $
+          readTVar deviceRegs <&> M.lookup mirrorLightID
 
 luaScriptSpecs :: Spec
 luaScriptSpecs = do
@@ -95,15 +96,15 @@ luaScriptSpecs = do
         let
           daemonBroadcast' = env ^. daemonBroadcast
 
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test.lua")
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test")
 
-        waitUntilEq (Just (LuaScript "test.lua")) $
-          readTVar threadMapTV >>= pure . preview (ix (LuaScript "test.lua") . _1 . name)
+        waitUntilEqSTM (Just (LuaScript "test")) $
+          readTVar threadMapTV <&> preview (ix (LuaScript "test") . _1 . name)
 
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "test.lua")
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "test")
 
-        waitUntilEq Nothing $
-          readTVar threadMapTV >>= pure . preview (ix (LuaScript "test.lua") . _1 . name)
+        waitUntilEq Nothing $ atomically $
+          readTVar threadMapTV <&> preview (ix (LuaScript "test") . _1 . name)
 
   around initAndCleanup $ do
     it "allows scripts to register devices" $
@@ -114,11 +115,12 @@ luaScriptSpecs = do
           registrations = env ^. deviceRegistrations
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testDSL.lua")
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testRegistration")
 
-        waitUntilEq (Just (LuaScript "testDSL.lua")) $
-          readTVar registrations >>= pure . M.lookup mirrorLightID
+        waitUntilEqSTM (Just (LuaScript "testRegistration")) $
+          readTVar registrations <&> M.lookup mirrorLightID
 
+  -- I don't love this test
   around initAndCleanup $ do
     it "subscribes to topic and receives topic messages" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
@@ -126,28 +128,67 @@ luaScriptSpecs = do
           daemonBroadcast' = env ^. daemonBroadcast
           (QLogger qLogger) = env ^. logger
           mqttDispatch' = env ^. mqttDispatch
-          Just topic = mkTopic "a/b/c"
-          expectedLogEntry = "Debug: testSubscribe.lua: Msg: hey"
+          Just topic = mkTopic "testTopic"
+          expectedLogEntry = "Debug: testSubscribe: Msg: hey"
 
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testSubscribe.lua")
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testSubscribe")
 
-        -- seems like without a small wait here, the read on
+        --
+        -- Seems like without a small wait here, the read on
         -- mqttDispatch' below produces a deadlock on that TVar and
-        -- makes this time out
+        -- makes this time out, which I guess I should have assumed?
+        --
+        -- Somehow I thought readTVarIO wouldn't behave that way
+        -- because of docs [0] saying that, "this is equivalent to
+        -- `atomically . readTVar` but works much faster, because it
+        -- doesn't perform a complete transaction," but I guess I'm
+        -- misunderstanding? Or, is what is causing the deadlock/timeout
+        -- not the read on the mqttDispatch TVar?
+        --
+        -- Previously I was doing `readTVarIO mqttDispatch'` in a
+        -- loop, and then tried it with the retry package (retrying
+        -- with various policies, including backoff and explicit
+        -- delays for a fixed number of times). Finally I realized
+        -- that, no matter what, if I didn't have the delay here it
+        -- would lock up, and otherwise I didn't really need to do
+        -- anything but check it once like I'm now doing below. but I
+        -- still don't understand why it doesn't work without this
+        -- delay first.
+        --
+        -- [0] https://hackage.haskell.org/package/base-4.16.3.0/docs/GHC-Conc.html#v:readTVarIO
+        --
         threadDelay 10000
 
-        dispatchStore <- atomically $ readTVar mqttDispatch'
-        let maybeActions = dispatchStore ^? ix topic
-        for_ maybeActions $ \actions ->
-          forM_ actions ($ "{\"msg\": \"hey\"}")
-
-        let logEntryFind = do
-              logs <- readTVar qLogger
-              pure . fromMaybe "" . headMay . filter (== expectedLogEntry) $ logs
+        dispatchActions <- M.lookup topic <$> readTVarIO mqttDispatch'
+        for_ (fromJust dispatchActions) ($ "{\"msg\": \"hey\"}")
 
         -- Probably the slowest part of the entire test suite. Would
-        -- be good to find another way to test this.
-        waitUntilEq expectedLogEntry logEntryFind
+        -- be good to find another way to test this. Also the lookup
+        -- is kinda ugly.
+        waitUntilEq expectedLogEntry $ do
+          logs <- readTVarIO qLogger
+          pure . fromMaybe "" . headMay . filter (== expectedLogEntry) $ logs
+
+  around initAndCleanup $ do
+    it "removes deviceRegistration entries upon cleanup" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          deviceRegistrations' = env ^. deviceRegistrations
+          deviceId = "0xb4e3f9fffe14c707"
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testRegistration")
+
+        -- same as above...don't love it here either
+        threadDelay 10000
+
+        deviceRegs' <- atomically . readTVar $ deviceRegistrations'
+        M.lookup deviceId deviceRegs' `shouldBe` (Just (LuaScript "testRegistration"))
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "testRegistration")
+
+        waitUntilEqSTM Nothing $
+          readTVar deviceRegistrations' <&> M.lookup deviceId
 
 threadMapSpecs :: Spec
 threadMapSpecs = do
@@ -157,7 +198,7 @@ threadMapSpecs = do
         let daemonBroadcast' = env ^. daemonBroadcast
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
 
-        waitUntilEq (Just Gold) $
+        waitUntilEqSTM (Just Gold) $
           readTVar threadMapTV >>= pure . preview (ix Gold . _1 . name)
 
   around initAndCleanup $ do
@@ -177,11 +218,11 @@ threadMapSpecs = do
     it "removes entries from ThreadMap for LuaScript automations as well after stopping" $
       testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
         let daemonBroadcast' = env ^. daemonBroadcast
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test.lua")
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "test.lua")
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test")
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "test")
         threadMap <- atomically . readTVar $ threadMapTV
         -- the void hack here is because there is no Show
         -- instance for Just Automation, but there is one for Just (), and
         -- all I care about with this test is the effect, not the
         -- value
-        (void . M.lookup (LuaScript "test.lua")) threadMap `shouldBe` Nothing
+        (void . M.lookup (LuaScript "test")) threadMap `shouldBe` Nothing

@@ -8,7 +8,7 @@ where
 
 import Control.Monad (when)
 import Data.Either (fromRight)
-import Data.Foldable (forM_)
+import Data.Foldable (for_)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
@@ -95,7 +95,7 @@ mqttClientCallback logLevelSet logger mqttDispatch =
         "Received message " <> T.pack (show msg) <> " to " <> T.pack (show topic)
     mqttDispatch' <- atomically $ readTVar mqttDispatch
     case M.lookup topic mqttDispatch' of
-      Just msgAction -> forM_ msgAction ($ msg)
+      Just msgAction -> for_ msgAction ($ msg)
       Nothing -> runDefaultMsgAction msg mqttDispatch'
 
   where

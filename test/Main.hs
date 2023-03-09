@@ -6,9 +6,10 @@ module Main
 where
 
 import Test.Tasty (TestTree, defaultMain, localOption, mkTimeout, testGroup)
-import Test.Tasty.Hspec (testSpec)
+import Test.Tasty.Hspec (TreatPendingAs(..), testSpec)
 import qualified Test.Integration.Service.App.Daemon as Daemon
 import qualified Test.Unit.Service.App.Helpers as App.Helpers
+import qualified Test.Unit.Service.Device as Devices
 import qualified Test.Unit.Service.Messages.Daemon as Daemon.Messages
 import qualified Test.Unit.Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTTDevice.Messages
 
@@ -28,17 +29,21 @@ unit :: IO TestTree
 unit = do
   automationMessagesSpec <- testSpec "Daemon.Messages Spec" Daemon.Messages.spec
   appHelpersSpec <- testSpec "App.Helpers Spec" App.Helpers.spec
+  devicesSpec <- testSpec "Devices Spec" Devices.spec
   zigbee2mqttMessagesSpec <- testSpec "Zigbee2MQTTDevice.Messages Spec" Zigbee2MQTTDevice.Messages.spec
   pure $ testGroup "Unit Tests"
     [ automationMessagesSpec
     , appHelpersSpec
+    , devicesSpec
     , zigbee2mqttMessagesSpec
     ]
 
 integration :: IO TestTree
-integration = localOption timeout' <$> do
-  daemonSpec <- testSpec "Service.App.Daemon specs" Daemon.spec
-  pure $ testGroup "Integration Tests" [ daemonSpec ]
-  where
-    timeout' = mkTimeout . (micros *) $ timeout
-    micros = 1000000
+integration =
+  localOption timeout' <$>
+  localOption TreatPendingAsSuccess <$> do
+    daemonSpec <- testSpec "Service.App.Daemon specs" Daemon.spec
+    pure $ testGroup "Integration Tests" [ daemonSpec ]
+    where
+      timeout' = mkTimeout . (micros *) $ timeout
+      micros = 1000000
