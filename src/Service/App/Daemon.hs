@@ -14,6 +14,7 @@ import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
 import Data.Aeson (Value, decode)
 import Data.Foldable (for_)
+import qualified Data.List.NonEmpty as NE
 import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.Map.Strict as M
 import Data.Map.Strict (Map)
@@ -51,7 +52,6 @@ import UnliftIO.STM
   , newTVarIO
   , readTChan
   , readTVar
-  , stateTVar
   , writeTChan
   , writeTVar
   )
@@ -113,7 +113,7 @@ run' threadMapTV = do
           loadDevices storedDevices devices' *> go
 
         Daemon.Register deviceId automationName ->
-          addRegisteredDevice messageChan' deviceId automationName *> go
+          addRegisteredDevice deviceId automationName *> go
 
         Daemon.Subscribe mTopic listenerBcastChan ->
           for_ mTopic $ \topic -> do
@@ -213,14 +213,17 @@ loadDevices storedDevices devices' =
 
 addRegisteredDevice
   :: (MonadReader Env m, MonadUnliftIO m)
-  => TChan Daemon.Message
-  -> DeviceId
+  => DeviceId
   -> AutomationName
   -> m ()
-addRegisteredDevice daemonBroadcast' deviceId newAutoName = do
+addRegisteredDevice deviceId newAutoName =
+  do
   deviceRegs <- view deviceRegistrations
-  atomically $ do
-    mPrevAutoName <- stateTVar deviceRegs $ \deviceRegs' ->
-      (M.lookup deviceId deviceRegs', M.insert deviceId newAutoName deviceRegs')
-    flip (maybe $ pure ()) mPrevAutoName $ \prevAutoName ->
-      writeTChan daemonBroadcast' $ Daemon.Stop prevAutoName
+  atomically $ modifyTVar' deviceRegs $ \deviceRegs' ->
+    M.alter
+      (\case
+          Just autos -> Just (NE.append autos $ newAutoName :| [])
+          Nothing -> Just (newAutoName :| [])
+      )
+      deviceId
+      deviceRegs'

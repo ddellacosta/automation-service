@@ -84,6 +84,9 @@ mqttConfigDecoder =
         <*> field "clientKeyPath" auto
     )
 
+-- TODO maybe should at least notify the user somehow if this happens?
+-- Although I guess it should probably be an initialization check
+-- vs. doing that here
 uriDecoder :: Decoder URI
 uriDecoder = string <&> fromMaybe nullURI . parseURI
 
@@ -117,7 +120,7 @@ data MQTTClientVariant
   = MCClient MQTTClient
   | TVClient (TVar (Map Topic ByteString))
 
-type DeviceRegistrations = Map DeviceId AutomationName
+type DeviceRegistrations = Map DeviceId (NonEmpty AutomationName)
 
 type MsgAction = ByteString -> IO ()
 type MQTTDispatch = Map Topic (NonEmpty MsgAction)
@@ -153,6 +156,7 @@ initialize configFilePath mkLogger mkMQTTClient = do
 
   (logger', loggerCleanup) <- mkLogger config'
 
+  -- TODO: this feels a bit messy
   mqttDispatch' <- newTVarIO $ M.fromList
     [ ("default", (\msg -> for_ (decode msg) $ write daemonBroadcast') :| [])
     , (Zigbee2MQTTDevice.topic, (\msg ->

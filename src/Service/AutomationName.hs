@@ -14,9 +14,6 @@ data AutomationName
   = Null
   | LuaScript FilePath
   | Gold
-  | Chrizmaz
-  | Trinity
-  | OnLow
   deriving (Generic, Show, Eq, Ord)
 
 instance ToJSON AutomationName where
@@ -30,9 +27,6 @@ serializeAutomationName = T.pack . show
 parseAutomationName :: String -> Maybe AutomationName
 parseAutomationName = \case
   "Gold" -> Just Gold
-  "Chrizmaz" -> Just Chrizmaz
-  "Trinity" -> Just Trinity
-  "OnLow" -> Just OnLow
   maybeLuaScript -> case words maybeLuaScript of
     ["LuaScript", filePath] -> Just . LuaScript $ filePath
     _ -> Nothing

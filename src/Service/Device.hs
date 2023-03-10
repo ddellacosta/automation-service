@@ -5,14 +5,15 @@ module Service.Device
   ( DeviceId
   , Device(..)
   , category
-  , getTopic
   , id
   , manufacturer
   , model
   , name
   , parseTopic
-  , setTopic
   , toLuaDevice
+  , topic
+  , topicGet
+  , topicSet
   )
 where
 
@@ -43,8 +44,9 @@ data Device = Device
   , _category :: Text
   , _manufacturer :: Maybe Text
   , _model :: Maybe Text
-  , _getTopic :: Topic
-  , _setTopic :: Topic
+  , _topic :: Topic
+  , _topicGet :: Topic
+  , _topicSet :: Topic
   }
   deriving (Generic, Show, Eq)
 
@@ -66,7 +68,7 @@ instance ToJSON Topic where
 parseTopic :: Text -> Topic
 parseTopic t =
   case mkTopic t of
-    Just topic -> topic
+    Just topic' -> topic'
     Nothing -> fromJust . mkTopic $ "failedToMakeTopic"
 
 toLuaDevice :: Device -> Maybe Value

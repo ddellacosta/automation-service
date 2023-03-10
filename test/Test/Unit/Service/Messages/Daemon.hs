@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
+
 module Test.Unit.Service.Messages.Daemon
   ( spec
   ,
@@ -53,6 +55,14 @@ spec = describe "Automation message parsing" $ do
           ]
         )
       )
+
+    let
+      (Just (Schedule msg sched)) =
+        decode "{\"schedule\": {\"start\": \"Gold\"}, \"cron\": \"* * * * *\"}"
+
+    msg `shouldBe` Start Gold
+    sched `shouldBe` "* * * * *"
+
 
   it "returns a Null Automation message when given an unparseable message" $ do
     (decode "{\"what\": \"nope\"}" :: Maybe Message)

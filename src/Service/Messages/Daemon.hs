@@ -98,12 +98,15 @@ instance FromJSON Message where
     stopAutomation <- o .:? "stop"
     sendTo <- o .:? "send"
     msg <- o .:? "msg"
+    schedule <- o .:? "schedule"
+    cron <- o .:? "cron"
     pure $
       fromMaybe Null $
-        case (startAutomation, stopAutomation, sendTo) of
-          (Just automationName, _, _) -> Start <$> parseAutomationName automationName
-          (_, Just automationName, _) -> Stop <$> parseAutomationName automationName
-          (_, _, Just automationName) -> do
+        case (startAutomation, stopAutomation, sendTo, schedule, cron) of
+          (Just automationName, _, _, _, _) -> Start <$> parseAutomationName automationName
+          (_, Just automationName, _, _, _) -> Stop <$> parseAutomationName automationName
+          (_, _, Just automationName, _, _) -> do
             sendToAutomation <- parseAutomationName automationName
             SendTo sendToAutomation <$> msg
+          (_, _, _, Just msg', Just (Aeson.String cron')) -> flip Schedule cron' <$> msg'
           _ -> Nothing

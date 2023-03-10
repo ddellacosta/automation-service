@@ -49,6 +49,7 @@ parseDevices devicesRawJSON =
             category
             (toText <$> mManufacturer)
             (toText <$> mModel)
+            (parseTopic . toTopicString $ name)
             (parseTopic . toGetTopicString $ name)
             (parseTopic . toSetTopicString $ name)
 
@@ -65,8 +66,9 @@ parseDevices devicesRawJSON =
     toText (Aeson.String s) = s
     toText _ = ""
 
-    toGetTopicString friendlyName = "zigbee2mqtt/" <> friendlyName <> "/get"
-    toSetTopicString friendlyName = "zigbee2mqtt/" <> friendlyName <> "/set"
+    toTopicString friendlyName = "zigbee2mqtt/" <> friendlyName
+    toGetTopicString = (<> "/get") . toTopicString
+    toSetTopicString = (<> "/set") . toTopicString
 
 -- https://www.zigbee2mqtt.io/guide/usage/mqtt_topics_and_messages.html#zigbee2mqtt-bridge-devices
 topic :: Topic

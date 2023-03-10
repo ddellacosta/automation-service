@@ -17,7 +17,7 @@ import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.App.Helpers as Helpers
 import Service.Automation as Automation
 import Service.AutomationName (AutomationName(..))
-import Service.Device (DeviceId, setTopic)
+import Service.Device (DeviceId, topicSet)
 import Service.Env (Env, daemonBroadcast)
 import qualified Service.Messages.Daemon as Daemon
 import Service.Messages.GledoptoController
@@ -54,7 +54,7 @@ cleanupAutomation _broadcastChan = do
   lightStrip <- Helpers.findDeviceM mirrorLightID
 
   for_ lightStrip $ \lightStrip' -> do
-    let lightStripTopic = lightStrip' ^. setTopic
+    let lightStripTopic = lightStrip' ^. topicSet
 
     info "turning led strip off"
     publishMQTT lightStripTopic "{\"state\": \"OFF\"}"
@@ -73,7 +73,7 @@ runAutomation broadcastChan = do
   lightStrip <- Helpers.findDeviceM mirrorLightID
 
   for_ lightStrip $ \lightStrip' -> do
-    let lightStripTopic = lightStrip' ^. setTopic
+    let lightStripTopic = lightStrip' ^. topicSet
 
     debug "turning on"
     publishMQTT lightStripTopic "{\"state\": \"ON\"}"

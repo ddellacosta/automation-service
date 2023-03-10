@@ -6,10 +6,8 @@ where
 
 import Prelude hiding (id)
 
-import Data.Aeson (encode)
 import Control.Lens ((^.))
-import Network.MQTT.Topic (mkTopic)
-import Service.Device (category, getTopic, id, manufacturer, model, name, setTopic)
+import Service.Device (category, id, manufacturer, model, name, topic, topicGet, topicSet)
 -- actual code under test, but it's happening via loadTestDevices
 -- below, implicitly through the JSON instances defined here:
 -- import Service.Messages.Zigbee2MQTTDevice
@@ -34,5 +32,6 @@ spec = describe "Zigbee2MQTT device info message parsing" $ do
     (mirrorLight ^. category) `shouldBe` "Router"
     (mirrorLight ^. manufacturer) `shouldBe` Just "GLEDOPTO"
     (mirrorLight ^. model) `shouldBe` Just "GL-C-007P"
-    (mirrorLight ^. getTopic) `shouldBe` "zigbee2mqtt/Mirror Light Strip/get"
-    (mirrorLight ^. setTopic) `shouldBe` "zigbee2mqtt/Mirror Light Strip/set"
+    (mirrorLight ^. topic) `shouldBe` "zigbee2mqtt/Mirror Light Strip"
+    (mirrorLight ^. topicGet) `shouldBe` "zigbee2mqtt/Mirror Light Strip/get"
+    (mirrorLight ^. topicSet) `shouldBe` "zigbee2mqtt/Mirror Light Strip/set"

@@ -15,6 +15,7 @@ import Data.Aeson (Value, decode, encode, object)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import Data.Foldable (for_)
+import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
@@ -107,11 +108,22 @@ mkCleanupAutomation filepath = \_broadcastChan -> do
   -- unnecessary...have to be careful about what we allow in cleanup
   -- functions though. Also see comment in Service.App.Daemon.
   --
+  -- atomically $ modifyTVar' deviceRegs updateDeviceAutomations
   deviceRegs <- view deviceRegistrations
-  atomically $ modifyTVar' deviceRegs $
-    M.filter (/= AutomationName.LuaScript filepath)
+  atomically $ modifyTVar' deviceRegs $ \deviceRegs' ->
+    M.foldrWithKey'
+      (\di autos newRegs ->
+          case NE.nonEmpty . NE.filter (/= automationName) $ autos of
+            Just autos' -> M.insert di autos' newRegs
+            Nothing -> newRegs
+      )
+      M.empty
+      deviceRegs'
 
   debug $ "Lua cleanup finished with status '" <> T.pack (show luaStatusString) <> "'."
+
+  where
+    automationName = (AutomationName.LuaScript filepath)
 
 mkRunAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)

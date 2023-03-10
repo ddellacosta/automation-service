@@ -9,6 +9,7 @@ where
 import Control.Lens ((^.), (<&>), _1, ix, preview)
 import Control.Monad (void)
 import Data.Foldable (for_)
+import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromJust, fromMaybe)
 import Network.MQTT.Topic (mkTopic)
@@ -64,29 +65,9 @@ deviceRegistrationSpecs = do
         regGoldMsgOut <- atomically $ readTChan daemonSnooper
         regGoldMsgOut `shouldBe` regGoldMsgIn
 
-        waitUntilEqSTM (Just Gold) $
+        waitUntilEqSTM (Just (Gold :| [])) $
           readTVar deviceRegs <&> M.lookup mirrorLightID
 
-  around initAndCleanup $ do
-    it "sends a Stop message to the daemonBroadcast TChan for running automation when device is registered" $
-      testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
-        let
-          mirrorLightID = "0xb4e3f9fffe14c707"
-          daemonBroadcast' = env ^. daemonBroadcast
-          deviceRegs = env ^. deviceRegistrations
-
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Register mirrorLightID Gold
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Register mirrorLightID (LuaScript "test")
-
-        regStopGoldMsg <- atomically $ do
-          void $ readTChan daemonSnooper -- register Gold
-          void $ readTChan daemonSnooper -- register LuaScript
-          readTChan daemonSnooper
-
-        regStopGoldMsg `shouldBe` Daemon.Stop Gold
-
-        waitUntilEqSTM (Just (LuaScript "test")) $
-          readTVar deviceRegs <&> M.lookup mirrorLightID
 
 luaScriptSpecs :: Spec
 luaScriptSpecs = do
@@ -117,8 +98,13 @@ luaScriptSpecs = do
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testRegistration")
 
-        waitUntilEqSTM (Just (LuaScript "testRegistration")) $
-          readTVar registrations <&> M.lookup mirrorLightID
+        -- see comment in test below
+        threadDelay 10000
+
+        mirrorLightAutos <- readTVarIO registrations <&> M.lookup mirrorLightID
+        mirrorLightAutos
+          `shouldBe`
+          (Just (Gold :| [LuaScript "testRegistration"]))
 
   -- I don't love this test
   around initAndCleanup $ do
@@ -182,13 +168,17 @@ luaScriptSpecs = do
         -- same as above...don't love it here either
         threadDelay 10000
 
-        deviceRegs' <- atomically . readTVar $ deviceRegistrations'
-        M.lookup deviceId deviceRegs' `shouldBe` (Just (LuaScript "testRegistration"))
+        deviceRegs <- readTVarIO deviceRegistrations'
+        M.lookup deviceId deviceRegs `shouldBe` (Just (LuaScript "testRegistration" :| []))
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "testRegistration")
 
-        waitUntilEqSTM Nothing $
-          readTVar deviceRegistrations' <&> M.lookup deviceId
+        -- and here
+        threadDelay 10000
+
+        deviceRegs' <- readTVarIO deviceRegistrations'
+        M.lookup deviceId deviceRegs' `shouldBe` Nothing
+
 
 threadMapSpecs :: Spec
 threadMapSpecs = do
