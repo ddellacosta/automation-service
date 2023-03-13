@@ -75,6 +75,32 @@ initMQTTClient msgCB (MQTTConfig {..}) = do
     -- clientCertificate ::
     --   ([CertificateType], Maybe [HashAndSignatureAlgorithm], [DistinguishedName]) ->
     --   IO (Maybe (CertificateChain, PrivKey))
+    --
+    -- TODO
+    --
+    -- With TLS it is also desirable that a client connecting to a
+    -- server is able to validate ownership of the server’s public
+    -- key. This is normally undertaken using an X.509 digital
+    -- certificate issued by a trusted third party known as a
+    -- Certificate Authority (CA) which asserts the authenticity of
+    -- the public key. In some cases, a server may use a self-signed
+    -- certificate which needs to be explicitly trusted by the client
+    -- (browsers should display a warning when an untrusted
+    -- certificate is encountered), but this may be acceptable in
+    -- private networks and/or where secure certificate distribution
+    -- is possible. It is highly recommended though, to use
+    -- certificates issued by publicly trusted CAs.
+    --
+    -- at the bottom of "How does TLS work?"
+    -- https://www.internetsociety.org/deploy360/tls/basics/
+    --
+    -- The guidance I'm taking from that is that the correct thing to
+    -- do is probably to ensure that the certificate matches one in
+    -- the public record somehow, or otherwise is registered (whatever
+    -- that might mean if I have to implement this explicitly or there
+    -- is something built-in to ?) to Data.X509.CertificateStore or
+    -- etc. to help me this server (in the case of a self-signed cert).
+    --
     clientCertificate cred' (certtypes, mHashSigs, dns) = do
       putStrLn $ "Implement me -- certtypes: " <> show certtypes <> ", mHashSigs: " <> show mHashSigs <> ", DNs: " <> show dns
       pure $ Just cred'

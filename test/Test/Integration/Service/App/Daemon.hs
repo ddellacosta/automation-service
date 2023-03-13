@@ -88,6 +88,24 @@ luaScriptSpecs = do
           readTVar threadMapTV <&> preview (ix (LuaScript "test") . _1 . name)
 
   around initAndCleanup $ do
+    it "returns Lua exception info when a Lua script run fails" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          (QLogger qLogger) = env ^. logger
+          expectedLogEntry = "Debug: Lua loopAutomation finished with status '\"Lua exception: attempt to call a string value\\nstack traceback:\"'."
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testBroken")
+
+        -- see comment in test below
+        threadDelay 10000
+
+        logs <- readTVarIO qLogger
+        logEntryMatch <- pure . headMay . filter (== expectedLogEntry) $ logs
+
+        logEntryMatch `shouldBe` Just expectedLogEntry
+
+  around initAndCleanup $ do
     it "allows scripts to register devices" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
         let

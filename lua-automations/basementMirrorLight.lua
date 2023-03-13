@@ -1,11 +1,11 @@
 
 local mirrorLightId = "0xb4e3f9fffe14c707"
-local device = nil
+local mirrorLight = nil
 
 function setup ()
    logDebugMsg("setup")
-   device = register(mirrorLightId)
-   publish(device.setTopic, { state = "ON" })
+   mirrorLight = register(mirrorLightId)
+   publish(mirrorLight.topicSet, { state = "ON" })
 end
 
 function loop ()
@@ -15,7 +15,7 @@ function loop ()
 
    logDebugMsg(
       "Sending msg w/color (" .. r .. "/" .. g .. "/" .. b .. ") to topic "
-      .. device.setTopic
+      .. mirrorLight.topicSet
    )
 
    colorMsg = {
@@ -25,7 +25,7 @@ function loop ()
       }
    }
 
-   publish(device.setTopic, colorMsg)
+   publish(mirrorLight.topicSet, colorMsg)
 
    sleep(5)
 end

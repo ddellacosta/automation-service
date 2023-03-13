@@ -15,9 +15,9 @@ function setup ()
    standingLampBulbMid = register(standingLampBulbMidId)
    standingLampBulbLow = register(standingLampBulbLowId)
 
-   publish(standingLampBulbTop, { state = "ON" })
-   publish(standingLampBulbMid, { state = "ON" })
-   publish(standingLampBulbLow, { state = "ON" })
+   publish(standingLampBulbTop.topicSet, { state = "ON" })
+   publish(standingLampBulbMid.topicSet, { state = "ON" })
+   publish(standingLampBulbLow.topicSet, { state = "ON" })
 end
 
 function changeBulbColor (bulbTopic)
@@ -36,8 +36,8 @@ function changeBulbColor (bulbTopic)
 end
 
 function loop ()
-   changeBulbColor(standingLampBulbTop._setTopic)
-   changeBulbColor(standingLampBulbMid._setTopic)
-   changeBulbColor(standingLampBulbLow._setTopic)
+   changeBulbColor(standingLampBulbTop.topicSet)
+   changeBulbColor(standingLampBulbMid.topicSet)
+   changeBulbColor(standingLampBulbLow.topicSet)
    sleep(6)
 end

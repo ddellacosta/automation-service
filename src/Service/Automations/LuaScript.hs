@@ -8,7 +8,6 @@ where
 import Prelude hiding (id, init)
 
 import Control.Lens (view)
-import Control.Monad (void)
 import Control.Monad.IO.Unlift (MonadUnliftIO(..), liftIO)
 import Control.Monad.Reader (MonadReader)
 import Data.Aeson (Value, decode, encode, object)
@@ -56,7 +55,7 @@ import Service.Env
   )
 import qualified Service.Messages.Daemon as Daemon
 import UnliftIO.Concurrent (threadDelay)
-import UnliftIO.Exception (throwIO)
+import UnliftIO.Exception (handle, throwIO)
 import UnliftIO.STM
   ( TChan
   , TVar
@@ -125,6 +124,8 @@ mkCleanupAutomation filepath = \_broadcastChan -> do
   where
     automationName = (AutomationName.LuaScript filepath)
 
+type StatusMsg = String
+
 mkRunAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
   => FilePath
@@ -141,23 +142,23 @@ mkRunAutomation filepath = \_broadcastChan -> do
   luaScriptPath' <- view $ config . luaScriptPath
   luaState <- liftIO Lua.newstate
 
-  luaStatusString <- liftIO . Lua.unsafeRunWith luaState $ do
-    Lua.openlibs -- load the default Lua packages
-    loadDSL filepath logger' mqttClient' daemonBroadcast' devices'
-    -- apparently you need call/callTrace after loadfile to execute
-    -- the chunk (whatever this actually means, it's not clear to
-    -- me--is it running the script?), otherwise you can't load a
-    -- function up and run it. I wish this was better documented so I
-    -- didn't have to bang my head against reference docs without a
-    -- clue for an hour before spelunking in the HsLua test code
-    -- happened to yield results (see
-    -- hslua-core/test/HsLua/CoreTests.hs)
-    --
-    -- ...also TODO this needs error handling
-    loadScript luaScriptPath' filepath *> Lua.callTrace 0 0
+  -- note that the semantics of this follow Lua, not Haskell,
+  -- something I didn't understand when I was writing it initially.
+  --
+  -- TODO think harder about the error handling, in particular make
+  -- this failure info available to other parts of the system, in a
+  -- more structured data type
+  luaStatusString <- handle (\e -> pure . show $ (e :: Lua.Exception)) $
+    liftIO . Lua.unsafeRunWith luaState $ do
+      Lua.openlibs -- load the default Lua packages
+      loadDSL filepath logger' mqttClient' daemonBroadcast' devices'
+      -- TODO this needs error handling
+      loadScript luaScriptPath' filepath *> Lua.callTrace 0 0
 
-    void $ callWhenExists "setup"
-    loopAutomation
+      setupStatus <- maybe "setup function doesn't exist" (const "Ok") <$>
+        callWhenExists "setup"
+      liftIO $ logDebugMsg' filepath logger' $ "Setup status: " <> setupStatus
+      loopAutomation
 
   debug $ "Lua loopAutomation finished with status '" <> T.pack (show luaStatusString) <> "'."
 
@@ -165,10 +166,10 @@ mkRunAutomation filepath = \_broadcastChan -> do
     -- this is here so we can have an event-loop kinda thing that is
     -- interruptible by AsyncExceptions, vs. doing `while (true) ...`
     -- in Lua which blocks forever.
-    loopAutomation :: Lua.LuaE Lua.Exception ()
+    loopAutomation :: Lua.LuaE Lua.Exception StatusMsg
     loopAutomation = do
       result <- callWhenExists "loop"
-      maybe (pure ()) (const loopAutomation) result
+      maybe (pure "loop function doesn't exist.") (const loopAutomation) result
 
 loadScript :: FilePath -> FilePath -> Lua.LuaE Lua.Exception Lua.Status
 loadScript luaScriptPath' filepath =
@@ -199,6 +200,7 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' = do
   where
     functions =
       [ (logDebugMsg, "logDebugMsg")
+      , (microSleep, "microSleep")
       , (publish, "publish")
       , (publishString, "publishString")
       , (register, "register")
@@ -248,7 +250,9 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' = do
                 M.lookup deviceId <$> readTVar devices'
 
               case mDevice of
-                Just device -> pure . toLuaDevice $ device
+                Just device ->
+                  -- pTraceShow (toLuaDevice device) $
+                  pure . toLuaDevice $ device
                 -- I REALLY need to think through the error handling here more
                 Nothing -> throwIO (Lua.Exception "device doesn't exist")
           )
@@ -260,6 +264,13 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' = do
       defun "sleep"
       ### threadDelay . (* 1000000)
       <#> parameter LM.peekIntegral "int" "seconds" "seconds to delay thread"
+      =#> []
+
+    microSleep :: DocumentedFunction Lua.Exception
+    microSleep =
+      defun "microSleep"
+      ### threadDelay
+      <#> parameter LM.peekIntegral "int" "microseconds" "microseconds to delay thread"
       =#> []
 
     sendMessage :: DocumentedFunction Lua.Exception
@@ -303,6 +314,7 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' = do
         ### (atomically $ do
                 tryReadTChan listenerChan >>= \mMsg ->
                   -- TODO: make the default response better
+                  -- pTraceShow (mMsg) $
                   pure $ fromMaybe (object [("msg", "NoMsg")]) mMsg
             )
         =#> functionResult LA.pushViaJSON "msg" "incoming data from subscribed topic"

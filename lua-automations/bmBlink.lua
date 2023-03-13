@@ -17,8 +17,15 @@ function setup ()
       " guh-huh1! " .. r .. "," .. g .. "," .. b
    )
 
+   blinkMsg = {
+      effect = "blink"
+   }
+
+   publish(mirrorLight.topicSet, blinkMsg)
+
+   sleep(1)
+
    colorMsg = {
-      effect = "blink",
       transition = 2,
       color = {
          rgb = r .. "," .. g .. "," .. b
