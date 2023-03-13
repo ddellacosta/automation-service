@@ -16,7 +16,7 @@
       let
         t = lib.trivial;
         hl = haskell.lib;
-        haskellPackages = haskell.packages.ghc926;
+        haskellPackages = haskell.packages.ghc927;
 
         name = "automation-service";
 
