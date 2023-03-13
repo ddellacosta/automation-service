@@ -1,5 +1,6 @@
 # automation-service
 
+automation-service is a tool for setting up simple-to-complicated automations. It communicates via MQTT and can automatically pull and use device information from Zigbee2MQTT (only, for now, ESPHome next). It provides a simple message protocol for starting, stopping, and scheduling automations. It provides the ability to script your automations in Lua with batteries-included helpers, or build them in Haskell for more complex tasks.
 
 Right now this software is usable, but in a very alpha state. See TODO below.
 
@@ -45,6 +46,7 @@ If you don't want to configure SSL set caCertPath, clientCertPath, and clientKey
 
 * need to be able to shut off or edit scheduled automations
 * auto-restarts of automations and reloading of automations when automation-service is restarted
+* ability to auto-load groups and scenes and easily integrate in scripts
 * documentation
 * better error handling
 * query-able data about running and scheduled automations
