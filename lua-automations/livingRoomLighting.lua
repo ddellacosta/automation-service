@@ -84,7 +84,5 @@ function loop ()
       lastAction = resp.action
    end
 
-   local actionType = type(resp.action)
-
    microSleep(10000)
 end
