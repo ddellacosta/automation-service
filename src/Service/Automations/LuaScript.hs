@@ -82,8 +82,7 @@ luaAutomation filepath =
 mkCleanupAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
   => FilePath
-  -> TChan Automation.Message
-  -> m ()
+  -> (TChan Automation.Message -> m ())
 mkCleanupAutomation filepath = \_broadcastChan -> do
   debug $ "Starting Cleanup: LuaScript " <> T.pack filepath
 
@@ -134,8 +133,7 @@ type StatusMsg = String
 mkRunAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
   => FilePath
-  -> TChan Automation.Message
-  -> m ()
+  -> (TChan Automation.Message -> m ())
 mkRunAutomation filepath = \_broadcastChan -> do
   debug $ "Beginning run of LuaScript " <> T.pack filepath
 
