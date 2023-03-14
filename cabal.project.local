@@ -1,2 +1,2 @@
-constraints: lua +system-lua +pkg-config
+constraints: lua +system-lua +pkg-config +apicheck
 ignore-project: False

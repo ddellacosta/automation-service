@@ -191,7 +191,7 @@ callWhenExists :: Lua.Name -> Lua.LuaE Lua.Exception (Maybe ())
 callWhenExists fnName = do
   setupFn <- Lua.getglobal fnName
   case setupFn of
-    Lua.TypeFunction -> Just <$> Lua.callTrace 0 1
+    Lua.TypeFunction -> Just <$> Lua.callTrace 0 0
     _ -> pure Nothing
 
 loadDSL
