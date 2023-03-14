@@ -84,20 +84,7 @@ function loop ()
       lastAction = resp.action
    end
 
---    if lastAction then
---       logDebugMsg("lastAction: " .. lastAction)
---    end
-
-   if resp.action then
-      logDebugMsg("this action: " .. resp.action)
-      if lastAction then
-         logDebugMsg("lastAction: " .. lastAction)
-      end
-   end
-
---    logDebugMsg("is it just the thread (+ getting subscription msg) that dies?")
+   local actionType = type(resp.action)
 
    microSleep(10000)
-
-   -- sleep(1)
 end

@@ -85,7 +85,7 @@ mkCleanupAutomation
   -> TChan Automation.Message
   -> m ()
 mkCleanupAutomation filepath = \_broadcastChan -> do
-  debug $ "Cleaning up LuaScript Automation for script " <> T.pack filepath
+  debug $ "Starting Cleanup: LuaScript " <> T.pack filepath
 
   logger' <- view logger
   mqttClient' <- view mqttClient
@@ -119,7 +119,12 @@ mkCleanupAutomation filepath = \_broadcastChan -> do
       M.empty
       deviceRegs'
 
-  debug $ "Lua cleanup finished with status '" <> T.pack (show luaStatusString) <> "'."
+  debug $
+       "Finished Cleanup: LuaScript "
+    <> T.pack filepath
+    <> ", status '"
+    <> T.pack (show luaStatusString)
+    <> "'."
 
   where
     automationName = (AutomationName.LuaScript filepath)
@@ -132,7 +137,7 @@ mkRunAutomation
   -> TChan Automation.Message
   -> m ()
 mkRunAutomation filepath = \_broadcastChan -> do
-  debug $ "Initializing a LuaScript Automation for script " <> T.pack filepath
+  debug $ "Beginning run of LuaScript " <> T.pack filepath
 
   logger' <- view logger
   mqttClient' <- view mqttClient
@@ -160,7 +165,12 @@ mkRunAutomation filepath = \_broadcastChan -> do
       liftIO $ logDebugMsg' filepath logger' $ "Setup status: " <> setupStatus
       loopAutomation
 
-  debug $ "Lua loopAutomation finished with status '" <> T.pack (show luaStatusString) <> "'."
+  debug $
+       "LuaScript "
+    <> T.pack filepath
+    <> " finished with status '"
+    <> T.pack (show luaStatusString)
+    <> "'."
 
   where
     -- this is here so we can have an event-loop kinda thing that is
@@ -231,6 +241,7 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' = do
       <#> parameter LA.peekValue "table" "jsonMsg" "MQTT JSON string msg to send"
       =#> []
 
+    -- do I really want this?
     publishString :: DocumentedFunction Lua.Exception
     publishString =
       defun "publishString"

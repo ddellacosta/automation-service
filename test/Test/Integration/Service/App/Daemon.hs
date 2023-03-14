@@ -93,7 +93,7 @@ luaScriptSpecs = do
         let
           daemonBroadcast' = env ^. daemonBroadcast
           (QLogger qLogger) = env ^. logger
-          expectedLogEntry = "Debug: Lua loopAutomation finished with status '\"Lua exception: attempt to call a string value\\nstack traceback:\"'."
+          expectedLogEntry = "Debug: LuaScript testBroken finished with status '\"Lua exception: attempt to call a string value\\nstack traceback:\"'."
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testBroken")
 
@@ -114,6 +114,8 @@ luaScriptSpecs = do
           registrations = env ^. deviceRegistrations
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
+        -- artificially enforce ordering of messages to conform to assertion below
+        threadDelay 1000
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testRegistration")
 
         -- see comment in test below

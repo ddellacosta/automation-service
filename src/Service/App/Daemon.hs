@@ -91,7 +91,7 @@ run' threadMapTV = do
       messageChan' <- view messageChan
       msg <- atomically $ readTChan messageChan'
 
-      debug $ "Received Message in main Daemon thread: " <> T.pack (show msg)
+      debug $ "Daemon received Message: " <> T.pack (show msg)
 
       case msg of
         Daemon.Start automationName ->
