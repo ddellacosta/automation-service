@@ -1,6 +1,6 @@
 module Service.Daemon
   ( ThreadMap
-  , loadDevices -- exported for test use
+  , loadResources -- exported for test use
   , run
   , run' -- exported for test use
   )
@@ -25,7 +25,7 @@ import Service.AutomationName (AutomationName, serializeAutomationName)
 import Service.Automations (findAutomation)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Device as Device
-import Service.Device (Device, DeviceId)
+import Service.Device (DeviceId)
 import Service.Env
   ( Env
   , appCleanup
@@ -33,10 +33,12 @@ import Service.Env
   , config
   , deviceRegistrations
   , devices
+  , groups
   , messageChan
   , mqttDispatch
   , serverChan
   )
+import qualified Service.Group as Group
 import qualified Service.Messages.Daemon as Daemon
 import Service.Messages.Daemon (AutomationSchedule)
 import System.Cron (addJob, execSchedule)
@@ -110,10 +112,16 @@ run' threadMapTV = do
 
         Daemon.DeviceUpdate devices' -> do
           storedDevices <- view devices
-          loadDevices storedDevices devices' *> go
+          loadResources Device._id storedDevices devices' *> go
 
-        Daemon.Register deviceId automationName ->
+        Daemon.GroupUpdate groups' -> do
+          storedGroups <- view groups
+          loadResources Group._id storedGroups groups' *> go
+
+        Daemon.RegisterDevice deviceId automationName ->
           addRegisteredDevice deviceId automationName *> go
+
+        Daemon.RegisterGroup _groupId _automationName -> go
 
         Daemon.Subscribe mTopic listenerBcastChan ->
           for_ mTopic $ \topic -> do
@@ -205,11 +213,11 @@ addScheduleAutomationMessage automationMessage automationSchedule messageChan' =
   void . liftIO . execSchedule $ flip addJob automationSchedule $
     atomically . writeTChan messageChan' $ automationMessage
 
-loadDevices
-  :: (MonadUnliftIO m) => TVar (Map DeviceId Device) -> [Device] -> m ()
-loadDevices storedDevices devices' =
-  atomically . writeTVar storedDevices . M.fromList $
-    (\d -> (Device._id d, d)) <$> devices'
+loadResources
+  :: (MonadUnliftIO m, Ord a) => (b -> a) -> TVar (Map a b) -> [b] -> m ()
+loadResources mkResourceKey stored newResources =
+  atomically . writeTVar stored . M.fromList $
+    (\r -> (mkResourceKey r, r)) <$> newResources
 
 addRegisteredDevice
   :: (MonadReader Env m, MonadUnliftIO m)

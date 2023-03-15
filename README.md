@@ -47,11 +47,13 @@ You can then start this up `docker-compose start automation-service`, and can dr
 * ability to auto-load groups and scenes and easily integrate in scripts
 * need to be able to shut off or edit scheduled automations
 * auto-restarts of automations and reloading of automations when automation-service is restarted
+* generalize Gledopto Lighting related Message module and provide Lua API for it
 * documentation
 * better error handling
 * query-able data about running and scheduled automations
 * HA dashboard integration
 * profile and better understand memory usage
+* set up GH actions (?) to run build and store docker image somewhere, I guess not docker hub any more (https://blog.alexellis.io/docker-is-deleting-open-source-images/) ...[github packages](https://docs.github.com/en/actions/publishing-packages/publishing-docker-images#publishing-images-to-github-packages)?
 
 
 ## Testing

@@ -10,6 +10,7 @@ import Control.Lens ((^.), view)
 import qualified Data.Map.Strict as M
 import qualified Service.App as App
 import qualified Service.Daemon as Daemon
+import qualified Service.Device as Device
 import qualified Service.Env as Env
 import Service.Env
   ( Env
@@ -39,7 +40,7 @@ initAndCleanup runTests = bracket
       env <- Env.initialize testConfigFilePath mkLogger mkMQTTClient
       devices' <- loadTestDevices
       let devicesTVar = env ^. devices
-      Daemon.loadDevices devicesTVar devices'
+      Daemon.loadResources Device._id devicesTVar devices'
       pure env
   )
   (view appCleanup)

@@ -66,7 +66,7 @@ runAutomation broadcastChan = do
   info "Running Gold"
 
   daemonBroadcast' <- view daemonBroadcast
-  let registrationMsg = Daemon.Register mirrorLightID Gold
+  let registrationMsg = Daemon.RegisterDevice mirrorLightID Gold
   atomically $ writeTChan daemonBroadcast' registrationMsg
 
   lightStrip <- findDeviceM mirrorLightID

@@ -8,7 +8,7 @@ import Data.ByteString.Lazy as BL
 import Data.ByteString as BS
 import Data.Maybe (fromMaybe)
 import Service.Device (Device)
-import Service.Messages.Zigbee2MQTTDevice (parseDevices)
+import Service.Messages.Zigbee2MQTT (parseDevices)
 
 loadTestDevices :: IO [Device]
 loadTestDevices = do

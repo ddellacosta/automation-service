@@ -3,7 +3,7 @@
 module Service.Env
   ( Env(..)
   , Config(..)
-  , DeviceRegistrations
+  , Registrations
   , LogLevel(..)
   , LoggerVariant(..)
   , MQTTClientVariant(..)
@@ -20,6 +20,8 @@ module Service.Env
   , daemonBroadcast
   , deviceRegistrations
   , devices
+  , groupRegistrations
+  , groups
   , initialize
   , logFilePath
   , logLevel
@@ -52,8 +54,9 @@ import Network.URI (URI, nullURI, parseURI)
 import qualified Service.Automation as Automation
 import Service.AutomationName (AutomationName)
 import Service.Device (Device, DeviceId)
+import Service.Group (Group, GroupId)
 import qualified Service.Messages.Daemon as Daemon
-import qualified Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTTDevice
+import qualified Service.Messages.Zigbee2MQTT as Zigbee2MQTT
 import System.Log.FastLogger (TimedFastLogger) 
 import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO, writeTChan)
 
@@ -120,7 +123,7 @@ data MQTTClientVariant
   = MCClient MQTTClient
   | TVClient (TVar (Map Topic ByteString))
 
-type DeviceRegistrations = Map DeviceId (NonEmpty AutomationName)
+type Registrations a = Map a (NonEmpty AutomationName)
 
 type MsgAction = ByteString -> IO ()
 type MQTTDispatch = Map Topic (NonEmpty MsgAction)
@@ -133,7 +136,9 @@ data Env = Env
   , _daemonBroadcast :: TChan Daemon.Message
   , _messageChan :: TChan Daemon.Message
   , _devices :: TVar (Map DeviceId Device)
-  , _deviceRegistrations :: TVar DeviceRegistrations
+  , _deviceRegistrations :: TVar (Registrations DeviceId)
+  , _groups :: TVar (Map GroupId Group)
+  , _groupRegistrations :: TVar (Registrations GroupId)
   , _automationBroadcast :: TChan Automation.Message
   , _serverChan :: TChan Automation.Message
   , _appCleanup :: IO ()
@@ -159,8 +164,8 @@ initialize configFilePath mkLogger mkMQTTClient = do
   -- TODO: this feels a bit messy
   mqttDispatch' <- newTVarIO $ M.fromList
     [ ("default", (\msg -> for_ (decode msg) $ write daemonBroadcast') :| [])
-    , (Zigbee2MQTTDevice.topic, (\msg ->
-          case Zigbee2MQTTDevice.parseDevices msg of
+    , (Zigbee2MQTT.topic, (\msg ->
+          case Zigbee2MQTT.parseDevices msg of
             Just [] -> pure ()
             Nothing -> pure ()
             Just devicesJSON -> do
@@ -173,6 +178,9 @@ initialize configFilePath mkLogger mkMQTTClient = do
 
   devices' <- newTVarIO M.empty
   deviceRegistrations' <- newTVarIO M.empty
+
+  groups' <- newTVarIO M.empty
+  groupRegistrations' <- newTVarIO M.empty
 
   automationBroadcast' <- newBroadcastTChanIO
   serverChan' <- atomically $ dupTChan automationBroadcast'
@@ -187,6 +195,8 @@ initialize configFilePath mkLogger mkMQTTClient = do
       messageChan'
       devices'
       deviceRegistrations'
+      groups'
+      groupRegistrations'
       automationBroadcast'
       serverChan'
       (loggerCleanup >> mcCleanup)

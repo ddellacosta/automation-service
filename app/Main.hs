@@ -18,7 +18,7 @@ import Service.Env
   , logLevel
   , mqttConfig
   )
-import Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTTDevice
+import Service.Messages.Zigbee2MQTT as Zigbee2MQTT
 import Service.MQTTClient (mqttClientCallback, initMQTTClient)
 import System.Log.FastLogger (newTimedFastLogger)
 import UnliftIO.STM (TVar)
@@ -47,7 +47,7 @@ mkMQTTClient config logger mqttDispatch = do
     (mqttConfig', logLevelSet) = config ^. lensProduct mqttConfig logLevel
     mqttSubs =
       [ (mqttConfig' ^. automationServiceTopicFilter, MQTT.subOptions)
-      , (toFilter Zigbee2MQTTDevice.topic, MQTT.subOptions)
+      , (toFilter Zigbee2MQTT.topic, MQTT.subOptions)
       ]
 
   -- handle errors from not being able to connect, etc.?

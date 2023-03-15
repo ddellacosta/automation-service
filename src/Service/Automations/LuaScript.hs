@@ -254,7 +254,7 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' = do
       ### (\deviceId -> do
               mDevice <- atomically $ do
                 let registrationMsg =
-                      Daemon.Register deviceId (AutomationName.LuaScript filepath)
+                      Daemon.RegisterDevice deviceId (AutomationName.LuaScript filepath)
                 writeTChan daemonBroadcast' $ registrationMsg
                 M.lookup deviceId <$> readTVar devices'
 

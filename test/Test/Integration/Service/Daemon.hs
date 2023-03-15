@@ -58,7 +58,7 @@ deviceRegistrationSpecs = do
           mirrorLightID = "0xb4e3f9fffe14c707"
           daemonBroadcast' = env ^. daemonBroadcast
           deviceRegs = env ^. deviceRegistrations
-          regGoldMsgIn = Daemon.Register mirrorLightID Gold
+          regGoldMsgIn = Daemon.RegisterDevice mirrorLightID Gold
 
         atomically $ writeTChan daemonBroadcast' regGoldMsgIn
 

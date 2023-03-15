@@ -5,8 +5,10 @@ module Service.Messages.Daemon
   ( Message(..)
   , AutomationSchedule
   , _DeviceUpdate
+  , _GroupUpdate
   , _Null
-  , _Register
+  , _RegisterDevice
+  , _RegisterGroup
   , _Schedule
   , _SendTo
   , _Start
@@ -25,6 +27,7 @@ import GHC.Generics (Generic)
 import Network.MQTT.Topic (Topic)
 import Service.AutomationName (AutomationName, parseAutomationName)
 import Service.Device (Device, DeviceId)
+import Service.Group (Group, GroupId)
 import UnliftIO.STM (TChan)
 
 type AutomationSchedule = Text
@@ -36,7 +39,9 @@ data Message where
   SendTo :: AutomationName -> AutomationMessage -> Message
   Schedule :: Message -> AutomationSchedule -> Message
   DeviceUpdate :: [Device] -> Message
-  Register :: DeviceId -> AutomationName -> Message
+  GroupUpdate :: [Group] -> Message
+  RegisterDevice :: DeviceId -> AutomationName -> Message
+  RegisterGroup :: GroupId -> AutomationName -> Message
   Subscribe :: Maybe Topic -> TChan Value -> Message
   Null :: Message
   deriving (Generic, Eq)
@@ -58,8 +63,11 @@ instance Show Message where
     Schedule msg schedule ->
       "Schedule " <> show msg <> " " <> show schedule
     DeviceUpdate devices -> "DeviceUpdate " <> show devices
-    Register deviceId automationName ->
-      "Register " <> show deviceId <> " " <> show automationName
+    GroupUpdate groups -> "GroupUpdate " <> show groups
+    RegisterDevice deviceId automationName ->
+      "RegisterDevice " <> show deviceId <> " " <> show automationName
+    RegisterGroup groupId automationName ->
+      "RegisterGroup " <> show groupId <> " " <> show automationName
     Subscribe mTopic _automationListenerChannel ->
       "Subscribe " <> show mTopic <> ", with listener channel"
     Null -> "Null"
