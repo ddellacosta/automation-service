@@ -1,4 +1,4 @@
-module Service.App.Daemon
+module Service.Daemon
   ( ThreadMap
   , loadDevices -- exported for test use
   , run

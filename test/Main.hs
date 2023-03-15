@@ -7,8 +7,8 @@ where
 
 import Test.Tasty (TestTree, defaultMain, localOption, mkTimeout, testGroup)
 import Test.Tasty.Hspec (TreatPendingAs(..), testSpec)
-import qualified Test.Integration.Service.App.Daemon as Daemon
-import qualified Test.Unit.Service.App.Helpers as App.Helpers
+import qualified Test.Integration.Service.Daemon as Daemon
+import qualified Test.Unit.Service.Helpers as Helpers
 import qualified Test.Unit.Service.Device as Devices
 import qualified Test.Unit.Service.Messages.Daemon as Daemon.Messages
 import qualified Test.Unit.Service.Messages.Zigbee2MQTTDevice as Zigbee2MQTTDevice.Messages
@@ -28,7 +28,7 @@ allTests = do
 unit :: IO TestTree
 unit = do
   automationMessagesSpec <- testSpec "Daemon.Messages Spec" Daemon.Messages.spec
-  appHelpersSpec <- testSpec "App.Helpers Spec" App.Helpers.spec
+  appHelpersSpec <- testSpec "Helpers Spec" Helpers.spec
   devicesSpec <- testSpec "Devices Spec" Devices.spec
   zigbee2mqttMessagesSpec <- testSpec "Zigbee2MQTTDevice.Messages Spec" Zigbee2MQTTDevice.Messages.spec
   pure $ testGroup "Unit Tests"

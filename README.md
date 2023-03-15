@@ -44,15 +44,14 @@ You can then start this up `docker-compose start automation-service`, and can dr
 
 ## TODO
 
-* profile and better understand memory usage
-  * ...and especially, why some Lua scripts die with a stack overflow only after hours
+* ability to auto-load groups and scenes and easily integrate in scripts
 * need to be able to shut off or edit scheduled automations
 * auto-restarts of automations and reloading of automations when automation-service is restarted
-* ability to auto-load groups and scenes and easily integrate in scripts
 * documentation
 * better error handling
 * query-able data about running and scheduled automations
 * HA dashboard integration
+* profile and better understand memory usage
 
 
 ## Testing

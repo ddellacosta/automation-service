@@ -13,8 +13,7 @@ import Data.Aeson.Lens (key)
 import Data.Foldable (for_)
 import qualified Data.Text as T
 import Network.MQTT.Client (Topic)
-import Service.App (Logger(..), MonadMQTT(..))
-import qualified Service.App.Helpers as Helpers
+import Service.App (Logger(..), MonadMQTT(..), findDeviceM)
 import Service.Automation as Automation
 import Service.AutomationName (AutomationName(..))
 import Service.Device (DeviceId, topicSet)
@@ -51,7 +50,7 @@ cleanupAutomation
 cleanupAutomation _broadcastChan = do
   info $ "Shutting down Gold"
 
-  lightStrip <- Helpers.findDeviceM mirrorLightID
+  lightStrip <- findDeviceM mirrorLightID
 
   for_ lightStrip $ \lightStrip' -> do
     let lightStripTopic = lightStrip' ^. topicSet
@@ -70,7 +69,7 @@ runAutomation broadcastChan = do
   let registrationMsg = Daemon.Register mirrorLightID Gold
   atomically $ writeTChan daemonBroadcast' registrationMsg
 
-  lightStrip <- Helpers.findDeviceM mirrorLightID
+  lightStrip <- findDeviceM mirrorLightID
 
   for_ lightStrip $ \lightStrip' -> do
     let lightStripTopic = lightStrip' ^. topicSet

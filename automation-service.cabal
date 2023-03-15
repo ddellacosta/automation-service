@@ -75,8 +75,7 @@ library
     , Service.Automations.Gold
     , Service.Automations.LuaScript
     , Service.App
-    , Service.App.Daemon
-    , Service.App.Helpers
+    , Service.Daemon
     , Service.Device
     , Service.Env
     , Service.Messages.Daemon
@@ -106,9 +105,9 @@ test-suite automation-service-tests
   -- necessary?
   other-modules:
       Test.Helpers
-    , Test.Integration.Service.App.Daemon
-    , Test.Integration.Service.App.DaemonTestHelpers
-    , Test.Unit.Service.App.Helpers
+    , Test.Integration.Service.Daemon
+    , Test.Integration.Service.DaemonTestHelpers
+    , Test.Unit.Service.Helpers
     , Test.Unit.Service.Device
     , Test.Unit.Service.Messages.Daemon
     , Test.Unit.Service.Messages.Zigbee2MQTTDevice

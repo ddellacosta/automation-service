@@ -1,4 +1,4 @@
-module Test.Unit.Service.App.Helpers
+module Test.Unit.Service.Helpers
   ( spec
   ,
   )

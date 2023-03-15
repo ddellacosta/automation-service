@@ -2,6 +2,7 @@ module Service.App
   ( AutomationService
   , Logger(..)
   , MonadMQTT(..)
+  , findDeviceM
   , log
   , logDefault
   , logWithVariant
@@ -24,6 +25,7 @@ import Data.Text (Text)
 import qualified Network.MQTT.Client as MQTT
 import Network.MQTT.Client (Topic, subOptions)
 import Network.MQTT.Topic (toFilter)
+import Service.Device (Device, DeviceId)
 import Service.Env
   ( Config
   , Env
@@ -31,6 +33,7 @@ import Service.Env
   , LoggerVariant(..)
   , MQTTClientVariant(..)
   , config
+  , devices
   , logFilePath
   , logger
   , logLevel
@@ -47,7 +50,7 @@ import System.Log.FastLogger
   , newTimeCache
   , simpleTimeFormat
   )
-import UnliftIO.STM (atomically, modifyTVar')
+import UnliftIO.STM (atomically, modifyTVar', readTVar)
 
 newtype AutomationService a = AutomationService (ReaderT Env IO a)
   deriving
@@ -139,3 +142,12 @@ subscribe topic mqttClient' =
   case mqttClient' of
     MCClient mc -> void $ MQTT.subscribe mc [(toFilter topic, subOptions)] []
     TVClient _tvClient -> pure ()
+
+findDeviceM
+  :: (MonadIO m, MonadReader Env m)
+  => DeviceId
+  -> m (Maybe Device)
+findDeviceM deviceId = do
+  storedDevices <- view devices
+  storedDevices' <- atomically $ readTVar storedDevices
+  pure $ M.lookup deviceId storedDevices'

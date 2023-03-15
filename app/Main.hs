@@ -6,7 +6,7 @@ import Control.Lens ((^.))
 import Control.Lens.Unsound (lensProduct)
 import qualified Network.MQTT.Client as MQTT
 import Network.MQTT.Topic (toFilter)
-import qualified Service.App.Daemon as Daemon
+import qualified Service.Daemon as Daemon
 import qualified Service.App as App
 import qualified Service.Env as Env
 import Service.Env

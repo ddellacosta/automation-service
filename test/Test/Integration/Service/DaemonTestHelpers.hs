@@ -1,4 +1,4 @@
-module Test.Integration.Service.App.DaemonTestHelpers
+module Test.Integration.Service.DaemonTestHelpers
   ( initAndCleanup
   , testWithAsyncDaemon
   , waitUntilEq
@@ -9,7 +9,7 @@ module Test.Integration.Service.App.DaemonTestHelpers
 import Control.Lens ((^.), view)
 import qualified Data.Map.Strict as M
 import qualified Service.App as App
-import qualified Service.App.Daemon as Daemon
+import qualified Service.Daemon as Daemon
 import qualified Service.Env as Env
 import Service.Env
   ( Env

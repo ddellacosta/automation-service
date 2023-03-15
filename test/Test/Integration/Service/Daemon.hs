@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
 
-module Test.Integration.Service.App.Daemon
+module Test.Integration.Service.Daemon
   ( spec
   ,
   )
@@ -25,7 +25,7 @@ import Service.Env
   )
 import qualified Service.Messages.Daemon as Daemon
 import Test.Hspec (Spec, around, it, shouldBe)
-import Test.Integration.Service.App.DaemonTestHelpers
+import Test.Integration.Service.DaemonTestHelpers
   ( initAndCleanup
   , testWithAsyncDaemon
   , waitUntilEq
