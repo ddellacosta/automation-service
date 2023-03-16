@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
-
 module Service.Messages.Zigbee2MQTT
   ( devicesTopic
   , groupsTopic
@@ -10,19 +8,7 @@ module Service.Messages.Zigbee2MQTT
   )
   where
 
-import Debug.Pretty.Simple (pTraceShow)
-
-import Prelude hiding (id)
-
-import Control.Lens ((^?))
-import qualified Data.Aeson as Aeson
-import Data.Aeson (FromJSON, ToJSON, Value, decode)
-import Data.Aeson.Lens (key)
-import Data.ByteString.Lazy (ByteString)
-import Data.Maybe (catMaybes)
 import Data.Text (Text)
-import qualified Data.Vector as V
-import GHC.Generics (Generic)
 import Service.Topic (parseTopic)
 import Network.MQTT.Topic (Topic(..))
 
