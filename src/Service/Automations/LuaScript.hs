@@ -302,12 +302,6 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' = do
                   Daemon.Subscribe (mkTopic topic) automationBroadcastChan
                 pure listenerChan
               liftIO . mkListenerFn $ listenerChan'
-
-              -- listenerChan <- atomically . dupTChan $ automationBroadcastChan
-              -- automationBroadcastChan <- newBroadcastTChan
-              -- atomically . writeTChan daemonBroadcast' $
-              --   Daemon.Subscribe (mkTopic topic) automationBroadcastChan
-              -- liftIO $ mkListenerFn listenerChan
           )
       <#> parameter LM.peekText "string" "topic" "topic to subscribe to"
       =#> functionResult pushDocumentedFunction "function" "fn"
