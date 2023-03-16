@@ -164,12 +164,20 @@ initialize configFilePath mkLogger mkMQTTClient = do
   -- TODO: this feels a bit messy
   mqttDispatch' <- newTVarIO $ M.fromList
     [ ("default", (\msg -> for_ (decode msg) $ write daemonBroadcast') :| [])
-    , (Zigbee2MQTT.topic, (\msg ->
-          case Zigbee2MQTT.parseDevices msg of
+    , (Zigbee2MQTT.devicesTopic, (\msg ->
+          case decode msg :: Maybe [Device] of
             Just [] -> pure ()
             Nothing -> pure ()
             Just devicesJSON -> do
               write daemonBroadcast' $ Daemon.DeviceUpdate devicesJSON
+          ) :| []
+      )
+    , (Zigbee2MQTT.groupsTopic, (\msg ->
+          case decode msg :: Maybe [Group] of
+            Just [] -> pure ()
+            Nothing -> pure ()
+            Just groupsJSON -> do
+              write daemonBroadcast' $ Daemon.GroupUpdate groupsJSON
           ) :| []
       )
     ]

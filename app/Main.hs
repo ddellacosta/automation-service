@@ -47,7 +47,8 @@ mkMQTTClient config logger mqttDispatch = do
     (mqttConfig', logLevelSet) = config ^. lensProduct mqttConfig logLevel
     mqttSubs =
       [ (mqttConfig' ^. automationServiceTopicFilter, MQTT.subOptions)
-      , (toFilter Zigbee2MQTT.topic, MQTT.subOptions)
+      , (toFilter Zigbee2MQTT.devicesTopic, MQTT.subOptions)
+      , (toFilter Zigbee2MQTT.groupsTopic, MQTT.subOptions)
       ]
 
   -- handle errors from not being able to connect, etc.?

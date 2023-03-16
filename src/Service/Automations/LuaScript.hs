@@ -126,7 +126,7 @@ mkCleanupAutomation filepath = \_broadcastChan -> do
     <> "'."
 
   where
-    automationName = (AutomationName.LuaScript filepath)
+    automationName = AutomationName.LuaScript filepath
 
 type StatusMsg = String
 

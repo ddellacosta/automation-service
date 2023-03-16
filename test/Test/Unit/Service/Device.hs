@@ -4,13 +4,26 @@ module Test.Unit.Service.Device
   )
 where
 
-import Prelude hiding (lookup)
+import Prelude hiding (id, lookup)
 
-import Control.Lens ((^?))
+import Control.Lens ((^.), (^?))
 import Data.Aeson.Lens (_String, key)
 import Data.Maybe (fromJust)
 import Network.MQTT.Topic (Topic(..))
-import Service.Device (Device(..), parseTopic, toLuaDevice)
+import Service.Device
+  ( Device(..)
+  , category
+  , id
+  , manufacturer
+  , model
+  , name
+  , toLuaDevice
+  , topic
+  , topicGet
+  , topicSet
+  )
+import Service.Topic (parseTopic)
+import Test.Helpers (loadTestDevices)
 import Test.Hspec (Spec, describe, it, shouldBe)
 
 deviceFix :: Device
@@ -40,3 +53,23 @@ spec = describe "Devices" $ do
     lookup "topic" `shouldBe` unTopic (_topic deviceFix)
     lookup "topicGet" `shouldBe` unTopic (_topicGet deviceFix)
     lookup "topicSet" `shouldBe` unTopic (_topicSet deviceFix)
+
+  it "parses devices from the output of zigbee2mqtt/bridge/devices" $ do
+    -- Is it okay that the code-under-test is inside the test helper?
+    -- 1) DRYer which is whatever, 2) couples this test up with other
+    -- uses of loading and parsing device test fixtures, which is
+    -- arguably good since that shouldn't be changing from use-case to
+    -- use-case, and if changing the helper code triggers failures it
+    -- can point to larger system-wide breakage, potentially.
+    devices <- loadTestDevices
+
+    let mirrorLight = devices !! 2
+
+    (mirrorLight ^. id) `shouldBe` "0xb4e3f9fffe14c707"
+    (mirrorLight ^. name) `shouldBe` "Mirror Light Strip"
+    (mirrorLight ^. category) `shouldBe` "Router"
+    (mirrorLight ^. manufacturer) `shouldBe` Just "GLEDOPTO"
+    (mirrorLight ^. model) `shouldBe` Just "GL-C-007P"
+    (mirrorLight ^. topic) `shouldBe` "zigbee2mqtt/Mirror Light Strip"
+    (mirrorLight ^. topicGet) `shouldBe` "zigbee2mqtt/Mirror Light Strip/get"
+    (mirrorLight ^. topicSet) `shouldBe` "zigbee2mqtt/Mirror Light Strip/set"

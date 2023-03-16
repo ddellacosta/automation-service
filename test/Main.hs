@@ -11,7 +11,6 @@ import qualified Test.Integration.Service.Daemon as Daemon
 import qualified Test.Unit.Service.Helpers as Helpers
 import qualified Test.Unit.Service.Device as Devices
 import qualified Test.Unit.Service.Messages.Daemon as Daemon.Messages
-import qualified Test.Unit.Service.Messages.Zigbee2MQTT as Zigbee2MQTT.Messages
 
 timeout :: Integer
 timeout = 10
@@ -30,12 +29,10 @@ unit = do
   automationMessagesSpec <- testSpec "Daemon.Messages Spec" Daemon.Messages.spec
   appHelpersSpec <- testSpec "Helpers Spec" Helpers.spec
   devicesSpec <- testSpec "Devices Spec" Devices.spec
-  zigbee2mqttMessagesSpec <- testSpec "Zigbee2MQTT.Messages Spec" Zigbee2MQTT.Messages.spec
   pure $ testGroup "Unit Tests"
     [ automationMessagesSpec
     , appHelpersSpec
     , devicesSpec
-    , zigbee2mqttMessagesSpec
     ]
 
 integration :: IO TestTree

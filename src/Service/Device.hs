@@ -9,7 +9,6 @@ module Service.Device
   , manufacturer
   , model
   , name
-  , parseTopic
   , toLuaDevice
   , topic
   , topicGet
@@ -24,17 +23,19 @@ import Data.Aeson
   ( FromJSON(..)
   , ToJSON(..)
   , Value
+  , (.:)
+  , (.:?)
   , decode
   , defaultOptions
   , encode
   , fieldLabelModifier
   , genericToEncoding
-  , withText
+  , withObject
   )
-import Data.Maybe (fromJust)
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Network.MQTT.Topic (Topic(..), mkTopic)
+import Network.MQTT.Topic (Topic(..))
+import Service.Messages.Zigbee2MQTT as Zigbee2MQTT
 
 type DeviceId = Text
 
@@ -57,19 +58,22 @@ instance ToJSON Device where
     { fieldLabelModifier = drop 1
     }
 
-instance FromJSON Device
-
-instance FromJSON Topic where
-  parseJSON = withText "Topic" $ pure . parseTopic
-
-instance ToJSON Topic where
-  toJSON t = toJSON (unTopic t)
-
-parseTopic :: Text -> Topic
-parseTopic t =
-  case mkTopic t of
-    Just topic' -> topic'
-    Nothing -> fromJust . mkTopic $ "failedToMakeTopic"
+instance FromJSON Device where
+  parseJSON = withObject "Device" $ \d -> do
+    id' <- d .: "ieee_address"
+    name' <- d .: "friendly_name"
+    category' <- d .: "type"
+    manufacturer' <- d .:? "manufacturer"
+    model' <- d .:? "model_id"
+    pure $ Device
+      id'
+      name'
+      category'
+      manufacturer'
+      model'
+      (Zigbee2MQTT.mkTopic name')
+      (Zigbee2MQTT.mkGetTopic name')
+      (Zigbee2MQTT.mkSetTopic name')
 
 toLuaDevice :: Device -> Maybe Value
 toLuaDevice = decode . encode
