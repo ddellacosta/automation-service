@@ -15,9 +15,9 @@ import Service.Group (Group)
 loadTestDevices :: IO [Device]
 loadTestDevices = do
   devicesRawJSON <- BL.fromStrict <$> BS.readFile "test/fixtures/devices.json"
-  pure $ fromMaybe [] $ (decode devicesRawJSON :: Maybe [Device])
+  pure $ fromMaybe [] $ decode devicesRawJSON
 
 loadTestGroups :: IO [Group]
 loadTestGroups = do
   groupsRawJSON <- BL.fromStrict <$> BS.readFile "test/fixtures/groups.json"
-  pure $ fromMaybe [] $ (decode groupsRawJSON :: Maybe [Group])
+  pure $ fromMaybe [] $ decode groupsRawJSON

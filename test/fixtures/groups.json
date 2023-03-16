@@ -12,7 +12,16 @@
         "ieee_address": "0x001788010c48279d"
       }
     ],
-    "scenes": []
+    "scenes": [
+      {
+        "id": 0,
+        "name": "Chrimbus"
+      },
+      {
+        "id": 1,
+        "name": "Chilly"
+      }
+    ]
   },
   {
     "friendly_name": "Living Room Lighting",

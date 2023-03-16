@@ -112,6 +112,7 @@ test-suite automation-service-tests
     , Test.Integration.Service.DaemonTestHelpers
     , Test.Unit.Service.Helpers
     , Test.Unit.Service.Device
+    , Test.Unit.Service.Group
     , Test.Unit.Service.Messages.Daemon
   build-depends:
       automation-service

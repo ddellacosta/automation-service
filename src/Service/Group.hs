@@ -4,10 +4,15 @@ module Service.Group
   ( Group(..)
   , GroupId
   , Member(..)
+  , Scene(..)
   , id
+  , endpoint
+  , memberId
   , members
   , name
   , scenes
+  , sceneId
+  , sceneName
   , toLuaGroup
   , topic
   , topicGet
@@ -35,13 +40,15 @@ import GHC.Generics (Generic)
 import Network.MQTT.Topic (Topic(..))
 import Service.Messages.Zigbee2MQTT as Zigbee2MQTT
 
-type GroupId = Text
+type GroupId = Int
 
 data Member = Member
-  { _endpoint :: Int
-  , _ieeeAddress :: Text
+  { _memberId :: Text
+  , _endpoint :: Int
   }
   deriving (Show, Generic, Eq)
+
+makeFieldsNoPrefix ''Member
 
 instance ToJSON Member where
   toEncoding = genericToEncoding defaultOptions
@@ -52,14 +59,31 @@ instance FromJSON Member where
   parseJSON = withObject "Member" $ \g ->
     Member <$> g .: "ieee_address" <*> g .: "endpoint"
 
+data Scene = Scene
+  { _sceneId :: Int
+  , _sceneName :: Text
+  }
+  deriving (Show, Generic, Eq)
+
+makeFieldsNoPrefix ''Scene
+
+instance ToJSON Scene where
+  toEncoding = genericToEncoding defaultOptions
+    { fieldLabelModifier = drop 1
+    }
+
+instance FromJSON Scene where
+  parseJSON = withObject "Scene" $ \g ->
+    Scene <$> g .: "id" <*> g .: "name"
+
 data Group = Group
   { _id :: GroupId
   , _name :: Text
   , _members :: [Member]
-  , _scenes :: [Text]
+  , _scenes :: [Scene]
   , _topic :: Topic
-  , _topicSet :: Topic
   , _topicGet :: Topic
+  , _topicSet :: Topic
   }
   deriving (Show, Generic, Eq)
 
@@ -75,12 +99,12 @@ instance FromJSON Group where
     name' <- g .: "friendly_name"
     id' <- g .: "id"
     members' <- g .: "members"
-    -- _scenes <- g .: "scenes"
+    scenes' <- g .: "scenes"
     pure $ Group
       id'
       name'
       members'
-      []
+      scenes'
       (Zigbee2MQTT.mkTopic name')
       (Zigbee2MQTT.mkGetTopic name')
       (Zigbee2MQTT.mkSetTopic name')

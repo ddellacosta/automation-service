@@ -10,6 +10,7 @@ import Test.Tasty.Hspec (TreatPendingAs(..), testSpec)
 import qualified Test.Integration.Service.Daemon as Daemon
 import qualified Test.Unit.Service.Helpers as Helpers
 import qualified Test.Unit.Service.Device as Devices
+import qualified Test.Unit.Service.Group as Groups
 import qualified Test.Unit.Service.Messages.Daemon as Daemon.Messages
 
 timeout :: Integer
@@ -29,10 +30,12 @@ unit = do
   automationMessagesSpec <- testSpec "Daemon.Messages Spec" Daemon.Messages.spec
   appHelpersSpec <- testSpec "Helpers Spec" Helpers.spec
   devicesSpec <- testSpec "Devices Spec" Devices.spec
+  groupsSpec <- testSpec "Groups Spec" Groups.spec
   pure $ testGroup "Unit Tests"
     [ automationMessagesSpec
     , appHelpersSpec
     , devicesSpec
+    , groupsSpec
     ]
 
 integration :: IO TestTree
