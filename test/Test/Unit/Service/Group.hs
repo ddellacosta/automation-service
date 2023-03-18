@@ -51,12 +51,12 @@ spec = describe "Groups" $ do
     (luaGroup ^? key "id") `shouldBe` Just (Aeson.Number 1234)
     lookup "name" `shouldBe` _name groupFix
     lookupArray "members" `shouldBe`
-      V.fromList $
+      V.fromList
         [ Aeson.object [("memberId", "m1"), ("endpoint", Aeson.Number 11)]
         , Aeson.object [("memberId", "m2"), ("endpoint", Aeson.Number 11)]
         ]
     lookupArray "scenes" `shouldBe`
-      V.fromList $
+      V.fromList
         [ Aeson.object [("sceneId", Aeson.Number 1), ("sceneName", "foo")]
         , Aeson.object [("sceneId", Aeson.Number 2), ("sceneName", "bar")]
         ]
