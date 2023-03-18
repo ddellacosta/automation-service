@@ -59,10 +59,11 @@ common shared
     , x509-store ^>= 1.6.9
 
   default-extensions:
-      OverloadedStrings
-    , DeriveGeneric
+      DeriveGeneric
     , FunctionalDependencies
     , LambdaCase
+    , OverloadedStrings
+    , StrictData
     , TupleSections
 
 
