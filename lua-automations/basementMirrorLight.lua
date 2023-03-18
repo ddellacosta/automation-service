@@ -13,10 +13,10 @@ function loop ()
    local g = math.random(1,255)
    local b = math.random(1,255)
 
-   logDebugMsg(
-      "Sending msg w/color (" .. r .. "/" .. g .. "/" .. b .. ") to topic "
-      .. mirrorLight.topicSet
-   )
+   -- logDebugMsg(
+   --    "Sending msg w/color (" .. r .. "/" .. g .. "/" .. b .. ") to topic "
+   --    .. mirrorLight.topicSet
+   -- )
 
    colorMsg = {
       transition = 2,
