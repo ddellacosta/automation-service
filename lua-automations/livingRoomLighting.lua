@@ -32,7 +32,7 @@ function loop ()
    elseif resp.action == "button_2_press_release" then
       publish(diningRoomTableLight.topicSet, { state = "TOGGLE" })
    elseif resp.action == "button_3_press_release" then
-      publish(standingLampBulb.topicSet, { state = "TOGGLE" })
+      publish(standingLamp.topicSet, { state = "TOGGLE" })
    elseif resp.action == "button_4_press_release" then
       publish(livingRoomLighting.topicSet, { state = "TOGGLE" })
    elseif resp.action == "dial_rotate_left_step" or resp.action == "dial_rotate_left_slow" then

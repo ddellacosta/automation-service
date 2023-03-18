@@ -12,11 +12,11 @@ end
 function loop ()
    resp = frontDoorSensorChan()
 
-   if resp.contact then
-      logDebugMsg("hey someone closed the door")
+   if resp.contact == false then
+      logDebugMsg("hey someone opened the door")
       -- would like to have some helper that lets me run this and then
       -- reset prior state...maybe something like `publishAndRestore`?
-      publish(basementMirrorLight.setTopic, { effect = "blink" })
+      publish(basementMirrorLight.topicSet, { effect = "blink" })
    end
 
    sleep(1)
