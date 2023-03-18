@@ -20,6 +20,7 @@ import Service.Env
   ( LoggerVariant(..)
   , daemonBroadcast
   , deviceRegistrations
+  , groupRegistrations
   , logger
   , mqttDispatch
   )
@@ -36,9 +37,9 @@ import UnliftIO.STM (atomically, readTChan, readTVar, readTVarIO, writeTChan)
 
 spec :: Spec
 spec = do
-  deviceRegistrationSpecs
   -- this was timing out a bunch but now seems fine...?
   luaScriptSpecs
+  resourceRegistrationSpecs
   threadMapSpecs
 
   -- TODO: Haven't yet figured out how to test scheduler
@@ -49,8 +50,8 @@ spec = do
   -- the way it worked didn't make sense any more, and rather than
   -- refactor a pointlessly slow test, I just scrapped it.
 
-deviceRegistrationSpecs :: Spec
-deviceRegistrationSpecs = do
+resourceRegistrationSpecs :: Spec
+resourceRegistrationSpecs = do
   around initAndCleanup $ do
     it "allows for device registration" $
       testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
@@ -67,6 +68,23 @@ deviceRegistrationSpecs = do
 
         waitUntilEqSTM (Just (Gold :| [])) $
           readTVar deviceRegs <&> M.lookup mirrorLightID
+
+  around initAndCleanup $ do
+    it "allows for group registration" $
+      testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
+        let
+          basementStandingLampGroupId = 1
+          daemonBroadcast' = env ^. daemonBroadcast
+          groupRegs = env ^. groupRegistrations
+          regGoldMsgIn = Daemon.RegisterGroup basementStandingLampGroupId Gold
+
+        atomically $ writeTChan daemonBroadcast' regGoldMsgIn
+
+        regGoldMsgOut <- atomically $ readTChan daemonSnooper
+        regGoldMsgOut `shouldBe` regGoldMsgIn
+
+        waitUntilEqSTM (Just (Gold :| [])) $
+          readTVar groupRegs <&> M.lookup basementStandingLampGroupId
 
 
 luaScriptSpecs :: Spec
@@ -123,6 +141,27 @@ luaScriptSpecs = do
 
         mirrorLightAutos <- readTVarIO registrations <&> M.lookup mirrorLightID
         mirrorLightAutos
+          `shouldBe`
+          (Just (Gold :| [LuaScript "testRegistration"]))
+
+  around initAndCleanup $ do
+    it "allows scripts to register groups" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          basementStandingLampGroupId = 1
+          registrations = env ^. groupRegistrations
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
+        -- artificially enforce ordering of messages to conform to assertion below
+        threadDelay 1000
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testRegistration")
+
+        -- see comment in test below
+        threadDelay 10000
+
+        basementStandingLampGroupAutos <- readTVarIO registrations <&> M.lookup basementStandingLampGroupId
+        basementStandingLampGroupAutos
           `shouldBe`
           (Just (Gold :| [LuaScript "testRegistration"]))
 

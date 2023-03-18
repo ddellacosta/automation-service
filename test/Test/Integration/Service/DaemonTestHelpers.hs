@@ -19,9 +19,11 @@ import Service.Env
   , appCleanup
   , daemonBroadcast
   , devices
+  , groups
   )
+import qualified Service.Group as Group
 import qualified Service.Messages.Daemon as Daemon
-import Test.Helpers (loadTestDevices)
+import Test.Helpers (loadTestDevices, loadTestGroups)
 import Test.Hspec (Expectation, shouldBe)
 import UnliftIO.Async (withAsync)
 import UnliftIO.Exception (bracket)
@@ -38,9 +40,17 @@ initAndCleanup :: (Env -> IO ()) -> IO ()
 initAndCleanup runTests = bracket
   (do
       env <- Env.initialize testConfigFilePath mkLogger mkMQTTClient
+
       devices' <- loadTestDevices
-      let devicesTVar = env ^. devices
+      groups' <- loadTestGroups
+
+      let
+        devicesTVar = env ^. devices
+        groupsTVar = env ^. groups
+
       Daemon.loadResources Device._id devicesTVar devices'
+      Daemon.loadResources Group._id groupsTVar groups'
+
       pure env
   )
   (view appCleanup)

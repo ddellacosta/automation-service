@@ -49,10 +49,12 @@ import Service.Env
   , daemonBroadcast
   , deviceRegistrations
   , devices
+  , groups
   , logger
   , luaScriptPath
   , mqttClient
   )
+import Service.Group (Group, GroupId, toLuaGroup)
 import qualified Service.Messages.Daemon as Daemon
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.Exception (handle, throwIO)
@@ -90,13 +92,14 @@ mkCleanupAutomation filepath = \_broadcastChan -> do
   mqttClient' <- view mqttClient
   daemonBroadcast' <- view daemonBroadcast
   devices' <- view devices
+  groups' <- view groups
 
   luaScriptPath' <- view $ config . luaScriptPath
   luaState <- liftIO Lua.newstate
 
   luaStatusString <- liftIO . Lua.unsafeRunWith luaState $ do
     Lua.openlibs -- load the default Lua packages
-    loadDSL filepath logger' mqttClient' daemonBroadcast' devices'
+    loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups'
     loadScript luaScriptPath' filepath *> Lua.callTrace 0 0
     callWhenExists "cleanup"
 
@@ -141,6 +144,7 @@ mkRunAutomation filepath = \_broadcastChan -> do
   mqttClient' <- view mqttClient
   daemonBroadcast' <- view daemonBroadcast
   devices' <- view devices
+  groups' <- view groups
 
   luaScriptPath' <- view $ config . luaScriptPath
   luaState <- liftIO Lua.newstate
@@ -154,7 +158,7 @@ mkRunAutomation filepath = \_broadcastChan -> do
   luaStatusString <- handle (\e -> pure . show $ (e :: Lua.Exception)) $
     liftIO . Lua.unsafeRunWith luaState $ do
       Lua.openlibs -- load the default Lua packages
-      loadDSL filepath logger' mqttClient' daemonBroadcast' devices'
+      loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups'
       -- TODO this needs error handling
       loadScript luaScriptPath' filepath *> Lua.callTrace 0 0
 
@@ -200,8 +204,9 @@ loadDSL
   -> MQTTClientVariant
   -> TChan Daemon.Message
   -> TVar (Map DeviceId Device)
+  -> TVar (Map GroupId Group)
   -> Lua.LuaE Lua.Exception ()
-loadDSL filepath logger' mqttClient' daemonBroadcast' devices' = do
+loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
   for_ functions $ \(fn, fnName) ->
     pushDocumentedFunction fn *> Lua.setglobal fnName
 
@@ -212,6 +217,7 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' = do
       , (publish, "publish")
       , (publishString, "publishString")
       , (register, "register")
+      , (registerGroup, "registerGroup")
       , (sendMessage, "sendMessage")
       , (sleep, "sleep")
       , (subscribe, "subscribe")
@@ -267,6 +273,26 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' = do
           )
       <#> parameter LM.peekText "string" "deviceId" "Id for device to register"
       =#> functionResult LA.pushViaJSON "device" "device"
+
+    registerGroup :: DocumentedFunction Lua.Exception
+    registerGroup =
+      defun "registerGroup"
+      ### (\groupId -> do
+              mGroup <- atomically $ do
+                let registrationMsg =
+                      Daemon.RegisterGroup groupId (AutomationName.LuaScript filepath)
+                writeTChan daemonBroadcast' $ registrationMsg
+                M.lookup groupId <$> readTVar groups'
+
+              case mGroup of
+                Just group ->
+                  -- pTraceShow (toLuaGroup group) $
+                  pure . toLuaGroup $ group
+                -- I REALLY need to think through the error handling here more
+                Nothing -> throwIO (Lua.Exception "group doesn't exist")
+          )
+      <#> parameter LM.peekIntegral "string" "groupId" "Id for group to register"
+      =#> functionResult LA.pushViaJSON "group" "group"
 
     sleep :: DocumentedFunction Lua.Exception
     sleep =

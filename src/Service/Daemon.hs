@@ -25,7 +25,6 @@ import Service.AutomationName (AutomationName, serializeAutomationName)
 import Service.Automations (findAutomation)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Device as Device
-import Service.Device (DeviceId)
 import Service.Env
   ( Env
   , appCleanup
@@ -33,6 +32,7 @@ import Service.Env
   , config
   , deviceRegistrations
   , devices
+  , groupRegistrations
   , groups
   , messageChan
   , mqttDispatch
@@ -118,10 +118,13 @@ run' threadMapTV = do
           storedGroups <- view groups
           loadResources Group._id storedGroups groups' *> go
 
-        Daemon.RegisterDevice deviceId automationName ->
-          addRegisteredDevice deviceId automationName *> go
+        Daemon.RegisterDevice deviceId automationName -> do
+          deviceRegs <- view deviceRegistrations
+          addRegisteredResource deviceId automationName deviceRegs *> go
 
-        Daemon.RegisterGroup _groupId _automationName -> go
+        Daemon.RegisterGroup groupId automationName -> do
+          groupRegs <- view groupRegistrations
+          addRegisteredResource groupId automationName groupRegs *> go
 
         Daemon.Subscribe mTopic listenerBcastChan ->
           for_ mTopic $ \topic -> do
@@ -219,19 +222,18 @@ loadResources mkResourceKey stored newResources =
   atomically . writeTVar stored . M.fromList $
     (\r -> (mkResourceKey r, r)) <$> newResources
 
-addRegisteredDevice
-  :: (MonadReader Env m, MonadUnliftIO m)
-  => DeviceId
+addRegisteredResource
+  :: (MonadReader Env m, MonadUnliftIO m, Ord k)
+  => k
   -> AutomationName
+  -> TVar (Map k (NonEmpty AutomationName))
   -> m ()
-addRegisteredDevice deviceId newAutoName =
-  do
-  deviceRegs <- view deviceRegistrations
-  atomically $ modifyTVar' deviceRegs $ \deviceRegs' ->
+addRegisteredResource resourceId newAutoName resourceStore  = do
+  atomically $ modifyTVar' resourceStore $ \resourceStore' ->
     M.alter
       (\case
           Just autos -> Just (NE.append autos $ newAutoName :| [])
           Nothing -> Just (newAutoName :| [])
       )
-      deviceId
-      deviceRegs'
+      resourceId
+      resourceStore'

@@ -17,6 +17,7 @@ import Service.App (Logger(..), MonadMQTT(..), findDeviceM)
 import Service.Automation as Automation
 import Service.AutomationName (AutomationName(..))
 import Service.Device (DeviceId, topicSet)
+import Service.Group (GroupId)
 import Service.Env (Env, daemonBroadcast)
 import qualified Service.Messages.Daemon as Daemon
 import Service.Messages.GledoptoController
@@ -30,8 +31,11 @@ import Service.Messages.GledoptoController
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan, atomically, tryReadTChan, writeTChan)
 
-mirrorLightID :: DeviceId
-mirrorLightID = "0xb4e3f9fffe14c707"
+mirrorLightId :: DeviceId
+mirrorLightId = "0xb4e3f9fffe14c707"
+
+basementStandingLampGroupId :: GroupId
+basementStandingLampGroupId = 1
 
 goldAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
@@ -50,7 +54,7 @@ cleanupAutomation
 cleanupAutomation _broadcastChan = do
   info $ "Shutting down Gold"
 
-  lightStrip <- findDeviceM mirrorLightID
+  lightStrip <- findDeviceM mirrorLightId
 
   for_ lightStrip $ \lightStrip' -> do
     let lightStripTopic = lightStrip' ^. topicSet
@@ -66,10 +70,15 @@ runAutomation broadcastChan = do
   info "Running Gold"
 
   daemonBroadcast' <- view daemonBroadcast
-  let registrationMsg = Daemon.RegisterDevice mirrorLightID Gold
-  atomically $ writeTChan daemonBroadcast' registrationMsg
 
-  lightStrip <- findDeviceM mirrorLightID
+  let
+    mirrorLightRegMsg = Daemon.RegisterDevice mirrorLightId Gold
+    basementStandingLampRegMsg = Daemon.RegisterGroup basementStandingLampGroupId Gold
+
+  atomically $ writeTChan daemonBroadcast' mirrorLightRegMsg
+  atomically $ writeTChan daemonBroadcast' basementStandingLampRegMsg
+
+  lightStrip <- findDeviceM mirrorLightId
 
   for_ lightStrip $ \lightStrip' -> do
     let lightStripTopic = lightStrip' ^. topicSet
