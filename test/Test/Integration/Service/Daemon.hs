@@ -200,6 +200,13 @@ luaScriptSpecs = do
         -- still don't understand why it doesn't work without this
         -- delay first.
         --
+        -- NOTE this was written before I switched from using
+        -- tryReadTChan (does not block, returns Nothing when nothing
+        -- is present, so it is appropriate for polling) to readTChan
+        -- (blocks) in LuaScript subscribe functions. the readTVarIO
+        -- lookup does not block any more, but I still need the
+        -- threadDelay.
+        --
         -- [0] https://hackage.haskell.org/package/base-4.16.3.0/docs/GHC-Conc.html#v:readTVarIO
         --
         threadDelay 10000

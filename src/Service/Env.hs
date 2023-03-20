@@ -9,6 +9,7 @@ module Service.Env
   , MQTTClientVariant(..)
   , MQTTConfig(..)
   , MQTTDispatch
+  , Subscriptions
   , appCleanup
   , automationBroadcast
   , automationServiceTopicFilter
@@ -32,12 +33,13 @@ module Service.Env
   , mqttConfig
   , mqttDispatch
   , serverChan
+  , subscriptions
   , uri
   )
 where
 
 import Control.Lens (makeFieldsNoPrefix)
-import Data.Aeson (decode)
+import Data.Aeson (Value, decode)
 import Data.ByteString.Lazy (ByteString)
 import Data.Foldable (for_)
 import Data.Functor ((<&>))
@@ -128,6 +130,8 @@ type Registrations a = Map a (NonEmpty AutomationName)
 type MsgAction = ByteString -> IO ()
 type MQTTDispatch = Map Topic (NonEmpty MsgAction)
 
+type Subscriptions = Map AutomationName (NonEmpty (TChan Value))
+
 data Env = Env
   { _config :: Config
   , _logger :: LoggerVariant
@@ -139,6 +143,7 @@ data Env = Env
   , _deviceRegistrations :: TVar (Registrations DeviceId)
   , _groups :: TVar (Map GroupId Group)
   , _groupRegistrations :: TVar (Registrations GroupId)
+  , _subscriptions :: TVar Subscriptions
   , _automationBroadcast :: TChan Automation.Message
   , _serverChan :: TChan Automation.Message
   , _appCleanup :: IO ()
@@ -190,6 +195,8 @@ initialize configFilePath mkLogger mkMQTTClient = do
   groups' <- newTVarIO M.empty
   groupRegistrations' <- newTVarIO M.empty
 
+  subscriptions' <- newTVarIO M.empty
+
   automationBroadcast' <- newBroadcastTChanIO
   serverChan' <- atomically $ dupTChan automationBroadcast'
 
@@ -205,6 +212,7 @@ initialize configFilePath mkLogger mkMQTTClient = do
       deviceRegistrations'
       groups'
       groupRegistrations'
+      subscriptions'
       automationBroadcast'
       serverChan'
       (loggerCleanup >> mcCleanup)

@@ -14,6 +14,7 @@ data AutomationName
   = Null
   | LuaScript FilePath
   | Gold
+  | StateManager
   deriving (Generic, Show, Eq, Ord)
 
 instance ToJSON AutomationName where

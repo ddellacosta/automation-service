@@ -12,7 +12,8 @@ import Control.Lens (view)
 import Control.Monad (void)
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
-import Data.Aeson (Value, decode)
+import qualified Data.Aeson as Aeson
+import Data.Aeson (Value, decode, object)
 import Data.Foldable (for_)
 import qualified Data.List.NonEmpty as NE
 import Data.List.NonEmpty (NonEmpty((:|)))
@@ -21,12 +22,13 @@ import Data.Map.Strict (Map)
 import qualified Data.Text as T
 import qualified Service.Automation as Automation
 import Service.Automation (Automation, Message(..))
-import Service.AutomationName (AutomationName, serializeAutomationName)
+import Service.AutomationName (AutomationName(..), serializeAutomationName)
 import Service.Automations (findAutomation)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Device as Device
 import Service.Env
   ( Env
+  , Subscriptions
   , appCleanup
   , automationBroadcast
   , config
@@ -37,6 +39,7 @@ import Service.Env
   , messageChan
   , mqttDispatch
   , serverChan
+  , subscriptions
   )
 import qualified Service.Group as Group
 import qualified Service.Messages.Daemon as Daemon
@@ -86,6 +89,11 @@ run' threadMapTV = do
 
   flip finally (cleanupAutomations appCleanup' threadMapTV) $ do
     debug . T.pack . show $ config'
+    -- StateManager is responsible for loading automations that are
+    -- explicitly registered as 'long-lived', which were running at
+    -- the time the system was shut down.
+    messageChan' <- view messageChan
+    atomically $ writeTChan messageChan' $ Daemon.Start StateManager
     go
 
   where
@@ -99,8 +107,9 @@ run' threadMapTV = do
         Daemon.Start automationName ->
           initializeAndRunAutomation threadMapTV automationName *> go
 
-        Daemon.Stop automationName ->
-          stopAutomation threadMapTV automationName *> go
+        Daemon.Stop automationName -> do
+          subscriptions' <- view subscriptions
+          stopAutomation threadMapTV subscriptions' automationName *> go
 
         Daemon.SendTo automationName msg' -> do
           serverChan' <- view serverChan
@@ -126,12 +135,16 @@ run' threadMapTV = do
           groupRegs <- view groupRegistrations
           addRegisteredResource groupId automationName groupRegs *> go
 
-        Daemon.Subscribe mTopic listenerBcastChan ->
+        Daemon.Subscribe automationName mTopic listenerBcastChan -> do
+          mqttDispatch' <- view mqttDispatch
+          subscriptions' <- view subscriptions
           for_ mTopic $ \topic -> do
-            mqttDispatch' <- view mqttDispatch
-            atomically . modifyTVar' mqttDispatch' $
-              M.insertWith (<>) topic $
-                mkDefaultTopicMsgAction listenerBcastChan :| []
+            atomically $ do
+              modifyTVar' mqttDispatch' $
+                M.insertWith (<>) topic $
+                  mkDefaultTopicMsgAction listenerBcastChan :| []
+              modifyTVar' subscriptions' $
+                M.insertWith (<>) automationName $ listenerBcastChan :| []
             subscribeMQTT topic
           *> go
 
@@ -182,12 +195,44 @@ initializeAndRunAutomation
       writeTVar threadMapTV' $ M.insert automationName' automationEntry threadMap'
 
 stopAutomation
-  :: (Logger m, MonadUnliftIO m) => TVar (ThreadMap m) -> AutomationName -> m ()
-stopAutomation threadMapTV automationName = do
-  threadMap <- atomically . readTVar $ threadMapTV
+  :: (Logger m, MonadUnliftIO m)
+  => TVar (ThreadMap m)
+  -> TVar Subscriptions
+  -> AutomationName
+  -> m ()
+stopAutomation threadMapTV subscriptions' automationName = do
   info $ "Shutting down Automation " <> serializeAutomationName automationName
-  for_ (M.lookup automationName threadMap) $ \(_, async') -> cancel async'
+
+  threadMap <- atomically . readTVar $ threadMapTV
+
+  --
+  -- The cancel below is somewhat ironically wrapped in an async
+  -- because cancel will block when a topic channel is being read from
+  -- inside an automation thread and we need to send a message to the
+  -- topic channel immediately after, so we don't want it to
+  -- block...especially because the purpose of the message sent to the
+  -- topic channel is explicitly to allow the readTChan call inside of
+  -- `subscribe` calls to be unblocked so `cancel`'s `AsyncCancelled`
+  -- exception is picked up by the thread and shuts it down.
+  --
+  -- Wrt the topic channel being read from and blocking, I'm not sure
+  -- why this is because as I understand it readTChan
+  -- (a.k.a. readTVar) should be interruptible, meaning it should
+  -- respond to `AsyncCancelled` getting thrown even if it is masked,
+  -- so I figure this has more to do with Lua's semantics? and is
+  -- being caused somehow by the `calltrace` call blocking in
+  -- LuaScript...but this is just a guess.
+  --
+  for_ (M.lookup automationName threadMap) $ \(_, async') -> async $ cancel async'
   atomically . writeTVar threadMapTV . M.delete automationName $ threadMap
+
+  -- we have to send a final message to any topic channels that the
+  -- automation has open so that they won't block when we cancel
+  subs <- atomically . readTVar $ subscriptions'
+  for_ (M.lookup automationName subs) $
+    traverse
+      (\bc -> atomically $ writeTChan bc (object [("shutdownMessage", Aeson.Bool True)]))
+
 
 cleanupAutomations
   :: (Logger m, MonadIO m, MonadReader Env m, MonadUnliftIO m)
@@ -196,6 +241,9 @@ cleanupAutomations
   -> m ()
 cleanupAutomations appCleanup' threadMapTV = do
   threadMap <- atomically . readTVar $ threadMapTV
+  -- StateManager is responsible for recording the state of the system
+  -- before it is shut down, Also see startup above.
+  _ <- traverse cancel $ snd <$> M.lookup StateManager threadMap
   for_ (M.assocs threadMap) $ \(automationName, (_, async')) -> do
     info $ "Shutting down Automation " <> serializeAutomationName automationName
     cancel async'
@@ -228,7 +276,7 @@ addRegisteredResource
   -> AutomationName
   -> TVar (Map k (NonEmpty AutomationName))
   -> m ()
-addRegisteredResource resourceId newAutoName resourceStore  = do
+addRegisteredResource resourceId newAutoName resourceStore = do
   atomically $ modifyTVar' resourceStore $ \resourceStore' ->
     M.alter
       (\case

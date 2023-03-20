@@ -10,7 +10,7 @@ import Prelude hiding (id, init)
 import Control.Lens (view)
 import Control.Monad.IO.Unlift (MonadUnliftIO(..), liftIO)
 import Control.Monad.Reader (MonadReader)
-import Data.Aeson (Value, decode, encode, object)
+import Data.Aeson (Value, decode, encode)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import Data.Foldable (for_)
@@ -65,8 +65,8 @@ import UnliftIO.STM
   , dupTChan
   , modifyTVar'
   , newBroadcastTChan
+  , readTChan
   , readTVar
-  , tryReadTChan
   , writeTChan
   )
 
@@ -211,6 +211,8 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
     pushDocumentedFunction fn *> Lua.setglobal fnName
 
   where
+    thisAutoName = AutomationName.LuaScript filepath
+
     functions =
       [ (logDebugMsg, "logDebugMsg")
       , (microSleep, "microSleep")
@@ -259,8 +261,8 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
       defun "register"
       ### (\deviceId -> do
               mDevice <- atomically $ do
-                let registrationMsg =
-                      Daemon.RegisterDevice deviceId (AutomationName.LuaScript filepath)
+                let
+                  registrationMsg = Daemon.RegisterDevice deviceId thisAutoName
                 writeTChan daemonBroadcast' $ registrationMsg
                 M.lookup deviceId <$> readTVar devices'
 
@@ -279,8 +281,8 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
       defun "registerGroup"
       ### (\groupId -> do
               mGroup <- atomically $ do
-                let registrationMsg =
-                      Daemon.RegisterGroup groupId (AutomationName.LuaScript filepath)
+                let
+                  registrationMsg = Daemon.RegisterGroup groupId thisAutoName
                 writeTChan daemonBroadcast' $ registrationMsg
                 M.lookup groupId <$> readTVar groups'
 
@@ -325,7 +327,7 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
                 automationBroadcastChan <- newBroadcastTChan
                 listenerChan <- dupTChan $ automationBroadcastChan
                 writeTChan daemonBroadcast' $
-                  Daemon.Subscribe (mkTopic topic) automationBroadcastChan
+                  Daemon.Subscribe thisAutoName (mkTopic topic) automationBroadcastChan
                 pure listenerChan
               liftIO . mkListenerFn $ listenerChan'
           )
@@ -338,14 +340,7 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
       let fnName = BS.pack . UUID.toString $ fnName'
       pure $
         defun (Lua.Name fnName)
-        -- we don't want this to block, it prevents LuaScript threads
-        -- from being interruptible
-        ### (atomically $ do
-                tryReadTChan listenerChan >>= \mMsg ->
-                  -- TODO: make the default response better
-                  -- pTraceShow (mMsg) $
-                  pure $ fromMaybe (object [("msg", "NoMsg")]) mMsg
-            )
+        ### (atomically . readTChan $ listenerChan)
         =#> functionResult LA.pushViaJSON "msg" "incoming data from subscribed topic"
 
 

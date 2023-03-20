@@ -55,6 +55,7 @@ initAndCleanup runTests = bracket
   )
   (view appCleanup)
   runTests
+
   where
     mkLogger _config = do
       qLogger <- newTVarIO []
