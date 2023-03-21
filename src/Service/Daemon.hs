@@ -40,6 +40,7 @@ import Service.Env
   , mqttDispatch
   , serverChan
   , subscriptions
+  , stateStore
   )
 import qualified Service.Group as Group
 import qualified Service.Messages.Daemon as Daemon
@@ -86,14 +87,17 @@ run'
 run' threadMapTV = do
   config' <- view config
   appCleanup' <- view appCleanup
+  stateStore' <- atomically . readTVar =<< view stateStore
 
-  flip finally (cleanupAutomations appCleanup' threadMapTV) $ do
+  flip finally (cleanupAutomations (appCleanup' stateStore') threadMapTV) $ do
     debug . T.pack . show $ config'
+
     -- StateManager is responsible for loading automations that are
     -- explicitly registered as 'long-lived', which were running at
     -- the time the system was shut down.
-    messageChan' <- view messageChan
-    atomically $ writeTChan messageChan' $ Daemon.Start StateManager
+    view messageChan >>= \messageChan' ->
+      atomically $ writeTChan messageChan' $ Daemon.Start StateManager
+
     go
 
   where
@@ -241,9 +245,6 @@ cleanupAutomations
   -> m ()
 cleanupAutomations appCleanup' threadMapTV = do
   threadMap <- atomically . readTVar $ threadMapTV
-  -- StateManager is responsible for recording the state of the system
-  -- before it is shut down, Also see startup above.
-  _ <- traverse cancel $ snd <$> M.lookup StateManager threadMap
   for_ (M.assocs threadMap) $ \(automationName, (_, async')) -> do
     info $ "Shutting down Automation " <> serializeAutomationName automationName
     cancel async'

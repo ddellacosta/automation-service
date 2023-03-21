@@ -4,6 +4,8 @@ Comments other than here will be stripped out because of how the Dhall auto-form
 
 This config should not be checked into git with passwords and other sensitive values saved.
 
+Note that dbPath must be post-processed by the test scaffolding in order to avoid conflicting db paths when tests are run in parallel.
+
 -}
 let LogLevel = ../config/LogLevel.dhall
 
@@ -17,5 +19,6 @@ in    { mqttBroker =
       , logFilePath = "logs/testlogfile"
       , logLevel = LogLevel.Debug
       , luaScriptPath = "test/lua-automations/"
+      , dbPath = "test/dbs/automationState"
       }
     : ../config/Config.dhall

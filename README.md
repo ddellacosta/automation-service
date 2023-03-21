@@ -63,7 +63,8 @@ You can then start this up `docker-compose start automation-service`, and can dr
 Running tests:
 
 ```bash
-$ watchexec -w test -w src -w app 'cabal test --test-show-details=always --test-options "--color=always"'
+# watchexec is handy:
+$ watchexec -w test -w src -w app -i "*.db" -i "test/dbs/*" 'cabal test --test-show-details=always --test-options "--color=always"'
 $ cabal test --test-show-details=always --test-options '--color=always -l -p Unit'
 $ cabal test --test-show-details=always --test-options '--color=always -l -p Integration'
 ```

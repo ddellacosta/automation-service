@@ -5,6 +5,7 @@ end
 
 function loop ()
    logDebugMsg("loop")
+   sleep(5)
 end
 
 function cleanup ()

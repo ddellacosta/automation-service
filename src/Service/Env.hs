@@ -19,6 +19,7 @@ module Service.Env
   , config
   , configDecoder
   , daemonBroadcast
+  , dbPath
   , deviceRegistrations
   , devices
   , groupRegistrations
@@ -34,11 +35,12 @@ module Service.Env
   , mqttDispatch
   , serverChan
   , subscriptions
+  , stateStore
   , uri
   )
 where
 
-import Control.Lens (makeFieldsNoPrefix)
+import Control.Lens ((^.), makeFieldsNoPrefix)
 import Data.Aeson (Value, decode)
 import Data.ByteString.Lazy (ByteString)
 import Data.Foldable (for_)
@@ -49,6 +51,8 @@ import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
 import qualified Data.String as S
 import Data.Text (Text)
+import qualified Database.SQLite.Simple as DB
+import Database.SQLite.Simple (Connection)
 import Dhall (Decoder, Generic, FromDhall(..), auto, field, inputFile, record, string)
 import Network.MQTT.Client (MQTTClient)
 import Network.MQTT.Topic (Filter, Topic)
@@ -100,6 +104,7 @@ data Config = Config
   , _logFilePath :: FilePath
   , _logLevel :: LogLevel
   , _luaScriptPath :: FilePath
+  , _dbPath :: FilePath
   }
   deriving (Generic, Show)
 
@@ -113,6 +118,7 @@ configDecoder =
         <*> field "logFilePath" string 
         <*> field "logLevel" auto
         <*> field "luaScriptPath" string
+        <*> field "dbPath" string
     )
 
 -- this is testing-motivated boilerplate
@@ -134,19 +140,24 @@ type Subscriptions = Map AutomationName (NonEmpty (TChan Value))
 
 data Env = Env
   { _config :: Config
+  -- wrapping this in a TVar...seems to prevent some weird race
+  -- conditions in test scaffolding in the context of parallelized
+  -- tests, so I probably need this in general:
+  , _stateStore :: TVar Connection
   , _logger :: LoggerVariant
   , _mqttClient :: MQTTClientVariant
   , _mqttDispatch :: TVar MQTTDispatch
   , _daemonBroadcast :: TChan Daemon.Message
+  , _automationBroadcast :: TChan Automation.Message
   , _messageChan :: TChan Daemon.Message
   , _devices :: TVar (Map DeviceId Device)
   , _deviceRegistrations :: TVar (Registrations DeviceId)
   , _groups :: TVar (Map GroupId Group)
   , _groupRegistrations :: TVar (Registrations GroupId)
   , _subscriptions :: TVar Subscriptions
-  , _automationBroadcast :: TChan Automation.Message
   , _serverChan :: TChan Automation.Message
-  , _appCleanup :: IO ()
+  -- do I need to mark this explicitly as being lazy so it's not called immediately?
+  , _appCleanup :: Connection -> IO ()
   }
 
 makeFieldsNoPrefix ''Env
@@ -156,67 +167,62 @@ initialize
   :: FilePath
   -> (Config -> IO (LoggerVariant, IO ()))
   -> (Config -> LoggerVariant -> TVar MQTTDispatch -> IO (MQTTClientVariant, IO ()))
+  -> (FilePath -> IO Connection)
   -> IO Env
-initialize configFilePath mkLogger mkMQTTClient = do
+initialize configFilePath mkLogger mkMQTTClient mkDb = do
   -- need to handle a configuration error? Dhall provides a lot of error output
   config' <- inputFile configDecoder configFilePath
 
+  -- DB initialization
+  dbConn <- mkDb $ config' ^. dbPath
+  initializeDB dbConn
+  dbConn' <- newTVarIO dbConn
+
   daemonBroadcast' <- newBroadcastTChanIO
-  messageChan' <- atomically $ dupTChan daemonBroadcast'
 
   (logger', loggerCleanup) <- mkLogger config'
 
-  -- TODO: this feels a bit messy
-  mqttDispatch' <- newTVarIO $ M.fromList
-    [ ("default", (\msg -> for_ (decode msg) $ write daemonBroadcast') :| [])
-    , (Zigbee2MQTT.devicesTopic, (\msg ->
-          case decode msg of
-            Just [] -> pure ()
-            Nothing -> pure ()
-            Just devicesJSON -> do
-              write daemonBroadcast' $ Daemon.DeviceUpdate devicesJSON
-          ) :| []
-      )
-    , (Zigbee2MQTT.groupsTopic, (\msg ->
-          case decode msg of
-            Just [] -> pure ()
-            Nothing -> pure ()
-            Just groupsJSON -> do
-              write daemonBroadcast' $ Daemon.GroupUpdate groupsJSON
-          ) :| []
-      )
-    ]
-
+  mqttDispatch' <- newTVarIO $ defaultTopicActions daemonBroadcast'
   (mc, mcCleanup) <- mkMQTTClient config' logger' mqttDispatch'
 
-  devices' <- newTVarIO M.empty
-  deviceRegistrations' <- newTVarIO M.empty
-
-  groups' <- newTVarIO M.empty
-  groupRegistrations' <- newTVarIO M.empty
-
-  subscriptions' <- newTVarIO M.empty
-
   automationBroadcast' <- newBroadcastTChanIO
-  serverChan' <- atomically $ dupTChan automationBroadcast'
 
-  pure $
-    Env
-      config'
-      logger'
-      mc
-      mqttDispatch'
-      daemonBroadcast'
-      messageChan'
-      devices'
-      deviceRegistrations'
-      groups'
-      groupRegistrations'
-      subscriptions'
-      automationBroadcast'
-      serverChan'
-      (loggerCleanup >> mcCleanup)
+  Env config' dbConn' logger' mc mqttDispatch' daemonBroadcast' automationBroadcast'
+    <$> (atomically $ dupTChan daemonBroadcast') -- messageChan
+    <*> (newTVarIO M.empty) -- devices
+    <*> (newTVarIO M.empty) -- deviceRegistrations
+    <*> (newTVarIO M.empty) -- groups
+    <*> (newTVarIO M.empty) -- groupRegistrations
+    <*> (newTVarIO M.empty) -- subscriptions
+    <*> (atomically $ dupTChan automationBroadcast') -- serverChan
+    <*> pure (\stateStore' -> DB.close stateStore' >> loggerCleanup >> mcCleanup)
 
   where
     write :: TChan Daemon.Message -> Daemon.Message -> IO ()
     write daemonBroadcast' = atomically . writeTChan daemonBroadcast'
+
+    initializeDB dbConn' = do
+      DB.execute_ dbConn'
+        "CREATE TABLE IF NOT EXISTS running (id INTEGER PRIMARY KEY, automationName TEXT) STRICT"
+
+    defaultTopicActions daemonBroadcast' = M.fromList
+      [ ("default", (\msg -> for_ (decode msg) $ write daemonBroadcast') :| [])
+
+      , (Zigbee2MQTT.devicesTopic, (\msg ->
+            case decode msg of
+              Just [] -> pure ()
+              Nothing -> pure ()
+              Just devicesJSON -> do
+                write daemonBroadcast' $ Daemon.DeviceUpdate devicesJSON
+            ) :| []
+        )
+
+      , (Zigbee2MQTT.groupsTopic, (\msg ->
+            case decode msg of
+              Just [] -> pure ()
+              Nothing -> pure ()
+              Just groupsJSON -> do
+                write daemonBroadcast' $ Daemon.GroupUpdate groupsJSON
+            ) :| []
+        )
+      ]

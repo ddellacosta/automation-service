@@ -18,5 +18,6 @@ in    { mqttBroker =
       , logFilePath = "logs/logfile"
       , logLevel = LogLevel.Debug
       , luaScriptPath = "lua-automations/"
+      , dbPath = "automationState.db"
       }
     : ./config/Config.dhall

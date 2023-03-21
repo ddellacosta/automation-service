@@ -6,8 +6,11 @@ module Test.Integration.Service.DaemonTestHelpers
   )
   where
 
-import Control.Lens ((^.), view)
+import Control.Lens ((^.))
 import qualified Data.Map.Strict as M
+import qualified Data.UUID as UUID
+import qualified Data.UUID.V4 as UUID
+import qualified Database.SQLite.Simple as DB
 import qualified Service.App as App
 import qualified Service.Daemon as Daemon
 import qualified Service.Device as Device
@@ -20,6 +23,7 @@ import Service.Env
   , daemonBroadcast
   , devices
   , groups
+  , stateStore
   )
 import qualified Service.Group as Group
 import qualified Service.Messages.Daemon as Daemon
@@ -27,7 +31,7 @@ import Test.Helpers (loadTestDevices, loadTestGroups)
 import Test.Hspec (Expectation, shouldBe)
 import UnliftIO.Async (withAsync)
 import UnliftIO.Exception (bracket)
-import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, newTVarIO)
+import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, newTVarIO, readTVar)
 
 testConfigFilePath :: FilePath
 testConfigFilePath = "test/config.dhall"
@@ -39,7 +43,7 @@ testConfigFilePath = "test/config.dhall"
 initAndCleanup :: (Env -> IO ()) -> IO ()
 initAndCleanup runTests = bracket
   (do
-      env <- Env.initialize testConfigFilePath mkLogger mkMQTTClient
+      env <- Env.initialize testConfigFilePath mkLogger mkMQTTClient mkDb
 
       devices' <- loadTestDevices
       groups' <- loadTestGroups
@@ -53,7 +57,11 @@ initAndCleanup runTests = bracket
 
       pure env
   )
-  (view appCleanup)
+  (\env -> do
+      let cleanup = env ^. appCleanup
+      stateStore' <- atomically $ readTVar (env ^. stateStore)
+      pure $ cleanup stateStore'
+  )
   runTests
 
   where
@@ -64,6 +72,11 @@ initAndCleanup runTests = bracket
     mkMQTTClient _config _loggerVariant _mqttDispatch = do
       fauxMQTTClient <- newTVarIO M.empty
       pure (TVClient fauxMQTTClient, pure ())
+
+    mkDb dbPath' = do
+      uuid <- UUID.nextRandom
+      let dbPath'' = dbPath' <> "-" <> (UUID.toString uuid) <> ".db"
+      DB.open dbPath''
 
 -- |
 -- | Takes a function accepting a bunch of state and returning an

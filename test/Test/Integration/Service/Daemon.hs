@@ -35,20 +35,21 @@ import Test.Integration.Service.DaemonTestHelpers
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (atomically, readTChan, readTVar, readTVarIO, writeTChan)
 
+-- TODO: Haven't yet figured out how to test scheduler
+-- functionality. Would like to be able to do something similar to
+-- Ruby's timecop but haven't worked out the details there yet.
+-- Used to have some super slow tests that showed the scheduler is
+-- correct at least on a basic level, but due to some refactoring
+-- the way it worked didn't make sense any more, and rather than
+-- refactor a pointlessly slow test, I just scrapped it.
+
 spec :: Spec
 spec = do
   -- this was timing out a bunch but now seems fine...?
   luaScriptSpecs
   resourceRegistrationSpecs
   threadMapSpecs
-
-  -- TODO: Haven't yet figured out how to test scheduler
-  -- functionality. Would like to be able to do something similar to
-  -- Ruby's timecop but haven't worked out the details there yet.
-  -- Used to have some super slow tests that showed the scheduler is
-  -- correct at least on a basic level, but due to some refactoring
-  -- the way it worked didn't make sense any more, and rather than
-  -- refactor a pointlessly slow test, I just scrapped it.
+  stateManagerSpecs
 
 resourceRegistrationSpecs :: Spec
 resourceRegistrationSpecs = do
@@ -274,11 +275,27 @@ threadMapSpecs = do
     it "removes entries from ThreadMap for LuaScript automations as well after stopping" $
       testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
         let daemonBroadcast' = env ^. daemonBroadcast
+
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test")
+        threadDelay 10000
+
+        threadMap <- readTVarIO threadMapTV
+        -- same as above wrt void
+        (void . M.lookup (LuaScript "test")) threadMap `shouldBe` Just ()
+
         atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "test")
-        threadMap <- atomically . readTVar $ threadMapTV
-        -- the void hack here is because there is no Show
-        -- instance for Just Automation, but there is one for Just (), and
-        -- all I care about with this test is the effect, not the
-        -- value
-        (void . M.lookup (LuaScript "test")) threadMap `shouldBe` Nothing
+        threadDelay 10000
+
+        threadMap' <- readTVarIO threadMapTV
+        -- same as above wrt void
+        (void . M.lookup (LuaScript "test")) threadMap' `shouldBe` Nothing
+
+stateManagerSpecs :: Spec
+stateManagerSpecs = do
+  around initAndCleanup $ do
+    it "stores the current set of running automations in sqlite" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let _daemonBroadcast' = env ^. daemonBroadcast
+        -- atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
+        -- atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test")
+        (1 :: Int) `shouldBe` (2 :: Int)
