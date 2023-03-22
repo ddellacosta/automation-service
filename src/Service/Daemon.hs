@@ -20,6 +20,7 @@ import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.Map.Strict as M
 import Data.Map.Strict (Map)
 import qualified Data.Text as T
+import qualified Database.SQLite.Simple as DB
 import qualified Service.Automation as Automation
 import Service.Automation (Automation, Message(..))
 import Service.AutomationName (AutomationName(..), serializeAutomationName)
@@ -32,6 +33,7 @@ import Service.Env
   , appCleanup
   , automationBroadcast
   , config
+  , dbPath
   , deviceRegistrations
   , devices
   , groupRegistrations
@@ -40,7 +42,6 @@ import Service.Env
   , mqttDispatch
   , serverChan
   , subscriptions
-  , stateStore
   )
 import qualified Service.Group as Group
 import qualified Service.Messages.Daemon as Daemon
@@ -87,18 +88,9 @@ run'
 run' threadMapTV = do
   config' <- view config
   appCleanup' <- view appCleanup
-  stateStore' <- atomically . readTVar =<< view stateStore
 
-  flip finally (cleanupAutomations (appCleanup' stateStore') threadMapTV) $ do
-    debug . T.pack . show $ config'
-
-    -- StateManager is responsible for loading automations that are
-    -- explicitly registered as 'long-lived', which were running at
-    -- the time the system was shut down.
-    view messageChan >>= \messageChan' ->
-      atomically $ writeTChan messageChan' $ Daemon.Start StateManager
-
-    go
+  flip finally (cleanupAutomations appCleanup' threadMapTV)
+    (debug . T.pack . show $ config') *> go
 
   where
     go = do
@@ -108,12 +100,36 @@ run' threadMapTV = do
       debug $ "Daemon received Message: " <> T.pack (show msg)
 
       case msg of
-        Daemon.Start automationName ->
-          initializeAndRunAutomation threadMapTV automationName *> go
+        Daemon.Start automationName -> do
+          dbPath' <- view $ config . dbPath
+          liftIO $ do
+            dbConn <- DB.open dbPath'
+            -- this should be configurable somehow, and should dump to debug log entries
+            -- DB.setTrace dbConn $ Just $ \t -> print t
+            DB.execute_ dbConn
+              "CREATE TABLE IF NOT EXISTS running (id INTEGER PRIMARY KEY, automationName TEXT) STRICT"
+            DB.execute
+              dbConn
+              "INSERT INTO running (automationName) VALUES (?)"
+              (DB.Only (serializeAutomationName automationName))
+          initializeAndRunAutomation threadMapTV automationName
+          go
 
         Daemon.Stop automationName -> do
+          dbPath' <- view $ config . dbPath
           subscriptions' <- view subscriptions
+          liftIO $ do
+            dbConn <- DB.open dbPath'
+            -- this should be configurable somehow, and should dump to debug log entries
+            -- DB.setTrace dbConn $ Just $ \t -> print t
+            DB.execute_ dbConn
+              "CREATE TABLE IF NOT EXISTS running (id INTEGER PRIMARY KEY, automationName TEXT) STRICT"
+            DB.execute
+              dbConn
+              "DELETE FROM running WHERE automationName = ?"
+              ([serializeAutomationName automationName] :: [T.Text])
           stopAutomation threadMapTV subscriptions' automationName *> go
+          go
 
         Daemon.SendTo automationName msg' -> do
           serverChan' <- view serverChan

@@ -6,19 +6,23 @@ module Test.Integration.Service.Daemon
   )
 where
 
-import Control.Lens ((^.), (<&>), _1, ix, preview)
+import Control.Lens ((^.), (^?), (<&>), _1, _2, ix, preview)
 import Control.Monad (void)
 import Data.Foldable (for_)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromJust, fromMaybe)
+import Data.Text (Text)
+import qualified Database.SQLite.Simple as DB
 import Network.MQTT.Topic (mkTopic)
 import Safe (headMay)
 import Service.Automation (name)
 import Service.AutomationName (AutomationName(..))
 import Service.Env
   ( LoggerVariant(..)
+  , config
   , daemonBroadcast
+  , dbPath
   , deviceRegistrations
   , groupRegistrations
   , logger
@@ -49,7 +53,7 @@ spec = do
   luaScriptSpecs
   resourceRegistrationSpecs
   threadMapSpecs
-  stateManagerSpecs
+  stateStoreSpecs
 
 resourceRegistrationSpecs :: Spec
 resourceRegistrationSpecs = do
@@ -117,7 +121,7 @@ luaScriptSpecs = do
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testBroken")
 
         -- see comment in test below
-        threadDelay 10000
+        threadDelay 50000
 
         logs <- readTVarIO qLogger
         logEntryMatch <- pure . headMay . filter (== expectedLogEntry) $ logs
@@ -134,7 +138,7 @@ luaScriptSpecs = do
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
         -- artificially enforce ordering of messages to conform to assertion below
-        threadDelay 1000
+        threadDelay 50000
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testRegistration")
 
         -- see comment in test below
@@ -155,7 +159,7 @@ luaScriptSpecs = do
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
         -- artificially enforce ordering of messages to conform to assertion below
-        threadDelay 1000
+        threadDelay 50000
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testRegistration")
 
         -- see comment in test below
@@ -210,7 +214,11 @@ luaScriptSpecs = do
         --
         -- [0] https://hackage.haskell.org/package/base-4.16.3.0/docs/GHC-Conc.html#v:readTVarIO
         --
-        threadDelay 10000
+        -- SECOND NOTE: update after added sqlite state-storage to the
+        -- mix, now the smallest I can make this without having tests
+        -- fail is 50000 microseconds.
+        --
+        threadDelay 50000
 
         dispatchActions <- M.lookup topic <$> readTVarIO mqttDispatch'
         for_ (fromJust dispatchActions) ($ "{\"msg\": \"hey\"}")
@@ -233,7 +241,7 @@ luaScriptSpecs = do
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testRegistration")
 
         -- same as above...don't love it here either
-        threadDelay 10000
+        threadDelay 50000
 
         deviceRegs <- readTVarIO deviceRegistrations'
         M.lookup deviceId deviceRegs `shouldBe` (Just (LuaScript "testRegistration" :| []))
@@ -277,7 +285,7 @@ threadMapSpecs = do
         let daemonBroadcast' = env ^. daemonBroadcast
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test")
-        threadDelay 10000
+        threadDelay 50000
 
         threadMap <- readTVarIO threadMapTV
         -- same as above wrt void
@@ -290,12 +298,45 @@ threadMapSpecs = do
         -- same as above wrt void
         (void . M.lookup (LuaScript "test")) threadMap' `shouldBe` Nothing
 
-stateManagerSpecs :: Spec
-stateManagerSpecs = do
+stateStoreSpecs :: Spec
+stateStoreSpecs = do
   around initAndCleanup $ do
     it "stores the current set of running automations in sqlite" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
-        let _daemonBroadcast' = env ^. daemonBroadcast
-        -- atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
-        -- atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test")
-        (1 :: Int) `shouldBe` (2 :: Int)
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          dbPath' = env ^. config . dbPath
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test")
+
+        threadDelay 200000
+
+        handle <- DB.open dbPath'
+        res <- DB.query_ handle "select * from running" :: IO [(Int, Text)]
+
+        length res `shouldBe` 2
+        res ^? ix 0 . _2 `shouldBe` Just "Gold"
+        res ^? ix 1 . _2 `shouldBe` Just "LuaScript \"test\""
+
+  around initAndCleanup $ do
+    it "updates stored automations when an automation is shut down" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          dbPath' = env ^. config . dbPath
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test")
+
+        threadDelay 200000
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Stop Gold
+
+        threadDelay 200000
+
+        handle <- DB.open dbPath'
+        res <- DB.query_ handle "select * from running" :: IO [(Int, Text)]
+
+        length res `shouldBe` 1
+        res ^? ix 0 . _2 `shouldBe` Just "LuaScript \"test\""

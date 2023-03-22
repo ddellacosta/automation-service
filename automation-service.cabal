@@ -77,7 +77,6 @@ library
     , Service.Automations
     , Service.Automations.Gold
     , Service.Automations.LuaScript
-    , Service.Automations.StateManager
     , Service.App
     , Service.Daemon
     , Service.Device

@@ -6,7 +6,7 @@ module Test.Integration.Service.DaemonTestHelpers
   )
   where
 
-import Control.Lens ((^.))
+import Control.Lens ((&), (%~), (^.), view)
 import qualified Data.Map.Strict as M
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
@@ -20,10 +20,11 @@ import Service.Env
   , LoggerVariant(QLogger)
   , MQTTClientVariant(..)
   , appCleanup
+  , config
   , daemonBroadcast
+  , dbPath
   , devices
   , groups
-  , stateStore
   )
 import qualified Service.Group as Group
 import qualified Service.Messages.Daemon as Daemon
@@ -43,7 +44,7 @@ testConfigFilePath = "test/config.dhall"
 initAndCleanup :: (Env -> IO ()) -> IO ()
 initAndCleanup runTests = bracket
   (do
-      env <- Env.initialize testConfigFilePath mkLogger mkMQTTClient mkDb
+      env <- Env.initialize testConfigFilePath mkLogger mkMQTTClient
 
       devices' <- loadTestDevices
       groups' <- loadTestGroups
@@ -55,13 +56,11 @@ initAndCleanup runTests = bracket
       Daemon.loadResources Device._id devicesTVar devices'
       Daemon.loadResources Group._id groupsTVar groups'
 
-      pure env
+      uuid <- UUID.nextRandom
+      pure $
+        env & config . dbPath %~ \dp -> dp <> "-" <> UUID.toString uuid <> ".db"
   )
-  (\env -> do
-      let cleanup = env ^. appCleanup
-      stateStore' <- atomically $ readTVar (env ^. stateStore)
-      pure $ cleanup stateStore'
-  )
+  (view appCleanup)
   runTests
 
   where
@@ -72,11 +71,6 @@ initAndCleanup runTests = bracket
     mkMQTTClient _config _loggerVariant _mqttDispatch = do
       fauxMQTTClient <- newTVarIO M.empty
       pure (TVClient fauxMQTTClient, pure ())
-
-    mkDb dbPath' = do
-      uuid <- UUID.nextRandom
-      let dbPath'' = dbPath' <> "-" <> (UUID.toString uuid) <> ".db"
-      DB.open dbPath''
 
 -- |
 -- | Takes a function accepting a bunch of state and returning an
