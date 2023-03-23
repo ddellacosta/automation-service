@@ -44,9 +44,7 @@ You can then start this up `docker-compose start automation-service`, and can dr
 
 ## TODO
 
-* ability to auto-load groups and scenes and easily integrate in scripts
 * need to be able to shut off or edit scheduled automations
-* auto-restarts of automations and reloading of automations when automation-service is restarted
 * generalize Gledopto Lighting related Message module and provide Lua API for it
 * documentation
 * better error handling

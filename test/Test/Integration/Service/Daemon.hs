@@ -10,7 +10,7 @@ import Control.Lens ((^.), (<&>), _1, ix, preview)
 import Control.Monad (void)
 import Data.Foldable (for_)
 import Data.List.NonEmpty (NonEmpty((:|)))
-import qualified Data.Map.Strict as M
+import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Text (Text)
 import Network.MQTT.Topic (mkTopic)
@@ -142,7 +142,7 @@ luaScriptSpecs = do
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testRegistration")
 
         -- see comment in test below
-        threadDelay 100000
+        threadDelay 10000
 
         mirrorLightAutos <- readTVarIO registrations <&> M.lookup mirrorLightID
         mirrorLightAutos
@@ -159,7 +159,7 @@ luaScriptSpecs = do
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
         -- artificially enforce ordering of messages to conform to assertion below
-        threadDelay 50000
+        threadDelay 100000
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testRegistration")
 
         -- see comment in test below
@@ -313,10 +313,13 @@ stateStoreSpecs = do
 
         res <- StateStore.allRunning $ env ^. config . dbPath
 
-        length res `shouldBe` 2
+        length res `shouldBe` 3
         findMatchingAutoNames "LuaScript \"test\"" res
           `shouldBe` ["LuaScript \"test\""]
         findMatchingAutoNames "Gold" res `shouldBe` ["Gold"]
+        -- started up by Daemon independently if it is not running, so
+        -- should always be present.
+        findMatchingAutoNames "StateManager" res `shouldBe` ["StateManager"]
 
   around initAndCleanup $ do
     it "updates stored automations when an automation is shut down" $
@@ -336,9 +339,12 @@ stateStoreSpecs = do
 
         res <- StateStore.allRunning dbPath'
 
-        length res `shouldBe` 1
+        length res `shouldBe` 2
         findMatchingAutoNames "LuaScript \"test\"" res
           `shouldBe` ["LuaScript \"test\""]
+        -- started up by Daemon independently if it is not running, so
+        -- should always be present.
+        findMatchingAutoNames "StateManager" res `shouldBe` ["StateManager"]
 
   around initAndCleanup $ do
     it "starts any automations stored in the running table upon load" $ \preEnv -> do
@@ -352,6 +358,7 @@ stateStoreSpecs = do
         filter (== Gold) runningAutos `shouldBe` [Gold]
         filter (== LuaScript "test") runningAutos
           `shouldBe` [LuaScript "test"]
+        filter (== StateManager) runningAutos `shouldBe` [StateManager]
 
   where
     findMatchingAutoNames :: Text -> [(Int, Text)] -> [Text]

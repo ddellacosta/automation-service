@@ -16,8 +16,8 @@ import qualified Data.ByteString.Char8 as BS
 import Data.Foldable (for_)
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
-import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as M
+import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as M
 import qualified Data.Text as T
 import Data.Text (Text)
 import qualified Data.UUID as UUID
@@ -203,8 +203,8 @@ loadDSL
   -> LoggerVariant
   -> MQTTClientVariant
   -> TChan Daemon.Message
-  -> TVar (Map DeviceId Device)
-  -> TVar (Map GroupId Group)
+  -> TVar (HashMap DeviceId Device)
+  -> TVar (HashMap GroupId Group)
   -> Lua.LuaE Lua.Exception ()
 loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
   for_ functions $ \(fn, fnName) ->

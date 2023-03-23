@@ -25,7 +25,7 @@ import Service.Group
   , topicGet
   , topicSet
   )
-import Service.Topic (parseTopic)
+import Service.MQTT.Topic (parseTopic)
 import Test.Helpers (loadTestGroups)
 import Test.Hspec (Spec, describe, it, shouldBe)
 

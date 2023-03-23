@@ -19,7 +19,7 @@ import Control.Monad (void, when)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Control.Monad.Reader (MonadIO, MonadReader(..), ReaderT, liftIO, runReaderT)
 import Data.ByteString.Lazy (ByteString)
-import qualified Data.Map.Strict as M
+import qualified Data.HashMap.Strict as M
 import qualified Data.Text as T
 import Data.Text (Text)
 import qualified Network.MQTT.Client as MQTT

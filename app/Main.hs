@@ -18,8 +18,8 @@ import Service.Env
   , logLevel
   , mqttConfig
   )
-import Service.Messages.Zigbee2MQTT as Zigbee2MQTT
-import Service.MQTTClient (mqttClientCallback, initMQTTClient)
+import Service.MQTT.Client (mqttClientCallback, initMQTTClient)
+import Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
 import System.Log.FastLogger (newTimedFastLogger)
 import UnliftIO.STM (TVar)
 

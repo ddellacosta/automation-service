@@ -15,19 +15,17 @@ import Control.Monad.Reader (MonadReader)
 import qualified Data.Aeson as Aeson
 import Data.Aeson (Value, decode, object)
 import Data.Foldable (for_)
+import Data.Hashable (Hashable)
+import qualified Data.HashMap.Strict as M
+import Data.HashMap.Strict (HashMap)
 import qualified Data.List.NonEmpty as NE
 import Data.List.NonEmpty (NonEmpty((:|)))
-import qualified Data.Map.Strict as M
-import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
+import qualified Data.Vector as V
 import qualified Service.Automation as Automation
 import Service.Automation (Automation, Message(..))
-import Service.AutomationName
-  ( AutomationName(..)
-  , parseAutomationNameText
-  , serializeAutomationName
-  )
+import Service.AutomationName (AutomationName(..), parseAutomationNameText, serializeAutomationName)
 import Service.Automations (findAutomation)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Device as Device
@@ -37,6 +35,7 @@ import Service.Env
   , appCleanup
   , automationBroadcast
   , config
+  , daemonBroadcast
   , dbPath
   , deviceRegistrations
   , devices
@@ -44,7 +43,6 @@ import Service.Env
   , groups
   , messageChan
   , mqttDispatch
-  , serverChan
   , subscriptions
   )
 import qualified Service.Group as Group
@@ -70,7 +68,7 @@ import UnliftIO.STM
 
 type AutomationEntry m = (Automation m, Async ())
 
-type ThreadMap m = M.Map AutomationName (AutomationEntry m)
+type ThreadMap m = HashMap AutomationName (AutomationEntry m)
 
 run
   :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m)
@@ -96,12 +94,15 @@ run' threadMapTV = do
 
   flip finally (cleanupAutomations appCleanup' threadMapTV) $ do
     debug . T.pack . show $ config'
-    restartPriorRunningAutomations
+    view daemonBroadcast >>= \db ->
+      atomically . writeTChan db $ Daemon.Start StateManager
+    restoreRunningAutomations
     go
 
   where
     go = do
       messageChan' <- view messageChan
+      daemonBroadcast' <- view daemonBroadcast
       msg <- atomically $ readTChan messageChan'
 
       debug $ "Daemon received Message: " <> T.pack (show msg)
@@ -109,40 +110,41 @@ run' threadMapTV = do
       case msg of
         Daemon.Start automationName -> do
           initializeAndRunAutomation threadMapTV automationName
-          updateRunning threadMapTV
+          signalStateUpdate threadMapTV
           go
 
         Daemon.Stop automationName -> do
-          subscriptions' <- view subscriptions
-          stopAutomation threadMapTV subscriptions' automationName
-          updateRunning threadMapTV
+          view subscriptions >>= \subs ->
+            stopAutomation threadMapTV subs automationName
+          signalStateUpdate threadMapTV
           go
 
         Daemon.SendTo automationName msg' -> do
-          serverChan' <- view serverChan
-          sendClientMsg automationName serverChan' msg' *> go
+          view automationBroadcast >>= \ab ->
+            sendClientMsg automationName ab msg' *> go
 
         Daemon.Schedule automationMessage automationSchedule ->
           addScheduleAutomationMessage
-            automationMessage automationSchedule messageChan' *> go
+            automationMessage automationSchedule daemonBroadcast' *> go
 
         Daemon.DeviceUpdate devices' -> do
-          storedDevices <- view devices
-          loadResources Device._id storedDevices devices' *> go
+          view devices >>= \stored ->
+            loadResources Device._id stored devices' *> go
 
         Daemon.GroupUpdate groups' -> do
-          storedGroups <- view groups
-          loadResources Group._id storedGroups groups' *> go
+          view groups >>= \stored ->
+            loadResources Group._id stored groups' *> go
 
         Daemon.RegisterDevice deviceId automationName -> do
-          deviceRegs <- view deviceRegistrations
-          addRegisteredResource deviceId automationName deviceRegs *> go
+          view deviceRegistrations >>= \deviceRegs ->
+            addRegisteredResource deviceId automationName deviceRegs *> go
 
         Daemon.RegisterGroup groupId automationName -> do
-          groupRegs <- view groupRegistrations
-          addRegisteredResource groupId automationName groupRegs *> go
+          view groupRegistrations >>= \groupRegs ->
+            addRegisteredResource groupId automationName groupRegs *> go
 
         Daemon.Subscribe automationName mTopic listenerBcastChan -> do
+          -- TODO make this a function
           mqttDispatch' <- view mqttDispatch
           subscriptions' <- view subscriptions
           for_ mTopic $ \topic -> do
@@ -160,20 +162,21 @@ run' threadMapTV = do
     mkDefaultTopicMsgAction listenerBcastChan = \topicMsg ->
       for_ (decode topicMsg) $ atomically . writeTChan listenerBcastChan
 
-restartPriorRunningAutomations :: (MonadIO m, MonadReader Env m) => m ()
-restartPriorRunningAutomations = do
-  messageChan' <- view messageChan
+signalStateUpdate :: (MonadIO m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
+signalStateUpdate threadMapTV = do
+  view automationBroadcast >>= \ab -> do
+    runningAutos <- M.keys <$> (atomically . readTVar $ threadMapTV)
+    sendClientMsg StateManager ab $
+      Aeson.Array . V.fromList $ Aeson.String . serializeAutomationName <$> runningAutos
+
+restoreRunningAutomations :: (MonadIO m, MonadReader Env m) => m ()
+restoreRunningAutomations = do
+  daemonBroadcast' <- view daemonBroadcast
   dbPath' <- view $ config . dbPath
   storedRunningAutos <- liftIO $ StateStore.allRunning dbPath'
   for_ storedRunningAutos $ \(_id, autoName) ->
-    atomically . writeTChan messageChan' $
+    atomically . writeTChan daemonBroadcast' $
       fromMaybe Daemon.Null $ Daemon.Start <$> parseAutomationNameText autoName
-
-updateRunning :: (MonadIO m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
-updateRunning threadMapTV = do
-  dbPath' <- view $ config . dbPath
-  runningAutomations <- M.keys <$> (atomically . readTVar $ threadMapTV)
-  liftIO $ StateStore.updateRunning dbPath' $ serializeAutomationName <$> runningAutomations
 
 initializeAndRunAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
@@ -265,15 +268,15 @@ cleanupAutomations
   -> m ()
 cleanupAutomations appCleanup' threadMapTV = do
   threadMap <- atomically . readTVar $ threadMapTV
-  for_ (M.assocs threadMap) $ \(automationName, (_, async')) -> do
+  for_ (M.toList threadMap) $ \(automationName, (_, async')) -> do
     info $ "Shutting down Automation " <> serializeAutomationName automationName
     cancel async'
   liftIO appCleanup'
 
 sendClientMsg
-  :: (MonadUnliftIO m) => AutomationName -> TChan Message -> Value -> m ()
-sendClientMsg automationName serverChan' =
-  atomically . writeTChan serverChan' . Client automationName
+  :: (MonadIO m) => AutomationName -> TChan Message -> Value -> m ()
+sendClientMsg automationName automationBroadcast' =
+  atomically . writeTChan automationBroadcast' . Client automationName
 
 addScheduleAutomationMessage
   :: (MonadIO m)
@@ -286,16 +289,16 @@ addScheduleAutomationMessage automationMessage automationSchedule messageChan' =
     atomically . writeTChan messageChan' $ automationMessage
 
 loadResources
-  :: (MonadUnliftIO m, Ord a) => (b -> a) -> TVar (Map a b) -> [b] -> m ()
+  :: (MonadUnliftIO m, Hashable k) => (v -> k) -> TVar (HashMap k v) -> [v] -> m ()
 loadResources mkResourceKey stored newResources =
   atomically . writeTVar stored . M.fromList $
     (\r -> (mkResourceKey r, r)) <$> newResources
 
 addRegisteredResource
-  :: (MonadReader Env m, MonadUnliftIO m, Ord k)
+  :: (MonadReader Env m, MonadUnliftIO m, Hashable k)
   => k
   -> AutomationName
-  -> TVar (Map k (NonEmpty AutomationName))
+  -> TVar (HashMap k (NonEmpty AutomationName))
   -> m ()
 addRegisteredResource resourceId newAutoName resourceStore = do
   atomically $ modifyTVar' resourceStore $ \resourceStore' ->

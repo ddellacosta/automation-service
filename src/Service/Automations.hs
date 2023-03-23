@@ -10,6 +10,7 @@ import Service.Automation (Automation, nullAutomation)
 import Service.AutomationName (AutomationName(..))
 import Service.Automations.Gold (goldAutomation)
 import Service.Automations.LuaScript (luaAutomation)
+import Service.Automations.StateManager (stateManagerAutomation)
 import Service.Env (Env)
 
 findAutomation
@@ -20,3 +21,4 @@ findAutomation = \case
   Null -> nullAutomation
   Gold -> goldAutomation
   LuaScript filePath -> luaAutomation filePath
+  StateManager -> stateManagerAutomation

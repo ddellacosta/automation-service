@@ -33,7 +33,6 @@ module Service.Env
   , mqttClient
   , mqttConfig
   , mqttDispatch
-  , serverChan
   , subscriptions
   , uri
   )
@@ -45,8 +44,8 @@ import Data.ByteString.Lazy (ByteString)
 import Data.Foldable (for_)
 import Data.Functor ((<&>))
 import Data.List.NonEmpty (NonEmpty((:|)))
-import qualified Data.Map.Strict as M
-import Data.Map.Strict (Map)
+import qualified Data.HashMap.Strict as M
+import Data.HashMap.Strict (HashMap)
 import Data.Maybe (fromMaybe)
 import qualified Data.String as S
 import Data.Text (Text)
@@ -59,7 +58,7 @@ import Service.AutomationName (AutomationName)
 import Service.Device (Device, DeviceId)
 import Service.Group (Group, GroupId)
 import qualified Service.Messages.Daemon as Daemon
-import qualified Service.Messages.Zigbee2MQTT as Zigbee2MQTT
+import qualified Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
 import System.Log.FastLogger (TimedFastLogger) 
 import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO, writeTChan)
 
@@ -126,14 +125,14 @@ data LoggerVariant
 -- this is testing-motivated boilerplate
 data MQTTClientVariant
   = MCClient MQTTClient
-  | TVClient (TVar (Map Topic ByteString))
+  | TVClient (TVar (HashMap Topic ByteString))
 
-type Registrations a = Map a (NonEmpty AutomationName)
+type Registrations a = HashMap a (NonEmpty AutomationName)
 
 type MsgAction = ByteString -> IO ()
-type MQTTDispatch = Map Topic (NonEmpty MsgAction)
+type MQTTDispatch = HashMap Topic (NonEmpty MsgAction)
 
-type Subscriptions = Map AutomationName (NonEmpty (TChan Value))
+type Subscriptions = HashMap AutomationName (NonEmpty (TChan Value))
 
 data Env = Env
   { _config :: Config
@@ -143,12 +142,11 @@ data Env = Env
   , _daemonBroadcast :: TChan Daemon.Message
   , _automationBroadcast :: TChan Automation.Message
   , _messageChan :: TChan Daemon.Message
-  , _devices :: TVar (Map DeviceId Device)
+  , _devices :: TVar (HashMap DeviceId Device)
   , _deviceRegistrations :: TVar (Registrations DeviceId)
-  , _groups :: TVar (Map GroupId Group)
+  , _groups :: TVar (HashMap GroupId Group)
   , _groupRegistrations :: TVar (Registrations GroupId)
   , _subscriptions :: TVar Subscriptions
-  , _serverChan :: TChan Automation.Message
   -- do I need to mark this explicitly as being lazy so it's not called immediately?
   , _appCleanup :: IO ()
   }
@@ -181,7 +179,6 @@ initialize configFilePath mkLogger mkMQTTClient = do
     <*> (newTVarIO M.empty) -- groups
     <*> (newTVarIO M.empty) -- groupRegistrations
     <*> (newTVarIO M.empty) -- subscriptions
-    <*> (atomically $ dupTChan automationBroadcast') -- serverChan
     <*> pure (loggerCleanup >> mcCleanup)
 
   where

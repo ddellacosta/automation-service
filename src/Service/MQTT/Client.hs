@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module Service.MQTTClient
+module Service.MQTT.Client
   ( initMQTTClient
   , mqttClientCallback
   )
@@ -9,7 +9,7 @@ where
 import Control.Monad (when)
 import Data.Either (fromRight)
 import Data.Foldable (for_)
-import qualified Data.Map.Strict as M
+import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Data.X509.CertificateStore (makeCertificateStore, readCertificateStore)

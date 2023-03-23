@@ -38,7 +38,7 @@ import Data.Aeson
 import Data.Text (Text)
 import GHC.Generics (Generic)
 import Network.MQTT.Topic (Topic(..))
-import Service.Messages.Zigbee2MQTT as Zigbee2MQTT
+import Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
 
 type GroupId = Int
 

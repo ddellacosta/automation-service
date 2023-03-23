@@ -7,7 +7,7 @@ module Test.Integration.Service.DaemonTestHelpers
   where
 
 import Control.Lens ((&), (%~), (^.), view)
-import qualified Data.Map.Strict as M
+import qualified Data.HashMap.Strict as M
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 import qualified Service.App as App
