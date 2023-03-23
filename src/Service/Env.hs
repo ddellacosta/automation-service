@@ -9,6 +9,7 @@ module Service.Env
   , MQTTClientVariant(..)
   , MQTTConfig(..)
   , MQTTDispatch
+  , RestartConditions(..)
   , Subscriptions
   , appCleanup
   , automationBroadcast
@@ -25,6 +26,8 @@ module Service.Env
   , groupRegistrations
   , groups
   , initialize
+  , loadedDevices
+  , loadedGroups
   , logFilePath
   , logLevel
   , logger
@@ -33,6 +36,8 @@ module Service.Env
   , mqttClient
   , mqttConfig
   , mqttDispatch
+  , notAlreadyRestarted
+  , restartConditions
   , subscriptions
   , uri
   )
@@ -134,6 +139,16 @@ type MQTTDispatch = HashMap Topic (NonEmpty MsgAction)
 
 type Subscriptions = HashMap AutomationName (NonEmpty (TChan Value))
 
+data RestartConditions
+  = RestartConditions
+  { _loadedDevices :: Bool
+  , _loadedGroups :: Bool
+  , _notAlreadyRestarted :: Bool
+  }
+  deriving (Show, Eq)
+
+makeFieldsNoPrefix ''RestartConditions
+
 data Env = Env
   { _config :: Config
   , _logger :: LoggerVariant
@@ -147,6 +162,7 @@ data Env = Env
   , _groups :: TVar (HashMap GroupId Group)
   , _groupRegistrations :: TVar (Registrations GroupId)
   , _subscriptions :: TVar Subscriptions
+  , _restartConditions :: TVar RestartConditions
   -- do I need to mark this explicitly as being lazy so it's not called immediately?
   , _appCleanup :: IO ()
   }
@@ -179,6 +195,7 @@ initialize configFilePath mkLogger mkMQTTClient = do
     <*> (newTVarIO M.empty) -- groups
     <*> (newTVarIO M.empty) -- groupRegistrations
     <*> (newTVarIO M.empty) -- subscriptions
+    <*> (newTVarIO $ RestartConditions False False True)
     <*> pure (loggerCleanup >> mcCleanup)
 
   where

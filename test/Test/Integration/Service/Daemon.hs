@@ -350,9 +350,35 @@ stateStoreSpecs = do
     it "starts any automations stored in the running table upon load" $ \preEnv -> do
       let autoNames = serializeAutomationName <$> [Gold, LuaScript "test"]
       StateStore.updateRunning (preEnv ^. config . dbPath) autoNames
-      flip testWithAsyncDaemon preEnv $ \_env threadMapTV _daemonSnooper -> do
-        -- wait a bit to let things start up
+      flip testWithAsyncDaemon preEnv $ \env threadMapTV _daemonSnooper -> do
+        let daemonBroadcast' = env ^. daemonBroadcast
+
+        --
+        -- This is because scripts are often dependent on loading
+        -- groups and devices--and I don't device/group registration
+        -- to block in scripts, even if I have some kind of
+        -- exponential backoff failure thing which eventually logs,
+        -- since regardless that will prevent speedy diagnosis when
+        -- trying to iterate on an automation.
+        --
+        -- As a result, I added the RestartConditions data structure
+        -- to Env which needs all of its members to evaluate to True
+        -- before a restart is tried in Daemon's main go loop (at
+        -- which point the value that is set to True on
+        -- initialization--notAlreadyRestarted--is set to False, and
+        -- never updated again).
+        --
+        -- At some point I think it would make sense to toggle a
+        -- setting to just automatically restart without all the
+        -- conditions being met (maybe this makes sense if using all
+        -- ESPHome devices? Not sure yet), but this is the default
+        -- while I'm so heavily dependent on Zigbee2MQTT.
+        --
+        atomically $ writeTChan daemonBroadcast' $ Daemon.DeviceUpdate []
+        atomically $ writeTChan daemonBroadcast' $ Daemon.GroupUpdate []
+
         threadDelay 50000
+
         runningAutos <- M.keys <$> readTVarIO threadMapTV
 
         filter (== Gold) runningAutos `shouldBe` [Gold]

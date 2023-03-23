@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
+
 module Service.Automations.StateManager
   ( stateManagerAutomation
   ,
@@ -10,17 +12,13 @@ import Control.Lens (view)
 import Control.Monad.Reader (MonadReader)
 import Control.Monad.IO.Unlift (MonadUnliftIO, liftIO)
 import qualified Data.Aeson as Aeson
-import Data.Foldable (for_)
-import Data.Maybe (fromMaybe)
-import qualified Data.Text as T
 import qualified Data.Vector as V
 import Service.App (Logger(..), MonadMQTT(..))
 import Service.Automation as Automation
-import Service.AutomationName (AutomationName(..), parseAutomationNameText)
-import Service.Env (Env, config, daemonBroadcast, dbPath)
+import Service.AutomationName (AutomationName(..))
+import Service.Env (Env, config, dbPath)
 import qualified Service.StateStore as StateStore
-import qualified Service.Messages.Daemon as Daemon
-import UnliftIO.STM (TChan, atomically, readTChan, writeTChan)
+import UnliftIO.STM (TChan, atomically, readTChan)
 
 stateManagerAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
@@ -45,10 +43,7 @@ runAutomation
   -> m ()
 runAutomation broadcastChan = do
   info "Running StateManager"
-
-  daemonBroadcast' <- view daemonBroadcast
   dbPath' <- view $ config . dbPath
-
   go broadcastChan dbPath'
 
   where
