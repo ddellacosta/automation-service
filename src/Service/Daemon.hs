@@ -19,10 +19,15 @@ import qualified Data.List.NonEmpty as NE
 import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.Map.Strict as M
 import Data.Map.Strict (Map)
+import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import qualified Service.Automation as Automation
 import Service.Automation (Automation, Message(..))
-import Service.AutomationName (AutomationName(..), serializeAutomationName)
+import Service.AutomationName
+  ( AutomationName(..)
+  , parseAutomationNameText
+  , serializeAutomationName
+  )
 import Service.Automations (findAutomation)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Device as Device
@@ -89,8 +94,10 @@ run' threadMapTV = do
   config' <- view config
   appCleanup' <- view appCleanup
 
-  flip finally (cleanupAutomations appCleanup' threadMapTV)
-    (debug . T.pack . show $ config') *> go
+  flip finally (cleanupAutomations appCleanup' threadMapTV) $ do
+    debug . T.pack . show $ config'
+    restartPriorRunningAutomations
+    go
 
   where
     go = do
@@ -152,6 +159,15 @@ run' threadMapTV = do
 
     mkDefaultTopicMsgAction listenerBcastChan = \topicMsg ->
       for_ (decode topicMsg) $ atomically . writeTChan listenerBcastChan
+
+restartPriorRunningAutomations :: (MonadIO m, MonadReader Env m) => m ()
+restartPriorRunningAutomations = do
+  messageChan' <- view messageChan
+  dbPath' <- view $ config . dbPath
+  storedRunningAutos <- liftIO $ StateStore.allRunning dbPath'
+  for_ storedRunningAutos $ \(_id, autoName) ->
+    atomically . writeTChan messageChan' $
+      fromMaybe Daemon.Null $ Daemon.Start <$> parseAutomationNameText autoName
 
 updateRunning :: (MonadIO m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
 updateRunning threadMapTV = do

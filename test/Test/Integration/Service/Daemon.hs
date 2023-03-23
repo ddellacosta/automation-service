@@ -12,10 +12,11 @@ import Data.Foldable (for_)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromJust, fromMaybe)
+import Data.Text (Text)
 import Network.MQTT.Topic (mkTopic)
 import Safe (headMay)
 import Service.Automation (name)
-import Service.AutomationName (AutomationName(..))
+import Service.AutomationName (AutomationName(..), serializeAutomationName)
 import Service.Env
   ( LoggerVariant(..)
   , config
@@ -137,11 +138,11 @@ luaScriptSpecs = do
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
         -- artificially enforce ordering of messages to conform to assertion below
-        threadDelay 50000
+        threadDelay 100000
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testRegistration")
 
         -- see comment in test below
-        threadDelay 50000
+        threadDelay 100000
 
         mirrorLightAutos <- readTVarIO registrations <&> M.lookup mirrorLightID
         mirrorLightAutos
@@ -339,6 +340,20 @@ stateStoreSpecs = do
         findMatchingAutoNames "LuaScript \"test\"" res
           `shouldBe` ["LuaScript \"test\""]
 
+  around initAndCleanup $ do
+    it "starts any automations stored in the running table upon load" $ \preEnv -> do
+      let autoNames = serializeAutomationName <$> [Gold, LuaScript "test"]
+      StateStore.updateRunning (preEnv ^. config . dbPath) autoNames
+      flip testWithAsyncDaemon preEnv $ \_env threadMapTV _daemonSnooper -> do
+        -- wait a bit to let things start up
+        threadDelay 50000
+        runningAutos <- M.keys <$> readTVarIO threadMapTV
+
+        filter (== Gold) runningAutos `shouldBe` [Gold]
+        filter (== LuaScript "test") runningAutos
+          `shouldBe` [LuaScript "test"]
+
   where
+    findMatchingAutoNames :: Text -> [(Int, Text)] -> [Text]
     findMatchingAutoNames autoName res =
       (snd <$> (filter (\(_id, auto) -> auto == autoName) res))

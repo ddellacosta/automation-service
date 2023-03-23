@@ -38,7 +38,7 @@ testConfigFilePath = "test/config.dhall"
 
 -- |
 -- | Initialization of environment and app start for Integration
--- tests. Meant to be run inside an `around` wrapper in HSpec
+-- tests. Meant to be run inside an `around` wrapper in HSpec.
 --
 initAndCleanup :: (Env -> IO ()) -> IO ()
 initAndCleanup runTests = bracket

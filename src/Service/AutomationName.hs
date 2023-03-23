@@ -1,6 +1,7 @@
 module Service.AutomationName
   ( AutomationName(..)
   , parseAutomationName
+  , parseAutomationNameText
   , serializeAutomationName
   )
 where
@@ -28,5 +29,8 @@ parseAutomationName :: String -> Maybe AutomationName
 parseAutomationName = \case
   "Gold" -> Just Gold
   maybeLuaScript -> case words maybeLuaScript of
-    ["LuaScript", filePath] -> Just . LuaScript $ filePath
+    ["LuaScript", filePath] -> Just . LuaScript $ filter (/= '"') filePath
     _ -> Nothing
+
+parseAutomationNameText :: Text -> Maybe AutomationName
+parseAutomationNameText = parseAutomationName . T.unpack
