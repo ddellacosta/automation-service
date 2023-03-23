@@ -86,6 +86,7 @@ library
     , Service.Messages.GledoptoController
     , Service.Messages.Zigbee2MQTT
     , Service.MQTTClient
+    , Service.StateStore
     , Service.Topic
 
 executable automation-service

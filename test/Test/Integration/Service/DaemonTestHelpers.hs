@@ -10,7 +10,6 @@ import Control.Lens ((&), (%~), (^.), view)
 import qualified Data.Map.Strict as M
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
-import qualified Database.SQLite.Simple as DB
 import qualified Service.App as App
 import qualified Service.Daemon as Daemon
 import qualified Service.Device as Device
@@ -32,7 +31,7 @@ import Test.Helpers (loadTestDevices, loadTestGroups)
 import Test.Hspec (Expectation, shouldBe)
 import UnliftIO.Async (withAsync)
 import UnliftIO.Exception (bracket)
-import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, newTVarIO, readTVar)
+import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, newTVarIO)
 
 testConfigFilePath :: FilePath
 testConfigFilePath = "test/config.dhall"

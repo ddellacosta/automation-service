@@ -6,14 +6,12 @@ module Test.Integration.Service.Daemon
   )
 where
 
-import Control.Lens ((^.), (^?), (<&>), _1, _2, ix, preview)
+import Control.Lens ((^.), (<&>), _1, ix, preview)
 import Control.Monad (void)
 import Data.Foldable (for_)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromJust, fromMaybe)
-import Data.Text (Text)
-import qualified Database.SQLite.Simple as DB
 import Network.MQTT.Topic (mkTopic)
 import Safe (headMay)
 import Service.Automation (name)
@@ -29,6 +27,7 @@ import Service.Env
   , mqttDispatch
   )
 import qualified Service.Messages.Daemon as Daemon
+import qualified Service.StateStore as StateStore
 import Test.Hspec (Spec, around, it, shouldBe)
 import Test.Integration.Service.DaemonTestHelpers
   ( initAndCleanup
@@ -142,7 +141,7 @@ luaScriptSpecs = do
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testRegistration")
 
         -- see comment in test below
-        threadDelay 10000
+        threadDelay 50000
 
         mirrorLightAutos <- readTVarIO registrations <&> M.lookup mirrorLightID
         mirrorLightAutos
@@ -216,9 +215,9 @@ luaScriptSpecs = do
         --
         -- SECOND NOTE: update after added sqlite state-storage to the
         -- mix, now the smallest I can make this without having tests
-        -- fail is 50000 microseconds.
+        -- fail is 60000 microseconds.
         --
-        threadDelay 50000
+        threadDelay 60000
 
         dispatchActions <- M.lookup topic <$> readTVarIO mqttDispatch'
         for_ (fromJust dispatchActions) ($ "{\"msg\": \"hey\"}")
@@ -241,7 +240,7 @@ luaScriptSpecs = do
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testRegistration")
 
         -- same as above...don't love it here either
-        threadDelay 50000
+        threadDelay 60000
 
         deviceRegs <- readTVarIO deviceRegistrations'
         M.lookup deviceId deviceRegs `shouldBe` (Just (LuaScript "testRegistration" :| []))
@@ -305,19 +304,18 @@ stateStoreSpecs = do
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
-          dbPath' = env ^. config . dbPath
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test")
 
         threadDelay 200000
 
-        handle <- DB.open dbPath'
-        res <- DB.query_ handle "select * from running" :: IO [(Int, Text)]
+        res <- StateStore.allRunning $ env ^. config . dbPath
 
         length res `shouldBe` 2
-        res ^? ix 0 . _2 `shouldBe` Just "Gold"
-        res ^? ix 1 . _2 `shouldBe` Just "LuaScript \"test\""
+        findMatchingAutoNames "LuaScript \"test\"" res
+          `shouldBe` ["LuaScript \"test\""]
+        findMatchingAutoNames "Gold" res `shouldBe` ["Gold"]
 
   around initAndCleanup $ do
     it "updates stored automations when an automation is shut down" $
@@ -329,14 +327,18 @@ stateStoreSpecs = do
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test")
 
-        threadDelay 200000
+        threadDelay 50000
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Stop Gold
 
-        threadDelay 200000
+        threadDelay 50000
 
-        handle <- DB.open dbPath'
-        res <- DB.query_ handle "select * from running" :: IO [(Int, Text)]
+        res <- StateStore.allRunning dbPath'
 
         length res `shouldBe` 1
-        res ^? ix 0 . _2 `shouldBe` Just "LuaScript \"test\""
+        findMatchingAutoNames "LuaScript \"test\"" res
+          `shouldBe` ["LuaScript \"test\""]
+
+  where
+    findMatchingAutoNames autoName res =
+      (snd <$> (filter (\(_id, auto) -> auto == autoName) res))

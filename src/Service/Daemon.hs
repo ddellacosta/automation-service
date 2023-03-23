@@ -20,7 +20,6 @@ import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.Map.Strict as M
 import Data.Map.Strict (Map)
 import qualified Data.Text as T
-import qualified Database.SQLite.Simple as DB
 import qualified Service.Automation as Automation
 import Service.Automation (Automation, Message(..))
 import Service.AutomationName (AutomationName(..), serializeAutomationName)
@@ -46,6 +45,7 @@ import Service.Env
 import qualified Service.Group as Group
 import qualified Service.Messages.Daemon as Daemon
 import Service.Messages.Daemon (AutomationSchedule)
+import qualified Service.StateStore as StateStore
 import System.Cron (addJob, execSchedule)
 import UnliftIO.Async (Async, async, cancel)
 import UnliftIO.Exception (bracket, finally)
@@ -101,34 +101,14 @@ run' threadMapTV = do
 
       case msg of
         Daemon.Start automationName -> do
-          dbPath' <- view $ config . dbPath
-          liftIO $ do
-            dbConn <- DB.open dbPath'
-            -- this should be configurable somehow, and should dump to debug log entries
-            -- DB.setTrace dbConn $ Just $ \t -> print t
-            DB.execute_ dbConn
-              "CREATE TABLE IF NOT EXISTS running (id INTEGER PRIMARY KEY, automationName TEXT) STRICT"
-            DB.execute
-              dbConn
-              "INSERT INTO running (automationName) VALUES (?)"
-              (DB.Only (serializeAutomationName automationName))
           initializeAndRunAutomation threadMapTV automationName
+          updateRunning threadMapTV
           go
 
         Daemon.Stop automationName -> do
-          dbPath' <- view $ config . dbPath
           subscriptions' <- view subscriptions
-          liftIO $ do
-            dbConn <- DB.open dbPath'
-            -- this should be configurable somehow, and should dump to debug log entries
-            -- DB.setTrace dbConn $ Just $ \t -> print t
-            DB.execute_ dbConn
-              "CREATE TABLE IF NOT EXISTS running (id INTEGER PRIMARY KEY, automationName TEXT) STRICT"
-            DB.execute
-              dbConn
-              "DELETE FROM running WHERE automationName = ?"
-              ([serializeAutomationName automationName] :: [T.Text])
-          stopAutomation threadMapTV subscriptions' automationName *> go
+          stopAutomation threadMapTV subscriptions' automationName
+          updateRunning threadMapTV
           go
 
         Daemon.SendTo automationName msg' -> do
@@ -172,6 +152,12 @@ run' threadMapTV = do
 
     mkDefaultTopicMsgAction listenerBcastChan = \topicMsg ->
       for_ (decode topicMsg) $ atomically . writeTChan listenerBcastChan
+
+updateRunning :: (MonadIO m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
+updateRunning threadMapTV = do
+  dbPath' <- view $ config . dbPath
+  runningAutomations <- M.keys <$> (atomically . readTVar $ threadMapTV)
+  liftIO $ StateStore.updateRunning dbPath' $ serializeAutomationName <$> runningAutomations
 
 initializeAndRunAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
@@ -244,14 +230,16 @@ stopAutomation threadMapTV subscriptions' automationName = do
   -- LuaScript...but this is just a guess.
   --
   for_ (M.lookup automationName threadMap) $ \(_, async') -> async $ cancel async'
-  atomically . writeTVar threadMapTV . M.delete automationName $ threadMap
 
-  -- we have to send a final message to any topic channels that the
-  -- automation has open so that they won't block when we cancel
-  subs <- atomically . readTVar $ subscriptions'
-  for_ (M.lookup automationName subs) $
-    traverse
-      (\bc -> atomically $ writeTChan bc (object [("shutdownMessage", Aeson.Bool True)]))
+  atomically $ do
+    writeTVar threadMapTV . M.delete automationName $ threadMap
+
+    -- we have to send a final message to any topic channels that the
+    -- automation has open so that they won't block when we cancel
+    subs <- readTVar $ subscriptions'
+    for_ (M.lookup automationName subs) $
+      traverse
+        (\bc -> writeTChan bc (object [("shutdownMessage", Aeson.Bool True)]))
 
 
 cleanupAutomations
