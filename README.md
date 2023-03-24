@@ -45,15 +45,15 @@ You can then start this up `docker-compose start automation-service`, and can dr
 ## TODO
 
 * need to be able to shut off or edit scheduled automations
+* set up GH actions (?) to run build and store docker image somewhere, I guess not docker hub any more (https://blog.alexellis.io/docker-is-deleting-open-source-images/) ...[github packages](https://docs.github.com/en/actions/publishing-packages/publishing-docker-images#publishing-images-to-github-packages)?
+* query-able data about running and scheduled automations
+  * HA dashboard integration
 * generalize Gledopto Lighting related Message module and provide Lua API for it
 * documentation
 * better error handling
-* query-able data about running and scheduled automations
-* HA dashboard integration
-* profile and better understand memory usage
-* set up GH actions (?) to run build and store docker image somewhere, I guess not docker hub any more (https://blog.alexellis.io/docker-is-deleting-open-source-images/) ...[github packages](https://docs.github.com/en/actions/publishing-packages/publishing-docker-images#publishing-images-to-github-packages)?
 * should be able to record a scene easily based on a given group or arbitrarily specified set of devices. This could be an automation itself which just runs listening for the command to set scenes for any given room
 * auto-import scenes for devices
+* profile and better understand memory usage
 
 
 ## Testing
