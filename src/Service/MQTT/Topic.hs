@@ -23,7 +23,7 @@ instance FromJSON Topic where
   parseJSON = withText "Topic" $ pure . parseTopic
 
 instance ToJSON Topic where
-  toJSON t = toJSON (unTopic t)
+  toJSON = toJSON . unTopic
 
 parseTopic :: Text -> Topic
 parseTopic t =
