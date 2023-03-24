@@ -143,6 +143,8 @@ subscribe topic mqttClient' =
     MCClient mc -> void $ MQTT.subscribe mc [(toFilter topic, subOptions)] []
     TVClient _tvClient -> pure ()
 
+-- not sure where to put this, but eventually I want to just get rid
+-- of it
 findDeviceM
   :: (MonadIO m, MonadReader Env m)
   => DeviceId

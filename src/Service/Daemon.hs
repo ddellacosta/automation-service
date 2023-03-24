@@ -331,8 +331,7 @@ subscribe automationName topic listenerBcastChan = do
   mqttDispatch' <- view mqttDispatch
   atomically $ do
     modifyTVar' mqttDispatch' $
-      M.insertWith (<>) topic $
-        mkDefaultTopicMsgAction :| []
+      M.insertWith (<>) topic $ mkDefaultTopicMsgAction :| []
     modifyTVar' subscriptions' $
       M.insertWith (<>) automationName $ listenerBcastChan :| []
   subscribeMQTT topic
