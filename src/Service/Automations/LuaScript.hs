@@ -14,6 +14,7 @@ import Data.Aeson (Value, decode, encode)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import Data.Foldable (for_)
+import Data.Hashable (Hashable)
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
 import Data.HashMap.Strict (HashMap)
@@ -41,7 +42,8 @@ import Service.Automation (Automation(..))
 import qualified Service.AutomationName as AutomationName
 import Service.Device (Device, DeviceId, toLuaDevice)
 import Service.Env
-  ( Env
+  ( Registrations
+  , Env
   , LogLevel(Debug)
   , LoggerVariant(..)
   , MQTTClientVariant(..)
@@ -49,6 +51,7 @@ import Service.Env
   , daemonBroadcast
   , deviceRegistrations
   , devices
+  , groupRegistrations
   , groups
   , logger
   , luaScriptPath
@@ -58,8 +61,11 @@ import Service.Group (Group, GroupId, toLuaGroup)
 import qualified Service.Messages.Daemon as Daemon
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.Exception (handle, throwIO)
+-- One really nice thing about UnliftIO.STM is that all you need is
+-- MonadIO for the most part, so I can use all of these in LuaE.
 import UnliftIO.STM
-  ( TChan
+  ( STM
+  , TChan
   , TVar
   , atomically
   , dupTChan
@@ -109,17 +115,12 @@ mkCleanupAutomation filepath = \_broadcastChan -> do
   -- unnecessary...have to be careful about what we allow in cleanup
   -- functions though. Also see comment in Service.App.Daemon.
   --
-  -- atomically $ modifyTVar' deviceRegs updateDeviceAutomations
   deviceRegs <- view deviceRegistrations
-  atomically $ modifyTVar' deviceRegs $ \deviceRegs' ->
-    M.foldrWithKey'
-      (\di autos newRegs ->
-          case NE.nonEmpty . NE.filter (/= automationName) $ autos of
-            Just autos' -> M.insert di autos' newRegs
-            Nothing -> newRegs
-      )
-      M.empty
-      deviceRegs'
+  groupRegs <- view groupRegistrations
+
+  atomically $ do
+    updateRegs deviceRegs
+    updateRegs groupRegs
 
   debug $
        "Finished Cleanup: LuaScript "
@@ -130,6 +131,17 @@ mkCleanupAutomation filepath = \_broadcastChan -> do
 
   where
     automationName = AutomationName.LuaScript filepath
+
+    updateRegs :: (Hashable a) => TVar (Registrations a) -> STM ()
+    updateRegs regs = modifyTVar' regs $ \regs' ->
+      M.foldrWithKey'
+        (\idx autos newRegs ->
+            case NE.nonEmpty . NE.filter (/= automationName) $ autos of
+              Just autos' -> M.insert idx autos' newRegs
+              Nothing -> newRegs
+        )
+        M.empty
+        regs'
 
 type StatusMsg = String
 

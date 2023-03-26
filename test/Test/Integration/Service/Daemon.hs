@@ -231,12 +231,14 @@ luaScriptSpecs = do
           pure . fromMaybe "" . headMay . filter (== expectedLogEntry) $ logs
 
   around initAndCleanup $ do
-    it "removes deviceRegistration entries upon cleanup" $
+    it "removes Device and Group Registration entries upon cleanup" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
           deviceRegistrations' = env ^. deviceRegistrations
           deviceId = "0xb4e3f9fffe14c707"
+          groupRegistrations' = env ^. groupRegistrations
+          groupId = 1
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testRegistration")
 
@@ -246,6 +248,9 @@ luaScriptSpecs = do
         deviceRegs <- readTVarIO deviceRegistrations'
         M.lookup deviceId deviceRegs `shouldBe` (Just (LuaScript "testRegistration" :| []))
 
+        groupRegs <- readTVarIO groupRegistrations'
+        M.lookup groupId groupRegs `shouldBe` (Just (LuaScript "testRegistration" :| []))
+
         atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "testRegistration")
 
         -- and here
@@ -253,6 +258,9 @@ luaScriptSpecs = do
 
         deviceRegs' <- readTVarIO deviceRegistrations'
         M.lookup deviceId deviceRegs' `shouldBe` Nothing
+
+        groupRegs' <- readTVarIO groupRegistrations'
+        M.lookup groupId groupRegs' `shouldBe` Nothing
 
 
 threadMapSpecs :: Spec
