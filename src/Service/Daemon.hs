@@ -211,8 +211,10 @@ initializeAndRunAutomation
     clientAsync <- async $
       bracket (pure clientChan) (Automation._cleanup automation) (Automation._run automation)
 
-    atomically $
+    mPriorAutomationAsync <- atomically $
       insertAutomation threadMapTV automationName (automation, clientAsync)
+
+    maybe (pure ()) cancel mPriorAutomationAsync
 
   where
     --
@@ -222,10 +224,12 @@ initializeAndRunAutomation
     -- index it will append a new one to the end of that List, otherwise
     -- it will add a new List with the new entry as its first member.
     --
-    insertAutomation :: TVar (ThreadMap m) -> AutomationName -> AutomationEntry m -> STM ()
+    insertAutomation :: TVar (ThreadMap m) -> AutomationName -> AutomationEntry m -> STM (Maybe (Async ()))
     insertAutomation threadMapTV' automationName' automationEntry = do
       threadMap' <- readTVar threadMapTV'
+      let mPriorAutomation = M.lookup automationName' threadMap'
       writeTVar threadMapTV' $ M.insert automationName' automationEntry threadMap'
+      pure $ snd <$> mPriorAutomation
 
 stopAutomation
   :: (Logger m, MonadReader Env m, MonadUnliftIO m)

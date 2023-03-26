@@ -13,6 +13,7 @@ import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Text (Text)
+import GHC.Conc (ThreadStatus(..), threadStatus)
 import Network.MQTT.Topic (mkTopic)
 import Safe (headMay)
 import Service.Automation (name)
@@ -29,13 +30,14 @@ import Service.Env
   )
 import qualified Service.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
-import Test.Hspec (Spec, around, it, shouldBe)
+import Test.Hspec (Spec, around, expectationFailure, it, shouldBe)
 import Test.Integration.Service.DaemonTestHelpers
   ( initAndCleanup
   , testWithAsyncDaemon
   , waitUntilEq
   , waitUntilEqSTM
   )
+import UnliftIO.Async (asyncThreadId)
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (atomically, readTChan, readTVar, readTVarIO, writeTChan)
 
@@ -305,6 +307,29 @@ threadMapSpecs = do
         threadMap' <- readTVarIO threadMapTV
         -- same as above wrt void
         (void . M.lookup (LuaScript "test")) threadMap' `shouldBe` Nothing
+
+  around initAndCleanup $ do
+    --
+    -- This preserves this semantics that starting an Automation that
+    -- is already running is equivalent to restarting restarting the
+    -- Automation.
+    --
+    it "shuts previously running Automation when a duplicate is started" $
+      testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
+        let daemonBroadcast' = env ^. daemonBroadcast
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
+        threadDelay 50000
+
+        threadMap <- readTVarIO threadMapTV
+        case M.lookup Gold threadMap of
+          Just (_, gold1Async) -> do
+            let gold1ThreadId = asyncThreadId gold1Async
+            atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
+            threadDelay 50000
+            gold1ThreadStatus <- threadStatus gold1ThreadId
+            gold1ThreadStatus `shouldBe` ThreadFinished
+          Nothing -> expectationFailure "Couldn't find Gold instance 1 in threadMap"
 
 stateStoreSpecs :: Spec
 stateStoreSpecs = do
