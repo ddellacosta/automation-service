@@ -84,8 +84,8 @@ library
     , Service.Device
     , Service.Group
     , Service.Env
-    , Service.Messages.Daemon
-    , Service.Messages.GledoptoController
+    , Service.MQTT.Messages.Daemon
+    , Service.MQTT.Messages.Lighting
     , Service.MQTT.Client
     , Service.MQTT.Topic
     , Service.MQTT.Zigbee2MQTT
@@ -117,7 +117,7 @@ test-suite automation-service-tests
     , Test.Integration.Service.DaemonTestHelpers
     , Test.Unit.Service.Device
     , Test.Unit.Service.Group
-    , Test.Unit.Service.Messages.Daemon
+    , Test.Unit.Service.MQTT.Messages.Daemon
   build-depends:
       automation-service
     , hspec ^>= 2.9.7

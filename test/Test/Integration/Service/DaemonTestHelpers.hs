@@ -26,7 +26,7 @@ import Service.Env
   , groups
   )
 import qualified Service.Group as Group
-import qualified Service.Messages.Daemon as Daemon
+import qualified Service.MQTT.Messages.Daemon as Daemon
 import Test.Helpers (loadTestDevices, loadTestGroups)
 import Test.Hspec (Expectation, shouldBe)
 import UnliftIO.Async (withAsync)

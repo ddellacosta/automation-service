@@ -50,8 +50,8 @@ import Service.Env
   , subscriptions
   )
 import qualified Service.Group as Group
-import qualified Service.Messages.Daemon as Daemon
-import Service.Messages.Daemon (AutomationSchedule)
+import qualified Service.MQTT.Messages.Daemon as Daemon
+import Service.MQTT.Messages.Daemon (AutomationSchedule)
 import qualified Service.StateStore as StateStore
 import System.Cron (addJob, execSchedule)
 import UnliftIO.Async (Async, async, cancel)

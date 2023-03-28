@@ -62,7 +62,7 @@ import qualified Service.Automation as Automation
 import Service.AutomationName (AutomationName)
 import Service.Device (Device, DeviceId)
 import Service.Group (Group, GroupId)
-import qualified Service.Messages.Daemon as Daemon
+import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
 import System.Log.FastLogger (TimedFastLogger) 
 import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO, writeTChan)

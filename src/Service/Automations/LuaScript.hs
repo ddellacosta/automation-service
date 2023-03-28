@@ -58,7 +58,7 @@ import Service.Env
   , mqttClient
   )
 import Service.Group (Group, GroupId, toLuaGroup)
-import qualified Service.Messages.Daemon as Daemon
+import qualified Service.MQTT.Messages.Daemon as Daemon
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.Exception (handle, throwIO)
 -- One really nice thing about UnliftIO.STM is that all you need is

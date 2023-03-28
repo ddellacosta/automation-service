@@ -19,8 +19,8 @@ import Service.AutomationName (AutomationName(..))
 import Service.Device (DeviceId, topicSet)
 import Service.Group (GroupId)
 import Service.Env (Env, daemonBroadcast)
-import qualified Service.Messages.Daemon as Daemon
-import Service.Messages.GledoptoController
+import qualified Service.MQTT.Messages.Daemon as Daemon
+import Service.MQTT.Messages.Lighting
   ( Effect(..)
   , effect'
   , hex'

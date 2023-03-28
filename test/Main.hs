@@ -10,7 +10,7 @@ import Test.Tasty.Hspec (TreatPendingAs(..), testSpec)
 import qualified Test.Integration.Service.Daemon as Daemon
 import qualified Test.Unit.Service.Device as Devices
 import qualified Test.Unit.Service.Group as Groups
-import qualified Test.Unit.Service.Messages.Daemon as Daemon.Messages
+import qualified Test.Unit.Service.MQTT.Messages.Daemon as Daemon.Messages
 
 timeout :: Integer
 timeout = 10

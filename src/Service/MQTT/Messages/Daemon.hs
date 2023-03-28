@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Service.Messages.Daemon
+module Service.MQTT.Messages.Daemon
   ( Message(..)
   , AutomationSchedule
   , _DeviceUpdate

@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
 
-module Test.Unit.Service.Messages.Daemon
+module Test.Unit.Service.MQTT.Messages.Daemon
   ( spec
   ,
   )
@@ -11,7 +11,7 @@ import qualified Data.Aeson as Aeson
 import Data.Aeson (decode, object)
 import Data.Aeson.Lens (key)
 import Service.AutomationName (AutomationName(Gold))
-import Service.Messages.Daemon (Message(..), _SendTo)
+import Service.MQTT.Messages.Daemon (Message(..), _SendTo)
 import Test.Hspec (Spec, describe, it, shouldBe)
 
 

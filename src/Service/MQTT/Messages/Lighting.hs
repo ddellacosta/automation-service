@@ -1,4 +1,4 @@
-module Service.Messages.GledoptoController
+module Service.MQTT.Messages.Lighting
   ( Color(..)
   , ColorXY(..)
   , Effect(..)

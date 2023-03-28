@@ -28,7 +28,7 @@ import Service.Env
   , logger
   , mqttDispatch
   )
-import qualified Service.Messages.Daemon as Daemon
+import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
 import Test.Hspec (Spec, around, expectationFailure, it, shouldBe)
 import Test.Integration.Service.DaemonTestHelpers
