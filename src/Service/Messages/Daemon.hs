@@ -52,7 +52,9 @@ makePrisms ''Message
 -- This is tedious but it's not a big deal compared to having to do
 -- some other nonsense to independently pass the TChan Value around so
 -- that I can automatically generate a Show and ToJSON instance for
--- Message. Also see the comment for ToJSON below.
+-- Message. Anyways, Show instances are only used in logging.
+--
+-- Also see the comment for ToJSON below.
 --
 instance Show Message where
   show = \case
@@ -77,8 +79,8 @@ instance ToJSON Message where
   -- At the moment I don't care what this produces, because this thing
   -- doesn't emit Message values as JSON for any reason. Right now I
   -- can't imagine why it ever would, but at that time I can implement
-  -- something. Right now I just want it to work with the TChan Value
-  -- in Subscribe because it keeps the design cleaner.
+  -- something. Now I just want it to work with the TChan Value in
+  -- Subscribe because it keeps the design cleaner.
   --
   toJSON _ = Aeson.String "Message"
 
