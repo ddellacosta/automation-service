@@ -97,6 +97,15 @@ run' threadMapTV = do
 
   flip finally (cleanupAutomations appCleanup' threadMapTV) $ do
     debug . T.pack . show $ config'
+    --
+    -- Considering that we try to load previously running Automations
+    -- after a restart, this represents the first and only
+    -- initialization of StateManager necessary. Once it's been run
+    -- once in a given installation, the following times this is run
+    -- it'll probably be shut down immediately after RestartConditions
+    -- are met and previously running Automations get loaded. See
+    -- tryRestoreRunningAutomations.
+    --
     view daemonBroadcast >>= \db ->
       atomically . writeTChan db $ Daemon.Start StateManager
     go
