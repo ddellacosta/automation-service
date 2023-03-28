@@ -261,7 +261,7 @@ stopAutomation threadMapTV automationName = do
   -- being caused somehow by the `calltrace` call blocking in
   -- LuaScript...but this is just a guess.
   --
-  for_ (M.lookup automationName threadMap) $ \(_, async') -> async $ cancel async'
+  for_ (M.lookup automationName threadMap) (async . cancel . snd)
 
   subscriptions' <- view subscriptions
   atomically $ do
