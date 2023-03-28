@@ -173,6 +173,10 @@ cleanupAutomations appCleanup' threadMapTV = do
 tryRestoreRunningAutomations :: (MonadIO m, MonadReader Env m) => m ()
 tryRestoreRunningAutomations = do
   rc <- view restartConditions
+  -- Possible to get a race condition here? I don't think so, because
+  -- the only thing that ever accesses the RestartConditions is this
+  -- single Daemon thread. I'd put it all in an atomically block
+  -- regardless but for the StateStore call below.
   rc' <- atomically . readTVar $ rc
   case rc' of
     (RestartConditions True True True) -> do
@@ -303,9 +307,7 @@ updateRestartConditions
   :: (MonadIO m, MonadReader Env m) => Lens' RestartConditions Bool -> Bool -> m ()
 updateRestartConditions field conditionState = do
   restartConditions' <- view restartConditions
-  atomically $ do
-   rc <- readTVar restartConditions'
-   writeTVar restartConditions' $ rc & field .~ conditionState
+  atomically $ modifyTVar' restartConditions' $ field .~ conditionState
 
 addRegisteredResource
   :: (MonadReader Env m, MonadUnliftIO m, Hashable k)
