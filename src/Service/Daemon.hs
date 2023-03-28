@@ -222,10 +222,9 @@ initializeAndRunAutomation
   where
     --
     -- Given a TVar ThreadMap and a (AutomationName, (Automation m, Async ()))
-    -- pair, inserts a new entry into the ThreadMap. If the ThreadMap
-    -- already contains a List of (Automation m, Async ()) pairs at that
-    -- index it will append a new one to the end of that List, otherwise
-    -- it will add a new List with the new entry as its first member.
+    -- pair, inserts a new entry into the ThreadMap, or it replaces
+    -- the previous entry. If an entry already exists for that
+    -- AutomationName, then the previous entry's Async () is returned.
     --
     insertAutomation :: TVar (ThreadMap m) -> AutomationName -> AutomationEntry m -> STM (Maybe (Async ()))
     insertAutomation threadMapTV' automationName' automationEntry = do
