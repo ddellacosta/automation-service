@@ -134,7 +134,7 @@ run' threadMapTV = do
         Daemon.SendTo automationName msg' ->
           sendClientMsg automationName msg' *> go
 
-        Daemon.Schedule automationMessage automationSchedule ->
+        Daemon.Schedule _jobId automationSchedule automationMessage ->
           addScheduleAutomationMessage
             automationMessage automationSchedule daemonBroadcast' *> go
 

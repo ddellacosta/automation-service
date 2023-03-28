@@ -57,11 +57,19 @@ spec = describe "Automation message parsing" $ do
       )
 
     let
-      (Just (Schedule msg sched)) =
-        decode "{\"schedule\": {\"start\": \"Gold\"}, \"cron\": \"* * * * *\"}"
+      (Just (Schedule jobId sched msg)) =
+        decode "{\"schedule\": {\"start\": \"Gold\"}, \"jobId\": \"myJob\", \"cron\": \"* * * * *\"}"
 
-    msg `shouldBe` Start Gold
+    jobId `shouldBe` "myJob"
     sched `shouldBe` "* * * * *"
+    msg `shouldBe` Start Gold
+
+
+    let
+      (Just (UnSchedule jobId')) =
+        decode "{\"unschedule\": \"myJob\"}"
+
+    jobId' `shouldBe` "myJob"
 
 
   it "returns a Null Automation message when given an unparseable message" $ do

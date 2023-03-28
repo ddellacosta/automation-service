@@ -30,14 +30,16 @@ import Service.Device (Device, DeviceId)
 import Service.Group (Group, GroupId)
 import UnliftIO.STM (TChan)
 
-type AutomationSchedule = Text
 type AutomationMessage = Value
+type AutomationSchedule = Text
+type JobId = Text
 
 data Message where
   Start :: AutomationName -> Message
   Stop :: AutomationName -> Message
   SendTo :: AutomationName -> AutomationMessage -> Message
-  Schedule :: Message -> AutomationSchedule -> Message
+  Schedule :: JobId -> AutomationSchedule -> Message -> Message
+  UnSchedule :: JobId -> Message
   DeviceUpdate :: [Device] -> Message
   GroupUpdate :: [Group] -> Message
   RegisterDevice :: DeviceId -> AutomationName -> Message
@@ -62,8 +64,9 @@ instance Show Message where
     Stop automationName -> "Stop " <> show automationName
     SendTo automationName msg ->
       "SendTo " <> show automationName <> " " <> show msg
-    Schedule msg schedule ->
-      "Schedule " <> show msg <> " " <> show schedule
+    Schedule jobId schedule msg ->
+      "Schedule " <> " " <> show jobId <> " " <> show schedule <> show msg
+    UnSchedule jobId -> "UnSchedule " <> show jobId
     DeviceUpdate devices -> "DeviceUpdate " <> show devices
     GroupUpdate groups -> "GroupUpdate " <> show groups
     RegisterDevice deviceId automationName ->
@@ -110,13 +113,17 @@ instance FromJSON Message where
     msg <- o .:? "msg"
     schedule <- o .:? "schedule"
     cron <- o .:? "cron"
+    jobId <- o .:? "jobId"
+    unschedule <- o .:? "unschedule"
     pure $
       fromMaybe Null $
-        case (startAutomation, stopAutomation, sendTo, schedule, cron) of
-          (Just automationName, _, _, _, _) -> Start <$> parseAutomationName automationName
-          (_, Just automationName, _, _, _) -> Stop <$> parseAutomationName automationName
-          (_, _, Just automationName, _, _) -> do
+        case (startAutomation, stopAutomation, sendTo, schedule, cron, jobId, unschedule) of
+          (Just automationName, _, _, _, _, _, _) -> Start <$> parseAutomationName automationName
+          (_, Just automationName, _, _, _, _, _) -> Stop <$> parseAutomationName automationName
+          (_, _, Just automationName, _, _, _, _) -> do
             sendToAutomation <- parseAutomationName automationName
             SendTo sendToAutomation <$> msg
-          (_, _, _, Just msg', Just (Aeson.String cron')) -> flip Schedule cron' <$> msg'
+          (_, _, _, Just msg', Just (Aeson.String cron'), Just (Aeson.String jobId'), _) ->
+            Schedule jobId' cron' <$> msg'
+          (_, _, _, _, _, _, Just (Aeson.String jobId')) -> Just (UnSchedule jobId')
           _ -> Nothing
