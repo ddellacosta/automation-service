@@ -149,7 +149,7 @@ luaScriptSpecs = do
         mirrorLightAutos <- readTVarIO registrations <&> M.lookup mirrorLightID
         mirrorLightAutos
           `shouldBe`
-          (Just (Gold :| [LuaScript "testRegistration"]))
+          (Just (LuaScript "testRegistration" :| [Gold]))
 
   around initAndCleanup $ do
     it "allows scripts to register groups" $
@@ -170,7 +170,7 @@ luaScriptSpecs = do
         basementStandingLampGroupAutos <- readTVarIO registrations <&> M.lookup basementStandingLampGroupId
         basementStandingLampGroupAutos
           `shouldBe`
-          (Just (Gold :| [LuaScript "testRegistration"]))
+          (Just (LuaScript "testRegistration" :| [Gold]))
 
   -- I don't love this test
   around initAndCleanup $ do

@@ -18,7 +18,6 @@ import Data.Foldable (for_)
 import Data.Hashable (Hashable)
 import qualified Data.HashMap.Strict as M
 import Data.HashMap.Strict (HashMap)
-import qualified Data.List.NonEmpty as NE
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
@@ -314,15 +313,9 @@ addRegisteredResource
   -> AutomationName
   -> TVar (HashMap k (NonEmpty AutomationName))
   -> m ()
-addRegisteredResource resourceId newAutoName resourceStore = do
-  atomically $ modifyTVar' resourceStore $ \resourceStore' ->
-    M.alter
-      (\case
-          Just autos -> Just (NE.append autos $ newAutoName :| [])
-          Nothing -> Just (newAutoName :| [])
-      )
-      resourceId
-      resourceStore'
+addRegisteredResource resourceId newAutoName resourceStore =
+  atomically $ modifyTVar' resourceStore $
+    M.insertWith (<>) resourceId $ newAutoName :| []
 
 subscribe
   :: (MonadIO m, MonadMQTT m, MonadReader Env m)
