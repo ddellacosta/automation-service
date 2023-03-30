@@ -139,17 +139,7 @@ run' threadMapTV = do
           runScheduledMessage
             jobId automationMessage automationSchedule daemonBroadcast' *> go
 
-        Daemon.Unschedule jobId -> do
-          scheduledJobs' <- view scheduledJobs
-          mPriorThreadId <- atomically $ do
-            scheduledJob <- M.lookup jobId <$> readTVar scheduledJobs'
-            case scheduledJob of
-              Just (_, _, priorThreadId) -> do
-                modifyTVar' scheduledJobs' $ M.delete jobId
-                pure (Just priorThreadId)
-              _ -> pure Nothing
-          maybe (pure ()) killThread mPriorThreadId
-          go
+        Daemon.Unschedule jobId -> unscheduleJob jobId *> go
 
         Daemon.DeviceUpdate newDevices -> do
           view devices >>= \stored ->
@@ -334,6 +324,18 @@ runScheduledMessage jobId automationMessage automationSchedule messageChan' = do
     ids -> do
       mapM_ killThread ids
       debug "Received multiple ThreadIds back when running execSchedule, all have been cancelled."
+
+unscheduleJob :: (MonadIO m, MonadReader Env m) => Daemon.JobId -> m ()
+unscheduleJob jobId = do
+  scheduledJobs' <- view scheduledJobs
+  mPriorThreadId <- atomically $ do
+    scheduledJob <- M.lookup jobId <$> readTVar scheduledJobs'
+    case scheduledJob of
+      Just (_, _, priorThreadId) -> do
+        modifyTVar' scheduledJobs' $ M.delete jobId
+        pure (Just priorThreadId)
+      _ -> pure Nothing
+  maybe (pure ()) killThread mPriorThreadId
 
 loadResources
   :: (MonadUnliftIO m, Hashable k) => (v -> k) -> TVar (HashMap k v) -> [v] -> m ()
