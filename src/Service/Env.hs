@@ -1,15 +1,16 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Service.Env
-  ( Env(..)
-  , Config(..)
-  , Registrations
+  ( Config(..)
+  , Env(..)
   , LogLevel(..)
   , LoggerVariant(..)
   , MQTTClientVariant(..)
   , MQTTConfig(..)
   , MQTTDispatch
+  , Registrations
   , RestartConditions(..)
+  , ScheduledJobs
   , Subscriptions
   , appCleanup
   , automationBroadcast
@@ -38,6 +39,7 @@ module Service.Env
   , mqttDispatch
   , notAlreadyRestarted
   , restartConditions
+  , scheduledJobs
   , subscriptions
   , uri
   )
@@ -65,6 +67,7 @@ import Service.Group (Group, GroupId)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
 import System.Log.FastLogger (TimedFastLogger) 
+import UnliftIO.Concurrent (ThreadId)
 import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO, writeTChan)
 
 data LogLevel = Debug | Info | Warn | Error
@@ -139,6 +142,9 @@ type MQTTDispatch = HashMap Topic (NonEmpty MsgAction)
 
 type Subscriptions = HashMap AutomationName (NonEmpty (TChan Value))
 
+type ScheduledJobs =
+  HashMap Daemon.JobId (Daemon.AutomationSchedule, Daemon.Message, ThreadId)
+
 data RestartConditions
   = RestartConditions
   { _loadedDevices :: Bool
@@ -162,6 +168,7 @@ data Env = Env
   , _groups :: TVar (HashMap GroupId Group)
   , _groupRegistrations :: TVar (Registrations GroupId)
   , _subscriptions :: TVar Subscriptions
+  , _scheduledJobs :: TVar ScheduledJobs
   , _restartConditions :: TVar RestartConditions
   -- do I need to mark this explicitly as being lazy so it's not called immediately?
   , _appCleanup :: IO ()
@@ -195,6 +202,7 @@ initialize configFilePath mkLogger mkMQTTClient = do
     <*> (newTVarIO M.empty) -- groups
     <*> (newTVarIO M.empty) -- groupRegistrations
     <*> (newTVarIO M.empty) -- subscriptions
+    <*> (newTVarIO M.empty) -- scheduledJobs
     <*> (newTVarIO $ RestartConditions False False True)
     <*> pure (loggerCleanup >> mcCleanup)
 

@@ -9,7 +9,6 @@ where
 import Prelude hiding (filter)
 
 import Control.Lens (Lens', (&), (.~), view)
-import Control.Monad (void)
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
 import qualified Data.Aeson as Aeson
@@ -47,6 +46,7 @@ import Service.Env
   , mqttDispatch
   , notAlreadyRestarted
   , restartConditions
+  , scheduledJobs
   , subscriptions
   )
 import qualified Service.Group as Group
@@ -55,6 +55,7 @@ import Service.MQTT.Messages.Daemon (AutomationSchedule)
 import qualified Service.StateStore as StateStore
 import System.Cron (addJob, execSchedule)
 import UnliftIO.Async (Async, async, cancel)
+import UnliftIO.Concurrent (killThread)
 import UnliftIO.Exception (bracket, finally)
 import UnliftIO.STM
   ( STM
@@ -134,19 +135,31 @@ run' threadMapTV = do
         Daemon.SendTo automationName msg' ->
           sendClientMsg automationName msg' *> go
 
-        Daemon.Schedule _jobId automationSchedule automationMessage ->
-          addScheduleAutomationMessage
-            automationMessage automationSchedule daemonBroadcast' *> go
+        Daemon.Schedule jobId automationSchedule automationMessage ->
+          runScheduledMessage
+            jobId automationMessage automationSchedule daemonBroadcast' *> go
 
-        Daemon.DeviceUpdate devices' -> do
+        Daemon.Unschedule jobId -> do
+          scheduledJobs' <- view scheduledJobs
+          mPriorThreadId <- atomically $ do
+            scheduledJob <- M.lookup jobId <$> readTVar scheduledJobs'
+            case scheduledJob of
+              Just (_, _, priorThreadId) -> do
+                modifyTVar' scheduledJobs' $ M.delete jobId
+                pure (Just priorThreadId)
+              _ -> pure Nothing
+          maybe (pure ()) killThread mPriorThreadId
+          go
+
+        Daemon.DeviceUpdate newDevices -> do
           view devices >>= \stored ->
-            loadResources Device._id stored devices'
+            loadResources Device._id stored newDevices
           updateRestartConditions loadedDevices True
           go
 
-        Daemon.GroupUpdate groups' -> do
+        Daemon.GroupUpdate newGroups -> do
           view groups >>= \stored ->
-            loadResources Group._id stored groups'
+            loadResources Group._id stored newGroups
           updateRestartConditions loadedGroups True
           go
 
@@ -235,7 +248,8 @@ initializeAndRunAutomation
     -- the previous entry. If an entry already exists for that
     -- AutomationName, then the previous entry's Async () is returned.
     --
-    insertAutomation :: TVar (ThreadMap m) -> AutomationName -> AutomationEntry m -> STM (Maybe (Async ()))
+    insertAutomation
+      :: TVar (ThreadMap m) -> AutomationName -> AutomationEntry m -> STM (Maybe (Async ()))
     insertAutomation threadMapTV' automationName' automationEntry = do
       threadMap' <- readTVar threadMapTV'
       let mPriorAutomation = M.lookup automationName' threadMap'
@@ -262,13 +276,10 @@ stopAutomation threadMapTV automationName = do
   -- `subscribe` calls to be unblocked so `cancel`'s `AsyncCancelled`
   -- exception is picked up by the thread and shuts it down.
   --
-  -- Wrt the topic channel being read from and blocking, I'm not sure
-  -- why this is because as I understand it readTChan
-  -- (a.k.a. readTVar) should be interruptible, meaning it should
-  -- respond to `AsyncCancelled` getting thrown even if it is masked,
-  -- so I figure this has more to do with Lua's semantics? and is
-  -- being caused somehow by the `calltrace` call blocking in
-  -- LuaScript...but this is just a guess.
+  -- I assume the thread blocks when the channel is being read because
+  -- UnliftIO.Exception's bracket runs the main thread masked, but
+  -- is it just caused by the `calltrace` call blocking in LuaScript,
+  -- as that'll create a bound thread?
   --
   for_ (M.lookup automationName threadMap) (async . cancel . snd)
 
@@ -295,15 +306,34 @@ sendClientMsg automationName msg = do
   automationBroadcast' <- view automationBroadcast
   atomically . writeTChan automationBroadcast' . Client automationName $ msg
 
-addScheduleAutomationMessage
-  :: (MonadIO m)
-  => Daemon.Message
+runScheduledMessage
+  :: (Logger m, MonadIO m, MonadReader Env m)
+  => Daemon.JobId
+  -> Daemon.Message
   -> AutomationSchedule
   -> TChan Daemon.Message
   -> m ()
-addScheduleAutomationMessage automationMessage automationSchedule messageChan' = do
-  void . liftIO . execSchedule $ flip addJob automationSchedule $
-    atomically . writeTChan messageChan' $ automationMessage
+runScheduledMessage jobId automationMessage automationSchedule messageChan' = do
+  let dispatchScheduledMessage = atomically . writeTChan messageChan' $ automationMessage
+
+  schedulerThreads <- liftIO . execSchedule $
+    flip addJob automationSchedule dispatchScheduledMessage
+
+  scheduledJobs' <- view scheduledJobs
+
+  case schedulerThreads of
+    [threadId] -> do
+      sjs <- atomically . readTVar $ scheduledJobs'
+      let mPriorThreadId = M.lookup jobId sjs
+      atomically $ modifyTVar' scheduledJobs' $
+        M.insert jobId (automationSchedule, automationMessage, threadId)
+      maybe (pure ()) (\(_, _, priorThreadId) -> killThread priorThreadId) mPriorThreadId
+
+    [] -> debug "Received no ThreadIds back when running execSchedule."
+
+    ids -> do
+      mapM_ killThread ids
+      debug "Received multiple ThreadIds back when running execSchedule, all have been cancelled."
 
 loadResources
   :: (MonadUnliftIO m, Hashable k) => (v -> k) -> TVar (HashMap k v) -> [v] -> m ()

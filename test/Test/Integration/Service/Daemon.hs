@@ -6,7 +6,7 @@ module Test.Integration.Service.Daemon
   )
 where
 
-import Control.Lens ((^.), (<&>), _1, ix, preview)
+import Control.Lens ((^.), (^?), (<&>), _1, _2, _3, ix, preview)
 import Control.Monad (void)
 import Data.Foldable (for_)
 import Data.List.NonEmpty (NonEmpty((:|)))
@@ -27,6 +27,7 @@ import Service.Env
   , groupRegistrations
   , logger
   , mqttDispatch
+  , scheduledJobs
   )
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
@@ -56,6 +57,7 @@ spec = do
   resourceRegistrationSpecs
   threadMapSpecs
   stateStoreSpecs
+  schedulerSpecs
 
 resourceRegistrationSpecs :: Spec
 resourceRegistrationSpecs = do
@@ -423,3 +425,36 @@ stateStoreSpecs = do
     findMatchingAutoNames :: Text -> [(Int, Text)] -> [Text]
     findMatchingAutoNames autoName res =
       (snd <$> (filter (\(_id, auto) -> auto == autoName) res))
+
+schedulerSpecs :: Spec
+schedulerSpecs = do
+  around initAndCleanup $ do
+    it "stores Schedule jobs when they come in, and removes then when Unscheduled" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          scheduledJobs' = env ^. scheduledJobs
+          jobId = "gold1"
+          jobSchedule = "* * * * *"
+          goldStartMsg = Daemon.Start Gold
+
+        atomically $ writeTChan daemonBroadcast' $
+          Daemon.Schedule jobId jobSchedule goldStartMsg
+
+        threadDelay 50000
+
+        jobs <- readTVarIO scheduledJobs'
+        jobs ^? ix jobId . _1 `shouldBe` Just jobSchedule
+        jobs ^? ix jobId . _2 `shouldBe` Just goldStartMsg
+
+        atomically $ writeTChan daemonBroadcast' $
+          Daemon.Unschedule jobId
+
+        threadDelay 50000
+
+        jobs' <- readTVarIO scheduledJobs'
+        M.lookup jobId jobs' `shouldBe` Nothing
+
+        let Just gold1ThreadId = jobs ^? ix jobId . _3
+        gold1ThreadStatus <- threadStatus gold1ThreadId
+        gold1ThreadStatus `shouldBe` ThreadFinished

@@ -2,8 +2,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Service.MQTT.Messages.Daemon
-  ( Message(..)
-  , AutomationSchedule
+  ( AutomationSchedule
+  , JobId
+  , Message(..)
   , _DeviceUpdate
   , _GroupUpdate
   , _Null
@@ -14,6 +15,7 @@ module Service.MQTT.Messages.Daemon
   , _Start
   , _Stop
   , _Subscribe
+  , _Unschedule
   )
 where
 
@@ -39,7 +41,7 @@ data Message where
   Stop :: AutomationName -> Message
   SendTo :: AutomationName -> AutomationMessage -> Message
   Schedule :: JobId -> AutomationSchedule -> Message -> Message
-  UnSchedule :: JobId -> Message
+  Unschedule :: JobId -> Message
   DeviceUpdate :: [Device] -> Message
   GroupUpdate :: [Group] -> Message
   RegisterDevice :: DeviceId -> AutomationName -> Message
@@ -66,7 +68,7 @@ instance Show Message where
       "SendTo " <> show automationName <> " " <> show msg
     Schedule jobId schedule msg ->
       "Schedule " <> " " <> show jobId <> " " <> show schedule <> show msg
-    UnSchedule jobId -> "UnSchedule " <> show jobId
+    Unschedule jobId -> "Unschedule " <> show jobId
     DeviceUpdate devices -> "DeviceUpdate " <> show devices
     GroupUpdate groups -> "GroupUpdate " <> show groups
     RegisterDevice deviceId automationName ->
@@ -125,5 +127,5 @@ instance FromJSON Message where
             SendTo sendToAutomation <$> msg
           (_, _, _, Just msg', Just (Aeson.String cron'), Just (Aeson.String jobId'), _) ->
             Schedule jobId' cron' <$> msg'
-          (_, _, _, _, _, _, Just (Aeson.String jobId')) -> Just (UnSchedule jobId')
+          (_, _, _, _, _, _, Just (Aeson.String jobId')) -> Just (Unschedule jobId')
           _ -> Nothing

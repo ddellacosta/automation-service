@@ -66,7 +66,7 @@ spec = describe "Automation message parsing" $ do
 
 
     let
-      (Just (UnSchedule jobId')) =
+      (Just (Unschedule jobId')) =
         decode "{\"unschedule\": \"myJob\"}"
 
     jobId' `shouldBe` "myJob"
