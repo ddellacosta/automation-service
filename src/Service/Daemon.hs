@@ -308,7 +308,7 @@ runScheduledMessage jobId automationMessage automationSchedule messageChan' = do
   let dispatchScheduledMessage = atomically . writeTChan messageChan' $ automationMessage
 
   schedulerThreads <- liftIO . execSchedule $
-    flip addJob automationSchedule dispatchScheduledMessage
+    addJob dispatchScheduledMessage automationSchedule
 
   scheduledJobs' <- view scheduledJobs
 
