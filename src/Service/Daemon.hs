@@ -20,6 +20,7 @@ import Data.HashMap.Strict (HashMap)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
+import Data.Traversable (for)
 import qualified Data.Vector as V
 import Network.MQTT.Topic (Topic)
 import qualified Service.Automation as Automation
@@ -330,11 +331,9 @@ unscheduleJob jobId = do
   scheduledJobs' <- view scheduledJobs
   mPriorThreadId <- atomically $ do
     scheduledJob <- M.lookup jobId <$> readTVar scheduledJobs'
-    case scheduledJob of
-      Just (_, _, priorThreadId) -> do
-        modifyTVar' scheduledJobs' $ M.delete jobId
-        pure (Just priorThreadId)
-      _ -> pure Nothing
+    for scheduledJob $ \(_, _, priorThreadId) -> do
+      modifyTVar' scheduledJobs' $ M.delete jobId
+      pure priorThreadId
   maybe (pure ()) killThread mPriorThreadId
 
 loadResources
