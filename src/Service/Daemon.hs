@@ -320,11 +320,17 @@ runScheduledMessage jobId automationMessage automationSchedule messageChan' = do
         M.insert jobId (automationSchedule, automationMessage, threadId)
       maybe (pure ()) (\(_, _, priorThreadId) -> killThread priorThreadId) mPriorThreadId
 
+    --
+    -- I can't understand why either of the two possibilities below
+    -- would happen, but better be safe than sorry:
+    --
+
     [] -> debug "Received no ThreadIds back when running execSchedule."
 
     ids -> do
       mapM_ killThread ids
-      debug "Received multiple ThreadIds back when running execSchedule, all have been cancelled."
+      debug
+        "Received multiple ThreadIds back when running execSchedule, all have been cancelled."
 
 unscheduleJob :: (MonadIO m, MonadReader Env m) => Daemon.JobId -> m ()
 unscheduleJob jobId = do
