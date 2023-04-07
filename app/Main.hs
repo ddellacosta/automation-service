@@ -14,7 +14,7 @@ import Service.Env
   , LoggerVariant(TFLogger)
   , MQTTClientVariant(..)
   , MQTTDispatch
-  , automationServiceTopicFilter
+  , automationServiceTopic
   , logLevel
   , mqttConfig
   )
@@ -46,7 +46,7 @@ mkMQTTClient config logger mqttDispatch = do
   let
     (mqttConfig', logLevelSet) = config ^. lensProduct mqttConfig logLevel
     mqttSubs =
-      [ (mqttConfig' ^. automationServiceTopicFilter, MQTT.subOptions)
+      [ (mqttConfig' ^. automationServiceTopic, MQTT.subOptions)
       , (toFilter Zigbee2MQTT.devicesTopic, MQTT.subOptions)
       , (toFilter Zigbee2MQTT.groupsTopic, MQTT.subOptions)
       ]

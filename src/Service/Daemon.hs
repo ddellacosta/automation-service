@@ -24,14 +24,16 @@ import Data.Traversable (for)
 import qualified Data.Vector as V
 import Network.MQTT.Topic (Topic)
 import qualified Service.Automation as Automation
-import Service.Automation (Automation, Message(..))
+import Service.Automation (Message(..))
 import Service.AutomationName (AutomationName(..), parseAutomationNameText, serializeAutomationName)
 import Service.Automations (findAutomation)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Device as Device
 import Service.Env
-  ( Env
+  ( AutomationEntry
+  , Env
   , RestartConditions(..)
+  , ThreadMap
   , appCleanup
   , automationBroadcast
   , config
@@ -44,15 +46,18 @@ import Service.Env
   , loadedDevices
   , loadedGroups
   , messageChan
+  , mqttConfig
   , mqttDispatch
   , notAlreadyRestarted
   , restartConditions
   , scheduledJobs
+  , statusTopic
   , subscriptions
   )
 import qualified Service.Group as Group
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.MQTT.Messages.Daemon (AutomationSchedule)
+import Service.MQTT.Status (encodeAutomationStatus)
 import qualified Service.StateStore as StateStore
 import System.Cron (addJob, execSchedule)
 import UnliftIO.Async (Async, async, cancel)
@@ -71,9 +76,6 @@ import UnliftIO.STM
   , writeTChan
   , writeTVar
   )
-
-type AutomationEntry m = (Automation m, Async ())
-type ThreadMap m = HashMap AutomationName (AutomationEntry m)
 
 run
   :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m)
@@ -126,21 +128,28 @@ run' threadMapTV = do
         Daemon.Start automationName -> do
           initializeAndRunAutomation threadMapTV automationName
           signalStateUpdate threadMapTV
+          publishUpdatedStatus threadMapTV
           go
 
         Daemon.Stop automationName -> do
           stopAutomation threadMapTV automationName
           signalStateUpdate threadMapTV
+          publishUpdatedStatus threadMapTV
           go
 
         Daemon.SendTo automationName msg' ->
           sendClientMsg automationName msg' *> go
 
-        Daemon.Schedule jobId automationSchedule automationMessage ->
+        Daemon.Schedule jobId automationSchedule automationMessage -> do
           runScheduledMessage
-            jobId automationMessage automationSchedule daemonBroadcast' *> go
+            jobId automationMessage automationSchedule daemonBroadcast'
+          publishUpdatedStatus threadMapTV
+          go
 
-        Daemon.Unschedule jobId -> unscheduleJob jobId *> go
+        Daemon.Unschedule jobId -> do
+          unscheduleJob jobId
+          publishUpdatedStatus threadMapTV
+          go
 
         Daemon.DeviceUpdate newDevices -> do
           view devices >>= \stored ->
@@ -290,6 +299,19 @@ signalStateUpdate threadMapTV = do
   runningAutos <- M.keys <$> (atomically . readTVar $ threadMapTV)
   sendClientMsg StateManager $
     Aeson.Array . V.fromList $ Aeson.String . serializeAutomationName <$> runningAutos
+
+publishUpdatedStatus
+  :: (MonadIO m, MonadMQTT m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
+publishUpdatedStatus threadMapTV = do
+  statusTopic' <- view $ config . mqttConfig . statusTopic
+  deviceRegs <- view deviceRegistrations
+  groupRegs <- view groupRegistrations
+  statusMsg <- atomically $ do
+    running <- readTVar threadMapTV
+    deviceRegs' <- readTVar deviceRegs
+    groupRegs' <- readTVar groupRegs
+    pure $ encodeAutomationStatus running deviceRegs' groupRegs'
+  publishMQTT statusTopic' statusMsg
 
 sendClientMsg
   :: (MonadIO m, MonadReader Env m) => AutomationName -> Value -> m ()

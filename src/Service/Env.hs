@@ -1,7 +1,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Service.Env
-  ( Config(..)
+  ( AutomationEntry
+  , Config(..)
   , Env(..)
   , LogLevel(..)
   , LoggerVariant(..)
@@ -12,9 +13,10 @@ module Service.Env
   , RestartConditions(..)
   , ScheduledJobs
   , Subscriptions
+  , ThreadMap
   , appCleanup
   , automationBroadcast
-  , automationServiceTopicFilter
+  , automationServiceTopic
   , caCertPath
   , clientCertPath
   , clientKeyPath
@@ -40,6 +42,7 @@ module Service.Env
   , notAlreadyRestarted
   , restartConditions
   , scheduledJobs
+  , statusTopic
   , subscriptions
   , uri
   )
@@ -54,21 +57,31 @@ import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.HashMap.Strict as M
 import Data.HashMap.Strict (HashMap)
 import Data.Maybe (fromMaybe)
-import qualified Data.String as S
 import Data.Text (Text)
-import Dhall (Decoder, Generic, FromDhall(..), auto, field, inputFile, record, string)
+import Dhall (Decoder, Generic, FromDhall(..), auto, field, inputFile, record, strictText, string)
 import Network.MQTT.Client (MQTTClient)
-import Network.MQTT.Topic (Filter, Topic)
+import Network.MQTT.Topic (Topic)
 import Network.URI (URI, nullURI, parseURI)
 import qualified Service.Automation as Automation
+import Service.Automation (Automation)
 import Service.AutomationName (AutomationName)
 import Service.Device (Device, DeviceId)
 import Service.Group (Group, GroupId)
 import qualified Service.MQTT.Messages.Daemon as Daemon
+import Service.MQTT.Topic (parseTopic)
 import qualified Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
 import System.Log.FastLogger (TimedFastLogger) 
+import UnliftIO.Async (Async)
 import UnliftIO.Concurrent (ThreadId)
 import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO, writeTChan)
+
+
+-- in here to avoid a circular reference between Service.Daemon and Service.MQTT.Status
+
+type AutomationEntry m = (Automation m, Async ())
+type ThreadMap m = HashMap AutomationName (AutomationEntry m)
+
+--
 
 data LogLevel = Debug | Info | Warn | Error
   deriving (Generic, Show, Eq, Ord)
@@ -77,7 +90,8 @@ instance FromDhall LogLevel
 
 data MQTTConfig = MQTTConfig
   { _uri :: URI
-  , _automationServiceTopicFilter :: Filter
+  , _automationServiceTopic :: Topic
+  , _statusTopic :: Topic
   , _caCertPath :: Maybe FilePath
   , _clientCertPath :: Maybe FilePath
   , _clientKeyPath :: Maybe FilePath
@@ -91,7 +105,8 @@ mqttConfigDecoder =
   record
     ( MQTTConfig
         <$> field "uri" uriDecoder
-        <*> field "automationServiceTopic" (string <&> S.fromString)
+        <*> field "automationServiceTopic" (strictText <&> parseTopic)
+        <*> field "statusTopic" (strictText <&> parseTopic)
         <*> field "caCertPath" auto
         <*> field "clientCertPath" auto
         <*> field "clientKeyPath" auto

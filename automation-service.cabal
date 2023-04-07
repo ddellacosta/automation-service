@@ -87,6 +87,7 @@ library
     , Service.MQTT.Messages.Daemon
     , Service.MQTT.Messages.Lighting
     , Service.MQTT.Client
+    , Service.MQTT.Status
     , Service.MQTT.Topic
     , Service.MQTT.Zigbee2MQTT
     , Service.StateStore
