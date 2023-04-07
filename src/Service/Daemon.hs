@@ -145,13 +145,13 @@ run' threadMapTV = do
         Daemon.DeviceUpdate newDevices -> do
           view devices >>= \stored ->
             loadResources Device._id stored newDevices
-          updateRestartConditions loadedDevices True
+          updateRestartConditionsSet loadedDevices True
           go
 
         Daemon.GroupUpdate newGroups -> do
           view groups >>= \stored ->
             loadResources Group._id stored newGroups
-          updateRestartConditions loadedGroups True
+          updateRestartConditionsSet loadedGroups True
           go
 
         Daemon.RegisterDevice deviceId automationName -> do
@@ -325,11 +325,11 @@ runScheduledMessage jobId automationMessage automationSchedule messageChan' = do
     -- would happen, but better be safe than sorry:
     --
 
-    [] -> debug "Received no ThreadIds back when running execSchedule."
+    [] -> warn "Received no ThreadIds back when running execSchedule."
 
     ids -> do
       mapM_ killThread ids
-      debug
+      warn
         "Received multiple ThreadIds back when running execSchedule, all have been cancelled."
 
 unscheduleJob :: (MonadIO m, MonadReader Env m) => Daemon.JobId -> m ()
@@ -348,9 +348,9 @@ loadResources mkResourceKey stored newResources =
   atomically . writeTVar stored . M.fromList $
     (\r -> (mkResourceKey r, r)) <$> newResources
 
-updateRestartConditions
+updateRestartConditionsSet
   :: (MonadIO m, MonadReader Env m) => Lens' RestartConditions Bool -> Bool -> m ()
-updateRestartConditions field conditionState = do
+updateRestartConditionsSet field conditionState = do
   restartConditions' <- view restartConditions
   atomically $ modifyTVar' restartConditions' $ field .~ conditionState
 

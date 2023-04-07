@@ -39,7 +39,7 @@ integration :: IO TestTree
 integration =
   localOption timeout' <$>
   localOption TreatPendingAsSuccess <$> do
-    daemonSpec <- testSpec "Service.App.Daemon specs" Daemon.spec
+    daemonSpec <- testSpec "Service.Daemon specs" Daemon.spec
     pure $ testGroup "Integration Tests" [ daemonSpec ]
     where
       timeout' = mkTimeout . (micros *) $ timeout
