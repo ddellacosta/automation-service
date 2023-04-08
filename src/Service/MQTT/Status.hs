@@ -30,9 +30,6 @@ encodeAutomationStatus running scheduled deviceRegs groupRegs = encode $
     ]
 
   where
-    deviceRegs' = invertRegistrations deviceRegs
-    groupRegs' = invertRegistrations groupRegs
-
     deviceArray autoName =
       maybe
         emptyArray
@@ -45,11 +42,14 @@ encodeAutomationStatus running scheduled deviceRegs groupRegs = encode $
         (Aeson.Array . V.fromList . (fmap toJSON) . NE.toList) .
       M.lookup autoName
 
+    deviceRegs' autoName = deviceArray autoName . invertRegistrations $ deviceRegs
+    groupRegs' autoName = groupArray autoName . invertRegistrations $ groupRegs
+
     running' = Aeson.Array $ V.fromList $ flip M.foldMapWithKey running $ \autoName _v ->
       [ object
         [ ("name", Aeson.String $ serializeAutomationName autoName)
-        , ("devices", deviceArray autoName deviceRegs')
-        , ("groups", groupArray autoName groupRegs')
+        , ("devices", deviceRegs' autoName)
+        , ("groups", groupRegs' autoName)
         ]
       ]
 
