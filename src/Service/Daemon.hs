@@ -306,11 +306,13 @@ publishUpdatedStatus threadMapTV = do
   statusTopic' <- view $ config . mqttConfig . statusTopic
   deviceRegs <- view deviceRegistrations
   groupRegs <- view groupRegistrations
+  scheduled <- view scheduledJobs
   statusMsg <- atomically $ do
     running <- readTVar threadMapTV
+    scheduled' <- readTVar scheduled
     deviceRegs' <- readTVar deviceRegs
     groupRegs' <- readTVar groupRegs
-    pure $ encodeAutomationStatus running deviceRegs' groupRegs'
+    pure $ encodeAutomationStatus running scheduled' deviceRegs' groupRegs'
   publishMQTT statusTopic' statusMsg
 
 sendClientMsg
