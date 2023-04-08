@@ -119,6 +119,7 @@ test-suite automation-service-tests
     , Test.Unit.Service.Device
     , Test.Unit.Service.Group
     , Test.Unit.Service.MQTT.Messages.Daemon
+    , Test.Unit.Service.MQTT.Status
   build-depends:
       automation-service
     , hspec ^>= 2.9.7

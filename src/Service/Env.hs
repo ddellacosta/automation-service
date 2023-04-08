@@ -29,6 +29,7 @@ module Service.Env
   , groupRegistrations
   , groups
   , initialize
+  , invertRegistrations
   , loadedDevices
   , loadedGroups
   , logFilePath
@@ -48,11 +49,10 @@ module Service.Env
   )
 where
 
-import Control.Lens (makeFieldsNoPrefix)
+import Control.Lens ((<&>), makeFieldsNoPrefix)
 import Data.Aeson (Value, decode)
 import Data.ByteString.Lazy (ByteString)
-import Data.Foldable (for_)
-import Data.Functor ((<&>))
+import Data.Foldable (foldl', for_)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.HashMap.Strict as M
 import Data.HashMap.Strict (HashMap)
@@ -75,13 +75,6 @@ import UnliftIO.Async (Async)
 import UnliftIO.Concurrent (ThreadId)
 import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO, writeTChan)
 
-
--- in here to avoid a circular reference between Service.Daemon and Service.MQTT.Status
-
-type AutomationEntry m = (Automation m, Async ())
-type ThreadMap m = HashMap AutomationName (AutomationEntry m)
-
---
 
 data LogLevel = Debug | Info | Warn | Error
   deriving (Generic, Show, Eq, Ord)
@@ -150,7 +143,22 @@ data MQTTClientVariant
   = MCClient MQTTClient
   | TVClient (TVar (HashMap Topic ByteString))
 
+-- in here to avoid a circular reference between Service.Daemon and
+-- Service.MQTT.Status, otherwise I'd leave it in Service.Daemon
+
+type AutomationEntry m = (Automation m, Async ())
+type ThreadMap m = HashMap AutomationName (AutomationEntry m)
+
+--
+
 type Registrations a = HashMap a (NonEmpty AutomationName)
+
+invertRegistrations :: Registrations a -> HashMap AutomationName (NonEmpty a)
+invertRegistrations = M.foldlWithKey'
+  (\inverted k ->
+     foldl' (\inverted' v -> M.insertWith (<>) v (k :| []) inverted') inverted)
+  M.empty
+
 
 type MsgAction = ByteString -> IO ()
 type MQTTDispatch = HashMap Topic (NonEmpty MsgAction)
