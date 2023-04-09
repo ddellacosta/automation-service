@@ -46,7 +46,7 @@ mkMQTTClient config logger mqttDispatch = do
   let
     (mqttConfig', logLevelSet) = config ^. lensProduct mqttConfig logLevel
     mqttSubs =
-      [ (mqttConfig' ^. automationServiceTopic, MQTT.subOptions)
+      [ (toFilter $ mqttConfig' ^. automationServiceTopic, MQTT.subOptions)
       , (toFilter Zigbee2MQTT.devicesTopic, MQTT.subOptions)
       , (toFilter Zigbee2MQTT.groupsTopic, MQTT.subOptions)
       ]
