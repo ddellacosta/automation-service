@@ -166,11 +166,13 @@ run' threadMapTV = do
         Daemon.RegisterDevice deviceId automationName -> do
           view deviceRegistrations >>= \deviceRegs ->
             addRegisteredResource deviceId automationName deviceRegs
+          publishUpdatedStatus threadMapTV
           go
 
         Daemon.RegisterGroup groupId automationName -> do
           view groupRegistrations >>= \groupRegs ->
             addRegisteredResource groupId automationName groupRegs
+          publishUpdatedStatus threadMapTV
           go
 
         Daemon.Subscribe automationName mTopic listenerBcastChan -> do
