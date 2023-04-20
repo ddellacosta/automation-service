@@ -10,7 +10,7 @@ import Control.Lens ((^?), _1, _2, _Just)
 import qualified Data.Aeson as Aeson
 import Data.Aeson (decode, object)
 import Data.Aeson.Lens (key)
-import Service.AutomationName (AutomationName(Gold))
+import Service.AutomationName (AutomationName(Gold, LuaScript))
 import Service.MQTT.Messages.Daemon (Message(..), _SendTo)
 import Test.Hspec (Spec, describe, it, shouldBe)
 
@@ -76,3 +76,8 @@ spec = describe "Automation message parsing" $ do
     (decode "{\"what\": \"nope\"}" :: Maybe Message)
       `shouldBe`
       Just Null
+
+  it "converts lower-case start terms to LuaScript AutomationNames" $ do
+    (decode "{\"start\": \"fooBar\"}" :: Maybe Message)
+      `shouldBe`
+      Just (Start (LuaScript "fooBar"))

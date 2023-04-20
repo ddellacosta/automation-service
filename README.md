@@ -44,6 +44,7 @@ You can then start this up `docker-compose start automation-service`, and can dr
 
 ## TODO
 
+* bug: trying to restart an automation blocks when listening on channel, have to send an interrupt message somehow
 * set up GH actions (?) to run build and store docker image somewhere, I guess not docker hub any more (https://blog.alexellis.io/docker-is-deleting-open-source-images/) ...[github packages](https://docs.github.com/en/actions/publishing-packages/publishing-docker-images#publishing-images-to-github-packages)?
 * query-able data about running and scheduled automations
   * HA dashboard integration
@@ -52,7 +53,7 @@ You can then start this up `docker-compose start automation-service`, and can dr
 * better error handling
 * should be able to record a scene easily based on a given group or arbitrarily specified set of devices. This could be an automation itself which just runs listening for the command to set scenes for any given room
 * auto-import scenes for devices
-* profile and better understand memory usage
+* profile and better understand memory usage - seems like there is a very slow memory leak
 
 
 ## Testing

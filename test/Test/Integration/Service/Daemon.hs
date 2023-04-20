@@ -12,12 +12,13 @@ import Data.Foldable (for_)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromJust, fromMaybe)
+import qualified Data.Text as T
 import Data.Text (Text)
 import GHC.Conc (ThreadStatus(..), threadStatus)
 import Network.MQTT.Topic (mkTopic)
 import Safe (headMay)
 import Service.Automation (name)
-import Service.AutomationName (AutomationName(..), serializeAutomationName)
+import Service.AutomationName (AutomationName(..), parseAutomationName, serializeAutomationName)
 import Service.Env
   ( LoggerVariant(..)
   , config
@@ -349,8 +350,8 @@ stateStoreSpecs = do
         res <- StateStore.allRunning $ env ^. config . dbPath
 
         length res `shouldBe` 3
-        findMatchingAutoNames "LuaScript \"test\"" res
-          `shouldBe` ["LuaScript \"test\""]
+        parseAutomationName . T.unpack <$> (findMatchingAutoNames "test" res)
+          `shouldBe` [Just (LuaScript "test")]
         findMatchingAutoNames "Gold" res `shouldBe` ["Gold"]
         -- started up by Daemon independently if it is not running, so
         -- should always be present.
@@ -375,8 +376,8 @@ stateStoreSpecs = do
         res <- StateStore.allRunning dbPath'
 
         length res `shouldBe` 2
-        findMatchingAutoNames "LuaScript \"test\"" res
-          `shouldBe` ["LuaScript \"test\""]
+        parseAutomationName . T.unpack <$> (findMatchingAutoNames "test" res)
+          `shouldBe` [Just (LuaScript "test")]
         -- started up by Daemon independently if it is not running, so
         -- should always be present.
         findMatchingAutoNames "StateManager" res `shouldBe` ["StateManager"]

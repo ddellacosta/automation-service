@@ -6,7 +6,10 @@ module Service.AutomationName
   )
 where
 
+import Control.Monad (guard)
 import Data.Aeson (FromJSON(..), ToJSON(..), defaultOptions, genericToEncoding)
+import qualified Data.Char as Char
+import Data.List (uncons)
 import Data.Hashable (Hashable(..))
 import qualified Data.Text as T
 import Data.Text (Text)
@@ -27,16 +30,20 @@ instance ToJSON AutomationName where
 instance FromJSON AutomationName
 
 serializeAutomationName :: AutomationName -> Text
-serializeAutomationName = T.pack . show
+serializeAutomationName = \case
+  (LuaScript filepath) -> T.pack filepath
+  autoName -> T.pack . show $ autoName
 
 parseAutomationName :: String -> Maybe AutomationName
 parseAutomationName = \case
   "Null" -> Just Null
   "Gold" -> Just Gold
   "StateManager" -> Just StateManager
-  maybeLuaScript -> case words maybeLuaScript of
-    ["LuaScript", filePath] -> Just . LuaScript $ filter (/= '"') filePath
-    _ -> Nothing
+  maybeLuaScript -> do
+    let filepath = filter (/= '"') maybeLuaScript
+    (firstChar, _remainder) <- uncons filepath
+    guard (Char.isLower firstChar) *>
+      (pure . LuaScript $ filepath)
 
 parseAutomationNameText :: Text -> Maybe AutomationName
 parseAutomationNameText = parseAutomationName . T.unpack
