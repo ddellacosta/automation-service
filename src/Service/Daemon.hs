@@ -18,7 +18,6 @@ import Data.Hashable (Hashable)
 import qualified Data.HashMap.Strict as M
 import Data.HashMap.Strict (HashMap)
 import Data.List.NonEmpty (NonEmpty((:|)))
-import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Data.Time.Clock (getCurrentTime)
 import Data.Traversable (for)
@@ -26,7 +25,7 @@ import qualified Data.Vector as V
 import Network.MQTT.Topic (Topic)
 import qualified Service.Automation as Automation
 import Service.Automation (Message(..))
-import Service.AutomationName (AutomationName(..), parseAutomationNameText, serializeAutomationName)
+import Service.AutomationName (AutomationName(..), serializeAutomationName)
 import Service.Automations (findAutomation)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Device as Device
@@ -39,7 +38,6 @@ import Service.Env
   , automationBroadcast
   , config
   , daemonBroadcast
-  , dbPath
   , deviceRegistrations
   , devices
   , groupRegistrations
@@ -52,6 +50,7 @@ import Service.Env
   , notAlreadyRestarted
   , restartConditions
   , scheduledJobs
+  , startupAutomations
   , statusTopic
   , subscriptions
   )
@@ -59,7 +58,6 @@ import qualified Service.Group as Group
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.MQTT.Messages.Daemon (AutomationSchedule)
 import Service.MQTT.Status (encodeAutomationStatus)
-import qualified Service.StateStore as StateStore
 import System.Cron (addJob, execSchedule)
 import UnliftIO.Async (Async, async, cancel)
 import UnliftIO.Concurrent (killThread)
@@ -201,16 +199,15 @@ tryRestoreRunningAutomations = do
   -- Possible to get a race condition here? I don't think so, because
   -- the only thing that ever accesses the RestartConditions is this
   -- single Daemon thread. I'd put it all in an atomically block
-  -- regardless but for the StateStore call below.
+  -- regardless but it would be awkward with the MonadReader stuff I
+  -- think.
   rc' <- atomically . readTVar $ rc
   case rc' of
     (RestartConditions True True True) -> do
       daemonBroadcast' <- view daemonBroadcast
-      dbPath' <- view $ config . dbPath
-      storedRunningAutos <- liftIO $ StateStore.allRunning dbPath'
-      for_ storedRunningAutos $ \(_id, autoName) ->
-        atomically . writeTChan daemonBroadcast' $
-          fromMaybe Daemon.Null $ Daemon.Start <$> parseAutomationNameText autoName
+      storedRunningAutos <- view startupAutomations
+      for_ storedRunningAutos $
+        atomically . writeTChan daemonBroadcast' . Daemon.Start
       atomically . writeTVar rc $ rc' & notAlreadyRestarted .~ False
     _ -> pure ()
 

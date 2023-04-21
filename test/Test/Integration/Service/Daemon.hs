@@ -18,7 +18,7 @@ import GHC.Conc (ThreadStatus(..), threadStatus)
 import Network.MQTT.Topic (mkTopic)
 import Safe (headMay)
 import Service.Automation (name)
-import Service.AutomationName (AutomationName(..), parseAutomationName, serializeAutomationName)
+import Service.AutomationName (AutomationName(..), parseAutomationName)
 import Service.Env
   ( LoggerVariant(..)
   , config
@@ -35,6 +35,7 @@ import qualified Service.StateStore as StateStore
 import Test.Hspec (Spec, around, expectationFailure, it, shouldBe)
 import Test.Integration.Service.DaemonTestHelpers
   ( initAndCleanup
+  , initAndCleanup'
   , testWithAsyncDaemon
   , waitUntilEq
   , waitUntilEqSTM
@@ -388,12 +389,37 @@ stateStoreSpecs = do
         -- should always be present.
         findMatchingAutoNames "StateManager" res `shouldBe` ["StateManager"]
 
-  around initAndCleanup $ do
+  around (initAndCleanup' [Gold, LuaScript "test"]) $ do
     it "starts any automations stored in the running table upon load" $ \preEnv -> do
-      let autoNames = serializeAutomationName <$> [Gold, LuaScript "test"]
-      StateStore.updateRunning (preEnv ^. config . dbPath) autoNames
       flip testWithAsyncDaemon preEnv $ \env threadMapTV _daemonSnooper -> do
         let daemonBroadcast' = env ^. daemonBroadcast
+
+        --
+        -- I added this because the bug I discovered in production
+        -- (*cough* a.k.a. my house) isn't exposed unless I give
+        -- things a bit more of a delay at startup, to mimic the
+        -- behavior I'm seeing there. Once I added the delay, this
+        -- test started failing. This failure was caused by calling
+        -- Service.StateStore.updateRunning every time we start up an
+        -- Automation, because the first thing it does is wipe out the
+        -- prior running entries before storing the new set of
+        -- Automations that are passed in. This keeps things nice and
+        -- simple semantically once the system is up and running, as
+        -- it lacks any updating logic that would produce a bug based
+        -- on doing e.g. set difference calculations or whatnot, but
+        -- it means we push the logic for updates outside of the DB
+        -- layer. Putting it all together, concretely speaking this
+        -- means that as soon as we started the first
+        -- Automation--which is StateManager by default, as it is
+        -- explicitly loaded in Service.Daemon--the previously running
+        -- Automation state stored in the db was wiped out.
+        --
+        -- The solution I came up with was to cache the stored
+        -- DB values on initialization and reference this cache once
+        -- the conditions encoded in RestartConditions are met, and
+        -- tryRestoreRunningAutomations loads the prior Automations.
+        --
+        threadDelay 50000
 
         --
         -- This is because scripts are often dependent on loading
