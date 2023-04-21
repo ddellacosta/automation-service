@@ -1,18 +1,16 @@
 module Test.Integration.Service.DaemonTestHelpers
   ( initAndCleanup
-  , initAndCleanup'
   , testWithAsyncDaemon
   , waitUntilEq
   , waitUntilEqSTM
   )
   where
 
-import Control.Lens ((&), (.~), (%~), (^.), view)
+import Control.Lens ((&), (%~), (^.), view)
 import qualified Data.HashMap.Strict as M
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 import qualified Service.App as App
-import Service.AutomationName (AutomationName)
 import qualified Service.Daemon as Daemon
 import qualified Service.Device as Device
 import qualified Service.Env as Env
@@ -26,8 +24,6 @@ import Service.Env
   , dbPath
   , devices
   , groups
-  , loadPriorRunningAutomations
-  , startupAutomations
   )
 import qualified Service.Group as Group
 import qualified Service.MQTT.Messages.Daemon as Daemon
@@ -49,18 +45,7 @@ testConfigFilePath = "test/config.dhall"
 -- it even needs to be distinct.
 --
 initAndCleanup :: (Env -> IO ()) -> IO ()
-initAndCleanup = initAndCleanup' []
-
--- |
--- | Implementation of initAndCleanup with an extra first argument
--- allowing for passing in some Automations to preload (due to the
--- janky way dbPath is calculated for testing, unfortunately).
---
--- initAndCleanup is just a wrapper around this with
--- an empty list of AutomationNames passed in.
---
-initAndCleanup' :: [AutomationName] -> (Env -> IO ()) -> IO ()
-initAndCleanup' preloadAutos runTests = bracket
+initAndCleanup runTests = bracket
   (do
       env <- Env.initialize testConfigFilePath mkLogger mkMQTTClient
 
@@ -75,20 +60,8 @@ initAndCleanup' preloadAutos runTests = bracket
       Daemon.loadResources Group._id groupsTVar groups'
 
       uuid <- UUID.nextRandom
-      let
-        env' = env & config . dbPath %~ \dp -> dp <> "-" <> UUID.toString uuid <> ".db"
-        dbPath' = env' ^. config . dbPath
-
-      -- This bit below is terrible in particular: it's the same exact
-      -- work already happening in Env.initialize above, but we have
-      -- to redo it because the dbPath used there is
-      -- pre-processing. I've considered adding another argument to
-      -- `run'` that lets me process the db stuff with a function or
-      -- whatever, but then I'm back to polluting the non-test modules
-      -- with test ephemera.
-      priorRunningAutomations <- loadPriorRunningAutomations dbPath'
       pure $
-        env' & startupAutomations .~ (priorRunningAutomations <> preloadAutos)
+        env & config . dbPath %~ \dp -> dp <> "-" <> UUID.toString uuid <> ".db"
   )
   (view appCleanup)
   runTests

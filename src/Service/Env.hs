@@ -32,7 +32,6 @@ module Service.Env
   , invertRegistrations
   , loadedDevices
   , loadedGroups
-  , loadPriorRunningAutomations
   , logFilePath
   , logLevel
   , logger
@@ -51,7 +50,7 @@ module Service.Env
   )
 where
 
-import Control.Lens ((^.), (<&>), makeFieldsNoPrefix)
+import Control.Lens ((<&>), makeFieldsNoPrefix)
 import Data.Aeson (Value, decode)
 import Data.ByteString.Lazy (ByteString)
 import Data.Foldable (foldl', for_)
@@ -66,13 +65,12 @@ import Network.MQTT.Topic (Topic)
 import Network.URI (URI, nullURI, parseURI)
 import qualified Service.Automation as Automation
 import Service.Automation (Automation)
-import Service.AutomationName (AutomationName, parseAutomationNameText)
+import Service.AutomationName (AutomationName)
 import Service.Device (Device, DeviceId)
 import Service.Group (Group, GroupId)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.MQTT.Topic (parseTopic)
 import qualified Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
-import qualified Service.StateStore as StateStore
 import System.Log.FastLogger (TimedFastLogger) 
 import UnliftIO.Async (Async)
 import UnliftIO.Concurrent (ThreadId)
@@ -196,7 +194,7 @@ data Env = Env
   , _subscriptions :: TVar Subscriptions
   , _scheduledJobs :: TVar ScheduledJobs
   , _restartConditions :: TVar RestartConditions
-  , _startupAutomations :: [AutomationName]
+  , _startupAutomations :: TVar [AutomationName]
   -- do I need to mark this explicitly as being lazy so it's not called immediately?
   , _appCleanup :: IO ()
   }
@@ -222,9 +220,6 @@ initialize configFilePath mkLogger mkMQTTClient = do
 
   automationBroadcast' <- newBroadcastTChanIO
 
-  let dbPath' = config' ^. dbPath
-  priorRunningAutomations <- loadPriorRunningAutomations dbPath'
-
   Env config' logger' mc mqttDispatch' daemonBroadcast' automationBroadcast'
     <$> (atomically $ dupTChan daemonBroadcast') -- messageChan
     <*> (newTVarIO M.empty) -- devices
@@ -234,7 +229,7 @@ initialize configFilePath mkLogger mkMQTTClient = do
     <*> (newTVarIO M.empty) -- subscriptions
     <*> (newTVarIO M.empty) -- scheduledJobs
     <*> (newTVarIO $ RestartConditions False False True)
-    <*> pure priorRunningAutomations
+    <*> (newTVarIO []) -- startupAutomations
     <*> pure (loggerCleanup >> mcCleanup)
 
   where
@@ -262,7 +257,3 @@ initialize configFilePath mkLogger mkMQTTClient = do
             ) :| []
         )
       ]
-
-loadPriorRunningAutomations :: FilePath -> IO [AutomationName]
-loadPriorRunningAutomations dbPath' = StateStore.allRunning dbPath' <&>
-  fromMaybe [] . sequence . fmap (parseAutomationNameText . snd)

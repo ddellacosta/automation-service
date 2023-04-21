@@ -8,7 +8,7 @@ where
 
 import Prelude hiding (filter)
 
-import Control.Lens (Lens', (&), (.~), view)
+import Control.Lens (Lens', (&), (<&>), (^.), (.~), view)
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
 import qualified Data.Aeson as Aeson
@@ -18,6 +18,7 @@ import Data.Hashable (Hashable)
 import qualified Data.HashMap.Strict as M
 import Data.HashMap.Strict (HashMap)
 import Data.List.NonEmpty (NonEmpty((:|)))
+import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Data.Time.Clock (getCurrentTime)
 import Data.Traversable (for)
@@ -25,7 +26,7 @@ import qualified Data.Vector as V
 import Network.MQTT.Topic (Topic)
 import qualified Service.Automation as Automation
 import Service.Automation (Message(..))
-import Service.AutomationName (AutomationName(..), serializeAutomationName)
+import Service.AutomationName (AutomationName(..), parseAutomationNameText, serializeAutomationName)
 import Service.Automations (findAutomation)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Device as Device
@@ -38,6 +39,7 @@ import Service.Env
   , automationBroadcast
   , config
   , daemonBroadcast
+  , dbPath
   , deviceRegistrations
   , devices
   , groupRegistrations
@@ -58,6 +60,7 @@ import qualified Service.Group as Group
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.MQTT.Messages.Daemon (AutomationSchedule)
 import Service.MQTT.Status (encodeAutomationStatus)
+import qualified Service.StateStore as StateStore
 import System.Cron (addJob, execSchedule)
 import UnliftIO.Async (Async, async, cancel)
 import UnliftIO.Concurrent (killThread)
@@ -97,6 +100,17 @@ run'
 run' threadMapTV = do
   config' <- view config
   appCleanup' <- view appCleanup
+
+  -- This bit below is terrible in particular: it's the same exact
+  -- work already happening in Env.initialize above, but we have
+  -- to redo it because the dbPath used there is
+  -- pre-processing. I've considered adding another argument to
+  -- `run'` that lets me process the db stuff with a function or
+  -- whatever, but then I'm back to polluting the non-test modules
+  -- with test ephemera.
+  priorRunningAutomations <- loadPriorRunningAutomations (config' ^. dbPath)
+  startupAutomations' <- view startupAutomations
+  atomically . writeTVar startupAutomations' $ priorRunningAutomations
 
   flip finally (cleanupAutomations appCleanup' threadMapTV) $ do
     debug . T.pack . show $ config'
@@ -181,6 +195,10 @@ run' threadMapTV = do
 
         Daemon.Null -> debug "Null Automation" *> go
 
+    loadPriorRunningAutomations :: (MonadIO m) => FilePath -> m [AutomationName]
+    loadPriorRunningAutomations dbPath' = liftIO $ StateStore.allRunning dbPath' <&>
+      fromMaybe [] . sequence . fmap (parseAutomationNameText . snd)
+
 cleanupAutomations
   :: (Logger m, MonadIO m, MonadReader Env m, MonadUnliftIO m)
   => IO ()
@@ -205,10 +223,12 @@ tryRestoreRunningAutomations = do
   case rc' of
     (RestartConditions True True True) -> do
       daemonBroadcast' <- view daemonBroadcast
-      storedRunningAutos <- view startupAutomations
-      for_ storedRunningAutos $
-        atomically . writeTChan daemonBroadcast' . Daemon.Start
-      atomically . writeTVar rc $ rc' & notAlreadyRestarted .~ False
+      priorRunningAutos <- view startupAutomations
+      atomically $ do
+        priorRunningAutos' <- readTVar priorRunningAutos
+        for_ priorRunningAutos' $
+          writeTChan daemonBroadcast' . Daemon.Start
+        writeTVar rc $ rc' & notAlreadyRestarted .~ False
     _ -> pure ()
 
 initializeAndRunAutomation

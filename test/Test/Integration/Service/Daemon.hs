@@ -18,7 +18,7 @@ import GHC.Conc (ThreadStatus(..), threadStatus)
 import Network.MQTT.Topic (mkTopic)
 import Safe (headMay)
 import Service.Automation (name)
-import Service.AutomationName (AutomationName(..), parseAutomationName)
+import Service.AutomationName (AutomationName(..), parseAutomationName, serializeAutomationName)
 import Service.Env
   ( LoggerVariant(..)
   , config
@@ -35,7 +35,6 @@ import qualified Service.StateStore as StateStore
 import Test.Hspec (Spec, around, expectationFailure, it, shouldBe)
 import Test.Integration.Service.DaemonTestHelpers
   ( initAndCleanup
-  , initAndCleanup'
   , testWithAsyncDaemon
   , waitUntilEq
   , waitUntilEqSTM
@@ -389,8 +388,10 @@ stateStoreSpecs = do
         -- should always be present.
         findMatchingAutoNames "StateManager" res `shouldBe` ["StateManager"]
 
-  around (initAndCleanup' [Gold, LuaScript "test"]) $ do
+  around initAndCleanup $ do
     it "starts any automations stored in the running table upon load" $ \preEnv -> do
+      StateStore.updateRunning (preEnv ^. config . dbPath) $
+        serializeAutomationName <$> [Gold, LuaScript "test"]
       flip testWithAsyncDaemon preEnv $ \env threadMapTV _daemonSnooper -> do
         let daemonBroadcast' = env ^. daemonBroadcast
 
