@@ -20,6 +20,7 @@ import Data.HashMap.Strict (HashMap)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
+import Data.Time.Clock (getCurrentTime)
 import Data.Traversable (for)
 import qualified Data.Vector as V
 import Network.MQTT.Topic (Topic)
@@ -223,7 +224,8 @@ initializeAndRunAutomation
     automationBroadcast' <- view automationBroadcast
     clientChan <- atomically $ dupTChan automationBroadcast'
 
-    let automation = findAutomation automationName
+    startTime <- liftIO getCurrentTime
+    let automation = findAutomation automationName $ startTime
 
     --
     -- > The more subtle difference is that this function will use

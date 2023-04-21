@@ -12,6 +12,7 @@ import Control.Lens (view)
 import Control.Monad.Reader (MonadReader)
 import Control.Monad.IO.Unlift (MonadUnliftIO, liftIO)
 import qualified Data.Aeson as Aeson
+import Data.Time.Clock (UTCTime)
 import qualified Data.Vector as V
 import Service.App (Logger(..), MonadMQTT(..))
 import Service.Automation as Automation
@@ -22,12 +23,14 @@ import UnliftIO.STM (TChan, atomically, readTChan)
 
 stateManagerAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
-  => Automation m
-stateManagerAutomation =
+  => UTCTime
+  -> Automation m
+stateManagerAutomation ts =
   Automation
     { _name = StateManager
     , _cleanup = cleanupAutomation
     , _run = runAutomation
+    , _startTime = ts
     }
 
 cleanupAutomation

@@ -5,6 +5,7 @@ where
 
 import Control.Monad.Reader (MonadReader)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
+import Data.Time.Clock (UTCTime)
 import Service.App (Logger, MonadMQTT)
 import Service.Automation (Automation, nullAutomation)
 import Service.AutomationName (AutomationName(..))
@@ -16,7 +17,7 @@ import Service.Env (Env)
 findAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
   => AutomationName
-  -> Automation m
+  -> (UTCTime -> Automation m)
 findAutomation = \case
   Null -> nullAutomation
   Gold -> goldAutomation

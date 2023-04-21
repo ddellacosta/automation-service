@@ -12,6 +12,7 @@ import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Data.Aeson.Lens (key)
 import Data.Foldable (for_)
 import qualified Data.Text as T
+import Data.Time.Clock (UTCTime)
 import Network.MQTT.Client (Topic)
 import Service.App (Logger(..), MonadMQTT(..), findDeviceM)
 import Service.Automation as Automation
@@ -39,12 +40,14 @@ basementStandingLampGroupId = 1
 
 goldAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
-  => Automation m
-goldAutomation =
+  => UTCTime
+  -> Automation m
+goldAutomation ts =
   Automation
     { _name = Gold
     , _cleanup = cleanupAutomation
     , _run = runAutomation
+    , _startTime = ts
     }
 
 cleanupAutomation

@@ -3,6 +3,7 @@ module Service.MQTT.Status
   )
 where
 
+import Control.Lens ((^.))
 import qualified Data.Aeson as Aeson
 import Data.Aeson (encode, object, toJSON)
 import Data.Aeson.Types (emptyArray)
@@ -10,7 +11,9 @@ import Data.ByteString.Lazy (ByteString)
 import qualified Data.HashMap.Strict as M
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
+import Data.Time.Format.ISO8601 (iso8601Show)
 import qualified Data.Vector as V
+import Service.Automation (startTime)
 import Service.AutomationName (serializeAutomationName)
 import Service.Env (Registrations, ScheduledJobs, ThreadMap, invertRegistrations)
 import Service.Device (DeviceId)
@@ -45,11 +48,14 @@ encodeAutomationStatus running scheduled deviceRegs groupRegs = encode $
     deviceRegs' autoName = deviceArray autoName . invertRegistrations $ deviceRegs
     groupRegs' autoName = groupArray autoName . invertRegistrations $ groupRegs
 
-    running' = Aeson.Array $ V.fromList $ flip M.foldMapWithKey running $ \autoName _v ->
+    startTime' = Aeson.String . T.pack . iso8601Show
+
+    running' = Aeson.Array $ V.fromList $ flip M.foldMapWithKey running $ \autoName (auto, _async) ->
       [ object
         [ ("name", Aeson.String $ serializeAutomationName autoName)
         , ("devices", deviceRegs' autoName)
         , ("groups", groupRegs' autoName)
+        , ("startTime", startTime' (auto ^. startTime))
         ]
       ]
 

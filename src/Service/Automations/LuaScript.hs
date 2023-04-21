@@ -15,12 +15,13 @@ import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import Data.Foldable (for_)
 import Data.Hashable (Hashable)
-import qualified Data.List.NonEmpty as NE
-import Data.Maybe (fromMaybe)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as M
+import qualified Data.List.NonEmpty as NE
+import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Data.Text (Text)
+import Data.Time.Clock (UTCTime)
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 import qualified HsLua.Aeson as LA
@@ -79,12 +80,14 @@ import UnliftIO.STM
 luaAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
   => FilePath
+  -> UTCTime
   -> Automation m
-luaAutomation filepath =
+luaAutomation filepath ts =
   Automation
     { _name = AutomationName.LuaScript filepath
     , _cleanup = mkCleanupAutomation filepath
     , _run = mkRunAutomation filepath
+    , _startTime = ts
     }
 
 mkCleanupAutomation

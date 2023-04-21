@@ -11,6 +11,9 @@ import Data.Aeson (Value, decode)
 import Data.Aeson.Lens (key, nth, values)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.HashMap.Strict as M
+import qualified Data.Text as T
+import Data.Time.Clock (UTCTime, getCurrentTime)
+import Data.Time.Format.ISO8601 (iso8601Show)
 import Service.Automation (Automation(..))
 import Service.AutomationName (AutomationName(LuaScript))
 import Service.Env (ThreadMap)
@@ -19,24 +22,27 @@ import Service.MQTT.Status (encodeAutomationStatus)
 import Test.Hspec (Spec, describe, it, shouldBe)
 import UnliftIO.Async (async)
 
-luaAutomation :: FilePath -> Automation IO
-luaAutomation name = Automation
+luaAutomation :: UTCTime -> FilePath -> Automation IO
+luaAutomation ts name = Automation
   { _name = LuaScript name
   , _cleanup = const $ pure ()
   , _run = const $ pure ()
+  , _startTime = ts
   }
 
 spec :: Spec
 spec = describe "Status message generation" $ do
   it "generates Status message from running and scheduled automations, and device/group data" $ do
+    startTime <- getCurrentTime
     dummyAsyncFix <- async $ pure ()
     placeholderThreadId <- myThreadId
 
     let
+      luaAutomation' = luaAutomation startTime
       running = M.fromList
-        [ (LuaScript "foo", (luaAutomation "foo", dummyAsyncFix))
-        , (LuaScript "bar", (luaAutomation "bar", dummyAsyncFix))
-        , (LuaScript "baz", (luaAutomation "baz", dummyAsyncFix))
+        [ (LuaScript "foo", (luaAutomation' "foo", dummyAsyncFix))
+        , (LuaScript "bar", (luaAutomation' "bar", dummyAsyncFix))
+        , (LuaScript "baz", (luaAutomation' "baz", dummyAsyncFix))
         ] :: ThreadMap IO
 
       --  Service.Env.ScheduledJobs
@@ -82,3 +88,7 @@ spec = describe "Status message generation" $ do
     mStatus ^? _Just . key "runningAutomations" . nth 1 . key "groups" . nth 0
       `shouldBe`
       Just (Aeson.Number 1)
+
+    mStatus ^? _Just . key "runningAutomations" . nth 0 . key "startTime"
+      `shouldBe`
+      Just (Aeson.String . T.pack . iso8601Show $ startTime)

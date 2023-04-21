@@ -60,6 +60,12 @@ spec = do
   stateStoreSpecs
   schedulerSpecs
 
+--
+-- The first two here seem to have a race condition because of
+-- StateManager starting first at times. Probably just need to
+-- refactor the test to consider the set of values in the first two
+-- entries?
+--
 resourceRegistrationSpecs :: Spec
 resourceRegistrationSpecs = do
   around initAndCleanup $ do
