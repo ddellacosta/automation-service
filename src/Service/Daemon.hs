@@ -54,7 +54,6 @@ import Service.Env
   , restartConditions
   , scheduledJobs
   , startupAutomations
-  , statusTopic
   , subscriptions
   )
 import qualified Service.Group as Group
@@ -256,7 +255,7 @@ initializeAndRunAutomation
     mPriorAutomationAsync <- atomically $
       insertAutomation threadMapTV automationName (automation, clientAsync)
 
-    maybe (pure ()) cancel mPriorAutomationAsync
+    for_ mPriorAutomationAsync cancel
 
   where
     --
@@ -359,7 +358,8 @@ runScheduledMessage jobId automationMessage automationSchedule messageChan' = do
       let mPriorThreadId = M.lookup jobId sjs
       atomically $ modifyTVar' scheduledJobs' $
         M.insert jobId (automationSchedule, automationMessage, threadId)
-      maybe (pure ()) (\(_, _, priorThreadId) -> killThread priorThreadId) mPriorThreadId
+      for_ mPriorThreadId $ \(_, _, priorThreadId) ->
+        killThread priorThreadId
 
     --
     -- I can't understand why either of the two possibilities below
@@ -381,7 +381,7 @@ unscheduleJob jobId = do
     for scheduledJob $ \(_, _, priorThreadId) -> do
       modifyTVar' scheduledJobs' $ M.delete jobId
       pure priorThreadId
-  maybe (pure ()) killThread mPriorThreadId
+  for_ mPriorThreadId killThread
 
 loadResources
   :: (MonadUnliftIO m, Hashable k) => (v -> k) -> TVar (HashMap k v) -> [v] -> m ()
