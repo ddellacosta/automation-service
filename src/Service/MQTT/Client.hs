@@ -28,7 +28,7 @@ import Network.TLS
 import Network.TLS.Extra.Cipher (ciphersuite_default)
 import qualified Service.App as App
 import Service.Env (LogLevel(..), LoggerVariant, MQTTConfig(..), MQTTDispatch)
-import UnliftIO.STM (TVar, atomically, readTVar)
+import UnliftIO.STM (TVar, readTVarIO)
 
 
 initMQTTClient :: MQTT.MessageCallback -> MQTTConfig -> IO MQTT.MQTTClient
@@ -119,11 +119,11 @@ mqttClientCallback logLevelSet logger mqttDispatch =
     when (Debug >= logLevelSet) $
       App.logWithVariant logger Debug $
         "Received message " <> T.pack (show msg) <> " to " <> T.pack (show topic)
-    mqttDispatch' <- atomically $ readTVar mqttDispatch
+    mqttDispatch' <- readTVarIO mqttDispatch
     case M.lookup topic mqttDispatch' of
       Just msgAction -> for_ msgAction ($ msg)
       Nothing -> runDefaultMsgAction msg mqttDispatch'
 
   where
     runDefaultMsgAction msg mqttDispatch' =
-      maybe (pure ()) (mapM_ ($ msg)) $ M.lookup "default" mqttDispatch'
+      for_ (M.lookup "default" mqttDispatch') $ mapM_ ($ msg)

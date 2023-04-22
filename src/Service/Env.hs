@@ -50,7 +50,7 @@ module Service.Env
   )
 where
 
-import Control.Lens ((<&>), makeFieldsNoPrefix)
+import Control.Lens ((<&>), (^.), makeFieldsNoPrefix)
 import Data.Aeson (Value, decode)
 import Data.ByteString.Lazy (ByteString)
 import Data.Foldable (foldl', for_)
@@ -61,7 +61,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Dhall (Decoder, Generic, FromDhall(..), auto, field, inputFile, record, strictText, string)
 import Network.MQTT.Client (MQTTClient)
-import Network.MQTT.Topic (Topic)
+import Network.MQTT.Topic (Topic, unTopic)
 import Network.URI (URI, nullURI, parseURI)
 import qualified Service.Automation as Automation
 import Service.Automation (Automation)
@@ -215,7 +215,7 @@ initialize configFilePath mkLogger mkMQTTClient = do
 
   (logger', loggerCleanup) <- mkLogger config'
 
-  mqttDispatch' <- newTVarIO $ defaultTopicActions daemonBroadcast'
+  mqttDispatch' <- newTVarIO $ defaultTopicActions config' daemonBroadcast'
   (mc, mcCleanup) <- mkMQTTClient config' logger' mqttDispatch'
 
   automationBroadcast' <- newBroadcastTChanIO
@@ -236,24 +236,32 @@ initialize configFilePath mkLogger mkMQTTClient = do
     write :: TChan Daemon.Message -> Daemon.Message -> IO ()
     write daemonBroadcast' = atomically . writeTChan daemonBroadcast'
 
-    defaultTopicActions daemonBroadcast' = M.fromList
-      [ ("default", (\msg -> for_ (decode msg) $ write daemonBroadcast') :| [])
+    defaultTopicActions config' daemonBroadcast' =
+      let
+        statusTopic' = config' ^. mqttConfig . statusTopic
+      in
+        M.fromList
+          [ ("default", (\msg -> for_ (decode msg) $ write daemonBroadcast') :| [])
 
-      , (Zigbee2MQTT.devicesTopic, (\msg ->
-            case decode msg of
-              Just [] -> pure ()
-              Nothing -> pure ()
-              Just devicesJSON -> do
-                write daemonBroadcast' $ Daemon.DeviceUpdate devicesJSON
-            ) :| []
-        )
+          , (Zigbee2MQTT.devicesTopic,
+             (\msg ->
+                case decode msg of
+                  Just [] -> pure ()
+                  Nothing -> pure ()
+                  Just devicesJSON -> do
+                    write daemonBroadcast' $ Daemon.DeviceUpdate devicesJSON
+                ) :| []
+            )
 
-      , (Zigbee2MQTT.groupsTopic, (\msg ->
-            case decode msg of
-              Just [] -> pure ()
-              Nothing -> pure ()
-              Just groupsJSON -> do
-                write daemonBroadcast' $ Daemon.GroupUpdate groupsJSON
-            ) :| []
-        )
-      ]
+          , (Zigbee2MQTT.groupsTopic,
+             (\msg ->
+                case decode msg of
+                  Just [] -> pure ()
+                  Nothing -> pure ()
+                  Just groupsJSON -> do
+                    write daemonBroadcast' $ Daemon.GroupUpdate groupsJSON
+                ) :| []
+            )
+
+          , (statusTopic', (const $ write daemonBroadcast' Daemon.Status) :| [])
+          ]

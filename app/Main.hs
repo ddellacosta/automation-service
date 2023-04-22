@@ -4,6 +4,7 @@ import Prelude hiding (log)
 
 import Control.Lens ((^.))
 import Control.Lens.Unsound (lensProduct)
+import qualified Data.HashMap.Strict as M
 import qualified Network.MQTT.Client as MQTT
 import Network.MQTT.Topic (toFilter)
 import qualified Service.Daemon as Daemon
@@ -14,14 +15,12 @@ import Service.Env
   , LoggerVariant(TFLogger)
   , MQTTClientVariant(..)
   , MQTTDispatch
-  , automationServiceTopic
   , logLevel
   , mqttConfig
   )
 import Service.MQTT.Client (mqttClientCallback, initMQTTClient)
-import Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
 import System.Log.FastLogger (newTimedFastLogger)
-import UnliftIO.STM (TVar)
+import UnliftIO.STM (TVar, readTVarIO)
 
 
 -- this needs to be more intelligent, in particular in terms of how we
@@ -43,13 +42,12 @@ mkLogger config' = do
 mkMQTTClient
   :: Config -> LoggerVariant -> TVar MQTTDispatch -> IO (MQTTClientVariant, IO ())
 mkMQTTClient config logger mqttDispatch = do
+  mqttDispatch' <- readTVarIO mqttDispatch
+
   let
     (mqttConfig', logLevelSet) = config ^. lensProduct mqttConfig logLevel
-    mqttSubs =
-      [ (toFilter $ mqttConfig' ^. automationServiceTopic, MQTT.subOptions)
-      , (toFilter Zigbee2MQTT.devicesTopic, MQTT.subOptions)
-      , (toFilter Zigbee2MQTT.groupsTopic, MQTT.subOptions)
-      ]
+    mqttSubs = flip M.foldMapWithKey mqttDispatch' $ \topic _action ->
+      [(toFilter topic, MQTT.subOptions)]
 
   -- handle errors from not being able to connect, etc.?
   mc <- initMQTTClient (mqttClientCallback logLevelSet logger mqttDispatch) mqttConfig'

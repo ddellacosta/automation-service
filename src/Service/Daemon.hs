@@ -186,6 +186,8 @@ run' threadMapTV = do
             subscribe automationName topic listenerBcastChan
           go
 
+        Daemon.Status -> publishUpdatedStatus threadMapTV *> go
+
         Daemon.Null -> debug "Null Automation" *> go
 
     loadPriorRunningAutomations :: (MonadIO m) => FilePath -> m [AutomationName]

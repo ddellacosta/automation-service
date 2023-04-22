@@ -47,6 +47,7 @@ data Message where
   RegisterDevice :: DeviceId -> AutomationName -> Message
   RegisterGroup :: GroupId -> AutomationName -> Message
   Subscribe :: AutomationName -> Maybe Topic -> TChan Value -> Message
+  Status :: Message
   Null :: Message
   deriving (Generic, Eq)
 
@@ -77,6 +78,7 @@ instance Show Message where
       "RegisterGroup " <> show groupId <> " " <> show automationName
     Subscribe automationName mTopic _automationListenerChannel ->
       "Subscribe " <> show automationName <> " " <> show mTopic <> ", with listener channel"
+    Status -> "Status"
     Null -> "Null"
 
 instance ToJSON Message where

@@ -6,8 +6,11 @@ module Test.Integration.Service.Daemon
   )
 where
 
-import Control.Lens ((^.), (^?), (<&>), _1, _2, _3, ix, preview)
+import Control.Lens ((^.), (^?), (<&>), _1, _2, _3, _Just, ix, preview)
 import Control.Monad (void)
+import qualified Data.Aeson as Aeson
+import Data.Aeson (Value, decode)
+import Data.Aeson.Lens (_Array, key)
 import Data.Foldable (for_)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.HashMap.Strict as M
@@ -21,14 +24,18 @@ import Service.Automation (name)
 import Service.AutomationName (AutomationName(..), parseAutomationName, serializeAutomationName)
 import Service.Env
   ( LoggerVariant(..)
+  , MQTTClientVariant(..)
   , config
   , daemonBroadcast
   , dbPath
   , deviceRegistrations
   , groupRegistrations
   , logger
+  , mqttClient
+  , mqttConfig
   , mqttDispatch
   , scheduledJobs
+  , statusTopic
   )
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
@@ -59,6 +66,7 @@ spec = do
   threadMapSpecs
   stateStoreSpecs
   schedulerSpecs
+  statusMessageSpecs
 
 --
 -- The first two here seem to have a race condition because of
@@ -492,3 +500,26 @@ schedulerSpecs = do
         let Just gold1ThreadId = jobs ^? ix jobId . _3
         gold1ThreadStatus <- threadStatus gold1ThreadId
         gold1ThreadStatus `shouldBe` ThreadFinished
+
+statusMessageSpecs :: Spec
+statusMessageSpecs = do
+  around initAndCleanup $ do
+    it "sends a status message when Daemon.Status is received" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          statusTopic' = env ^. config . mqttConfig . statusTopic
+          (TVClient topicMapTV) = env ^. mqttClient
+
+        atomically $ writeTChan daemonBroadcast' Daemon.Status
+
+        threadDelay 50000
+
+        topicMap <- readTVarIO topicMapTV
+        let
+          statusTopicMsg = M.lookup statusTopic' topicMap
+          statusTopicMsg' = (statusTopicMsg >>= decode :: Maybe Value)
+
+        (statusTopicMsg' ^? _Just . key "runningAutomations" . _Array . ix 0 . key "name")
+          `shouldBe`
+          Just (Aeson.String "StateManager")
