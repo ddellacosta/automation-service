@@ -121,7 +121,7 @@ mqttClientCallback logLevelSet logger mqttDispatch =
         "Received message " <> T.pack (show msg) <> " to " <> T.pack (show topic)
     mqttDispatch' <- readTVarIO mqttDispatch
     case M.lookup topic mqttDispatch' of
-      Just msgAction -> for_ msgAction ($ msg)
+      Just msgAction -> mapM_ ($ msg) msgAction
       Nothing -> runDefaultMsgAction msg mqttDispatch'
 
   where
