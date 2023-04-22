@@ -101,13 +101,6 @@ run' threadMapTV = do
   config' <- view config
   appCleanup' <- view appCleanup
 
-  -- This bit below is terrible in particular: it's the same exact
-  -- work already happening in Env.initialize above, but we have
-  -- to redo it because the dbPath used there is
-  -- pre-processing. I've considered adding another argument to
-  -- `run'` that lets me process the db stuff with a function or
-  -- whatever, but then I'm back to polluting the non-test modules
-  -- with test ephemera.
   priorRunningAutomations <- loadPriorRunningAutomations (config' ^. dbPath)
   startupAutomations' <- view startupAutomations
   atomically . writeTVar startupAutomations' $ priorRunningAutomations
