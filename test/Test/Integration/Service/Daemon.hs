@@ -25,6 +25,7 @@ import Service.AutomationName (AutomationName(..), parseAutomationName, serializ
 import Service.Env
   ( LoggerVariant(..)
   , MQTTClientVariant(..)
+  , automationServiceTopic
   , config
   , daemonBroadcast
   , dbPath
@@ -35,7 +36,6 @@ import Service.Env
   , mqttConfig
   , mqttDispatch
   , scheduledJobs
-  , statusTopic
   )
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
@@ -508,7 +508,7 @@ statusMessageSpecs = do
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
-          statusTopic' = env ^. config . mqttConfig . statusTopic
+          automationServiceTopic' = env ^. config . mqttConfig . automationServiceTopic
           (TVClient topicMapTV) = env ^. mqttClient
 
         atomically $ writeTChan daemonBroadcast' Daemon.Status
@@ -517,9 +517,9 @@ statusMessageSpecs = do
 
         topicMap <- readTVarIO topicMapTV
         let
-          statusTopicMsg = M.lookup statusTopic' topicMap
-          statusTopicMsg' = (statusTopicMsg >>= decode :: Maybe Value)
+          statusMsg = M.lookup automationServiceTopic' topicMap
+          statusMsg' = (statusMsg >>= decode :: Maybe Value)
 
-        (statusTopicMsg' ^? _Just . key "runningAutomations" . _Array . ix 0 . key "name")
+        (statusMsg' ^? _Just . key "runningAutomations" . _Array . ix 0 . key "name")
           `shouldBe`
           Just (Aeson.String "StateManager")

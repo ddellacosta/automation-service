@@ -37,6 +37,7 @@ import Service.Env
   , ThreadMap
   , appCleanup
   , automationBroadcast
+  , automationServiceTopic
   , config
   , daemonBroadcast
   , dbPath
@@ -319,7 +320,7 @@ signalStateUpdate threadMapTV = do
 publishUpdatedStatus
   :: (MonadIO m, MonadMQTT m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
 publishUpdatedStatus threadMapTV = do
-  statusTopic' <- view $ config . mqttConfig . statusTopic
+  automationServiceTopic' <- view $ config . mqttConfig . automationServiceTopic
   deviceRegs <- view deviceRegistrations
   groupRegs <- view groupRegistrations
   scheduled <- view scheduledJobs
@@ -329,7 +330,7 @@ publishUpdatedStatus threadMapTV = do
     deviceRegs' <- readTVar deviceRegs
     groupRegs' <- readTVar groupRegs
     pure $ encodeAutomationStatus running scheduled' deviceRegs' groupRegs'
-  publishMQTT statusTopic' statusMsg
+  publishMQTT automationServiceTopic' statusMsg
 
 sendClientMsg
   :: (MonadIO m, MonadReader Env m) => AutomationName -> Value -> m ()
