@@ -1,0 +1,13 @@
+
+# add this to your configuration.yaml to pick up
+# automation-service MQTT status messages for use
+# as a sensor (of sorts)
+
+mqtt:
+  sensor:
+    - name: "automation-service"
+      # this is just a dummy value I guess? But it seems
+      # to break things if it's set to the same as
+      # json_attributes_topic, and it is required
+      state_topic: "automation-service/status"
+      json_attributes_topic: "automation-service"
