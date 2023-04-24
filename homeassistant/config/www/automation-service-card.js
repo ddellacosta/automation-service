@@ -4,12 +4,19 @@ import {
   css,
 } from "https://unpkg.com/lit-element@2.0.1/lit-element.js?module";
 
+// straight lifted from https://stackoverflow.com/a/31415820
+// because I suck at JS
+function isLowerCase(str) {
+  return str == str.toLowerCase() && str != str.toUpperCase();
+}
+
 class AutomationServiceCard extends LitElement {
   static get properties() {
     return {
       hass: {},
       config: {},
       statusLoaded: false,
+      collapseState: {},
     };
   }
 
@@ -20,39 +27,75 @@ class AutomationServiceCard extends LitElement {
     this.config = config;
   }
 
-  static styles = css`
-    .automation-list {
-      display: flex;
-      flex-direction: column;
-    }
+  constructor() {
+    super();
+    this.collapseState = {};
+  }
 
-    .automation-entry {
-      display: flex;
-      flex-direction: column;
-    }
+  toggleCollapse(autoName) {
+    return (e) => {
+      if (this.collapseState && typeof this.collapseState[autoName] !== undefined) {
+        this.collapseState[autoName] = !this.collapseState[autoName]; 
+      } else if (this.collapseState) {
+        this.collapseState[autoName] = false;
+      }
+      // https://lit.dev/docs/components/properties/#mutating-properties
+      this.requestUpdate();
+    };
+  }
 
-    .loading {
-      color: green;
+  _renderDevices(devices) {
+    return html`
+      <div class="devices-header">^ Devices:</div>
+      ${devices.map((deviceId) => html`<div class="device-id">${deviceId}</div>`)}
+    `;
+  }
+
+  renderDevices(autoName, devices) {
+    if (devices.length > 0) {
+      return html`
+        <div @click="${this.toggleCollapse(autoName)}" class="automation-info device-info">
+          ${this.collapseState[autoName] ? this._renderDevices(devices) : html`<div class="devices-header">> Devices:</div>`}
+        </div>
+      `;
+    } else {
+      return "";
     }
-  `;
+  }
+
+  renderGroups(autoName, groups) {
+    if (groups.length > 0) {
+      return html`
+        <div class="automation-info group-info">
+          <div class="groups-header">Groups: ${groups.map((groupId) => html`<span class="group-id">${groupId}</span>`)}</div>
+        </div>
+      `;
+    } else {
+      return "";
+    }
+  }
 
   runningAutomations(attributes) {
     if (attributes.runningAutomations?.length > 0) {
       return html`
         <div class="automation-list">
-           ${attributes.runningAutomations.map(({name: name, startTime: startTime, devices: devices, groups: groups}) =>
-             html`
+           ${attributes.runningAutomations.map(({name: name, startTime: startTime, devices: devices, groups: groups}) => {
+	     const date = new Date(startTime);
+             return html`
                <div class="automation-entry">
-                 <div>${name} - started at: ${startTime}</div>
-                 ${devices.length > 0 ? html`<div>Devices: ${devices}</div>` : ``}
-                 ${groups.length > 0 ? html`<div>Groups: ${groups}</div>` : ``}
+                 <div class="automation-header running-automation-header">
+                   <span class="${isLowerCase(name.slice(0,1)) ? "luascript-automation" : "system-automation"}">${name}</span>
+                   <span class="automation-info start-time">started ${date.toLocaleString()}</span>
+                 </div>
+                 ${this.renderDevices(name, devices)}
+                 ${this.renderGroups(name, groups)}
                </div>
              `
-           )}
+	   })}
          </div>
       `;
     } else {
-      return html`<p class="loading">loading</p>`;
+      return html`<p class="none">No running automations</p>`;
     }
   }
 
@@ -70,7 +113,7 @@ class AutomationServiceCard extends LitElement {
         </div>
       `;
     } else {
-      return html`<p class="loading">loading</p>`;
+      return html`<p class="none">No scheduled automations</p>`;
     }
   }
 
@@ -88,14 +131,88 @@ class AutomationServiceCard extends LitElement {
     const attributes = state ? state.attributes : {};
 
     return html`
-      <ha-card header="automation-service">
-        <h3>Running Automations</h3>
-	${this.runningAutomations(attributes)}
-        <h3>Scheduled Automations</h3>
-	${this.scheduledAutomations(attributes)}
+      <ha-card>
+        <div class="automation-service-container">
+	  <h2>automation-service</h2>
+          <h3>Running Automations:</h3>
+	  ${this.runningAutomations(attributes)}
+          <h3>Scheduled Automations:</h3>
+	  ${this.scheduledAutomations(attributes)}
+	</div>
       </ha-card>
     `;
   }
+
+  static styles = css`
+    .automation-service-container {
+      margin-top: 2%;
+      margin-left: 5%;
+      width: 80%;
+    }
+
+    .automation-service-container h2 {
+      margin-bottom: 0;
+    }
+
+    .automation-service-container h3 {
+      margin-bottom: 2%;
+    }
+
+    .automation-list {
+      margin-left: 4%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .automation-entry {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .none {
+      color: #a9a9a9;
+    }
+
+    .luascript-automation {
+      color: #44C544;
+    }
+
+    .system-automation {
+      color: #428018;
+    }
+
+    .automation-info {
+      margin-left: 2%;
+    }
+
+    .start-time {
+      color: #428018;
+    }
+
+    .running-automation-header {
+      display: flex;
+      flex-direction: row; 
+      justify-content: space-between;
+    }
+
+    .device-info {
+      cursor: pointer;
+      color: #484CD0;
+    }
+
+    .device-id {
+      margin-left: 3px;
+      color: #D05148;
+    }
+
+    .group-info {
+    }
+
+    .group-id {
+      margin-left: 3px;
+      color: #E25C8D;
+    }
+  `;
 }
 
 customElements.define("automation-service-card", AutomationServiceCard);
