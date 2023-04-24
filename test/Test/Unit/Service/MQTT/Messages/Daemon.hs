@@ -58,7 +58,7 @@ spec = describe "Automation message parsing" $ do
 
     let
       (Just (Schedule jobId sched msg)) =
-        decode "{\"schedule\": {\"start\": \"Gold\"}, \"jobId\": \"myJob\", \"cron\": \"* * * * *\"}"
+        decode "{\"job\": {\"start\": \"Gold\"}, \"jobId\": \"myJob\", \"schedule\": \"* * * * *\"}"
 
     jobId `shouldBe` "myJob"
     sched `shouldBe` "* * * * *"

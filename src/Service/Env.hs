@@ -61,7 +61,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Dhall (Decoder, Generic, FromDhall(..), auto, field, inputFile, record, strictText, string)
 import Network.MQTT.Client (MQTTClient)
-import Network.MQTT.Topic (Topic, unTopic)
+import Network.MQTT.Topic (Topic)
 import Network.URI (URI, nullURI, parseURI)
 import qualified Service.Automation as Automation
 import Service.Automation (Automation)

@@ -32,14 +32,13 @@ import Service.Device (Device, DeviceId)
 import Service.Group (Group, GroupId)
 import UnliftIO.STM (TChan)
 
-type AutomationMessage = Value
 type AutomationSchedule = Text
 type JobId = Text
 
 data Message where
   Start :: AutomationName -> Message
   Stop :: AutomationName -> Message
-  SendTo :: AutomationName -> AutomationMessage -> Message
+  SendTo :: AutomationName -> Value -> Message
   Schedule :: JobId -> AutomationSchedule -> Message -> Message
   Unschedule :: JobId -> Message
   DeviceUpdate :: [Device] -> Message
@@ -115,19 +114,19 @@ instance FromJSON Message where
     stopAutomation <- o .:? "stop"
     sendTo <- o .:? "send"
     msg <- o .:? "msg"
+    job <- o .:? "job"
     schedule <- o .:? "schedule"
-    cron <- o .:? "cron"
     jobId <- o .:? "jobId"
     unschedule <- o .:? "unschedule"
     pure $
       fromMaybe Null $
-        case (startAutomation, stopAutomation, sendTo, schedule, cron, jobId, unschedule) of
-          (Just automationName, _, _, _, _, _, _) -> Start <$> parseAutomationName automationName
-          (_, Just automationName, _, _, _, _, _) -> Stop <$> parseAutomationName automationName
-          (_, _, Just automationName, _, _, _, _) -> do
+        case (startAutomation, stopAutomation, sendTo, jobId, schedule, unschedule) of
+          (Just automationName, _, _, _, _, _) -> Start <$> parseAutomationName automationName
+          (_, Just automationName, _, _, _, _) -> Stop <$> parseAutomationName automationName
+          (_, _, Just automationName, _, _, _) -> do
             sendToAutomation <- parseAutomationName automationName
             SendTo sendToAutomation <$> msg
-          (_, _, _, Just msg', Just (Aeson.String cron'), Just (Aeson.String jobId'), _) ->
-            Schedule jobId' cron' <$> msg'
-          (_, _, _, _, _, _, Just (Aeson.String jobId')) -> Just (Unschedule jobId')
+          (_, _, _, Just (Aeson.String jobId'), Just (Aeson.String schedule'),  _) ->
+            Schedule jobId' schedule' <$> job
+          (_, _, _, _, _, Just (Aeson.String jobId')) -> Just (Unschedule jobId')
           _ -> Nothing
