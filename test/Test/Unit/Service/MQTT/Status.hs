@@ -5,11 +5,12 @@ module Test.Unit.Service.MQTT.Status
 where
 
 import Control.Concurrent (myThreadId)
-import Control.Lens ((^?), _Just, folded, lengthOf)
+import Control.Lens ((^..), (^?), _Just, folded, lengthOf)
 import qualified Data.Aeson as Aeson
 import Data.Aeson (Value, decode)
-import Data.Aeson.Lens (key, nth, values)
+import Data.Aeson.Lens (_Array, _String, key, nth, values)
 import Data.List.NonEmpty (NonEmpty((:|)))
+import Data.List (sort)
 import qualified Data.HashMap.Strict as M
 import qualified Data.Text as T
 import Data.Time.Clock (UTCTime, getCurrentTime)
@@ -71,24 +72,39 @@ spec = describe "Status message generation" $ do
     (lengthOf (folded . key "runningAutomations" . values) mStatus) `shouldBe` 3
     (lengthOf (folded . key "scheduledAutomations" . values) mStatus) `shouldBe` 3
 
-    -- first device in the list of devices for `LuaScript "baz"`
+    -- first device in the list of devices --order doesn't matter here
+    -- since all of the fixture automations should have 2 devices
     lengthOf (_Just . key "runningAutomations" . nth 0 . key "devices" . values) mStatus
       `shouldBe`
       2
 
+    -- don't like that this depends on the order returned
     mStatus ^? _Just . key "runningAutomations" . nth 0 . key "devices" . nth 0
       `shouldBe`
       Just (Aeson.String "device1")
 
     -- first group in the list of groups for `LuaScript "baz"`
+    -- same re: order
     lengthOf (_Just . key "runningAutomations" . nth 1 . key "groups" . values) mStatus
       `shouldBe`
       1
 
+    -- same re: order
     mStatus ^? _Just . key "runningAutomations" . nth 1 . key "groups" . nth 0
       `shouldBe`
       Just (Aeson.Number 1)
 
-    mStatus ^? _Just . key "runningAutomations" . nth 0 . key "startTime"
+    mStatus ^.. (_Just . key "runningAutomations" . _Array . folded . key "startTime" . _String)
       `shouldBe`
-      Just (Aeson.String . T.pack . iso8601Show $ startTime)
+      (take 3 . repeat . (T.pack . iso8601Show) $ startTime)
+
+    sort (mStatus ^.. _Just . key "scheduledAutomations" . _Array . folded . key "jobId" . _String)
+      `shouldBe`
+      ["job1", "job2", "job3"]
+
+    sort (mStatus ^.. _Just . key "scheduledAutomations" . _Array . folded . key "schedule" . _String)
+      `shouldBe`
+      [ "0 12 * * *"
+      , "0 22 * * *"
+      , "0 5 * * *"
+      ]

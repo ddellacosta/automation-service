@@ -60,7 +60,10 @@ encodeAutomationStatus running scheduled deviceRegs groupRegs = encode $
       ]
 
     scheduled' = Aeson.Array $ V.fromList $ flip M.foldMapWithKey scheduled $
-      \k (_, msg, _) ->
+      \k (schedule, msg, _) ->
         [ object
-          [("jobId", Aeson.String k), ("job", Aeson.String $ T.pack $ show msg)]
+          [ ("jobId", Aeson.String k)
+          , ("job", Aeson.String $ T.pack $ show msg)
+          , ("schedule", Aeson.String schedule)
+          ]
         ]
