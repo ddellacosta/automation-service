@@ -122,8 +122,10 @@ mqttClientCallback logLevelSet logger mqttDispatch =
     mqttDispatch' <- readTVarIO mqttDispatch
     case M.lookup topic mqttDispatch' of
       Just msgAction -> mapM_ ($ msg) msgAction
-      Nothing -> runDefaultMsgAction msg mqttDispatch'
-
-  where
-    runDefaultMsgAction msg mqttDispatch' =
-      for_ (M.lookup "default" mqttDispatch') $ mapM_ ($ msg)
+      Nothing -> do
+        when (Warn >= logLevelSet) $
+          App.logWithVariant logger Warn $
+            "Received message " <>
+            T.pack (show msg) <>
+            " to unhandled topic " <>
+            T.pack (show topic)

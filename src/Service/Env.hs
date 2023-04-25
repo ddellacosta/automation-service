@@ -51,6 +51,7 @@ module Service.Env
 where
 
 import Control.Lens ((<&>), (^.), makeFieldsNoPrefix)
+import Control.Lens.Unsound (lensProduct)
 import Data.Aeson (Value, decode)
 import Data.ByteString.Lazy (ByteString)
 import Data.Foldable (foldl', for_)
@@ -61,7 +62,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Dhall (Decoder, Generic, FromDhall(..), auto, field, inputFile, record, strictText, string)
 import Network.MQTT.Client (MQTTClient)
-import Network.MQTT.Topic (Topic)
+import Network.MQTT.Topic (Topic, unTopic)
 import Network.URI (URI, nullURI, parseURI)
 import qualified Service.Automation as Automation
 import Service.Automation (Automation)
@@ -238,10 +239,12 @@ initialize configFilePath mkLogger mkMQTTClient = do
 
     defaultTopicActions config' daemonBroadcast' =
       let
-        statusTopic' = config' ^. mqttConfig . statusTopic
+        (automationServiceTopic', statusTopic') =
+          config' ^. mqttConfig . lensProduct automationServiceTopic statusTopic
+        setTopic = parseTopic . ((<>) "/set") . unTopic $ automationServiceTopic'
       in
         M.fromList
-          [ ("default", (\msg -> for_ (decode msg) $ write daemonBroadcast') :| [])
+          [ (setTopic, (\msg -> for_ (decode msg) $ write daemonBroadcast') :| [])
 
           , (Zigbee2MQTT.devicesTopic,
              (\msg ->
