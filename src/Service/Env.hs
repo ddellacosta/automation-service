@@ -241,7 +241,7 @@ initialize configFilePath mkLogger mkMQTTClient = do
       let
         (automationServiceTopic', statusTopic') =
           config' ^. mqttConfig . lensProduct automationServiceTopic statusTopic
-        setTopic = parseTopic . ((<>) "/set") . unTopic $ automationServiceTopic'
+        setTopic = parseTopic . (<> "/set") . unTopic $ automationServiceTopic'
       in
         M.fromList
           [ (setTopic, (\msg -> for_ (decode msg) $ write daemonBroadcast') :| [])
