@@ -29,11 +29,12 @@ jobs:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - id: build_step
-        outputs:
-          image_path: ${{ steps.build_step.outputs.image_path }}
         run: |
           nix build
           echo "image_path=${{ runner.temp }}/result" >> $GITHUB_OUTPUT
+
+      - id: test_step
+        run: echo "TEST image_path: ${{ steps.build_step.outputs.image_path }}"
 
 #    # Push the image to GHCR (Image Registry)
 #    - name: Push To GHCR
