@@ -33,18 +33,18 @@ jobs:
         # echo "image_path=${{ runner.temp }}/result" >> $GITHUB_OUTPUT
 
       - id: test_step
-        run: echo "TEST ${{ runner.temp }}/result" # ${{ steps.build_step.outputs.image_path }}"
+        run: echo "TEST ${{ github.workspace }}/result" # ${{ steps.build_step.outputs.image_path }}"
 
-#    # Push the image to GHCR (Image Registry)
-#    - name: Push To GHCR
-#      uses: ./
-#      id: push
-#      with:
-#        image: ${{ steps.build_image.outputs.image }}
-#        tags: ${{ steps.build_image.outputs.tags }}
-#        registry: ${{ env.IMAGE_REGISTRY }}
-#        username: ${{ env.REGISTRY_USER }}
-#        password: ${{ env.REGISTRY_PASSWORD }}
+#      # Publish the image to GHCR (Image Registry)
+#      - name: Publish To GHCR
+#        uses: ./
+#        id: publish
+#        with:
+#          image: ${{ steps.build_image.outputs.image }}
+#          tags: ${{ steps.build_image.outputs.tags }}
+#          registry: ${{ env.IMAGE_REGISTRY }}
+#          username: ${{ env.REGISTRY_USER }}
+#          password: ${{ env.REGISTRY_PASSWORD }}
 #        extra-args: |
 #          --disable-content-trust
 #    - name: Echo outputs
