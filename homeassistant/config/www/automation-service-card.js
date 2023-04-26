@@ -103,10 +103,10 @@ class AutomationServiceCard extends LitElement {
     if (attributes.scheduledAutomations?.length > 0) {
       return html`
         <div class="automation-list">
-          ${attributes.scheduledAutomations.map(({jobId: jobId, job: job}) =>
+          ${attributes.scheduledAutomations.map(({schedule: schedule, jobId: jobId, job: job}) =>
             html`
               <div class="automation-entry">
-                <div>${jobId} - Job: ${job}</div>
+                <div>${schedule} - ${jobId} - Job: ${job}</div>
               </div>
             `
           )}

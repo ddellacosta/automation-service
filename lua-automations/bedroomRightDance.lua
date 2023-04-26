@@ -1,8 +1,13 @@
 
-local topic = "zigbee2mqtt/Bedroom Right Bedside Lamp/set"
+local bedsideRightLampId = "0x001788010cfb9ddb"
+local bedsideRightLamp = nil
 
-publishJSON(topic, { state = "ON" })
-publishJSON(topic, { hue_move = 40 })
-publishJSON(topic, { hue_move = "stop" })
+function setup ()
+   bedsideRightLamp = register(bedsideRightLampId)
+   publish(bedsideRightLamp.topicSet, { state = "ON" })
+   publish(bedsideRightLamp.topicSet, { hue_move = 40 })
+end
 
-publishJSON(topic, { state = "OFF" })
+function cleanup ()
+   publish(bedsideRightLamp.topicSet, { hue_move = "stop" })
+end
