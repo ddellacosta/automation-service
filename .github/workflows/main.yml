@@ -33,7 +33,7 @@ jobs:
         # echo "image_path=${{ runner.temp }}/result" >> $GITHUB_OUTPUT
 
       - id: test_step
-        run: ls "${{ github.workspace }}/result" # ${{ steps.build_step.outputs.image_path }}"
+        run: ls -al "${{ github.workspace }}/result" # ${{ steps.build_step.outputs.image_path }}"
 
 #      # Publish the image to GHCR (Image Registry)
 #      - name: Publish To GHCR
