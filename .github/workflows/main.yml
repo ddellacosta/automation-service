@@ -12,7 +12,7 @@ on:
 #  REGISTRY_PASSWORD: ${{ github.token }}
 
 jobs:
-  push-ghcr:
+  isitthefuckinghyphen:
     name: Build and push image
     runs-on: ubuntu-latest
     #    strategy:
