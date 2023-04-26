@@ -5,11 +5,11 @@ on:
     - main
 
 env:
-    IMAGE_NAME: ptr-test
-    IMAGE_TAGS: v1 ${{ github.sha }}
-    IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
-    REGISTRY_USER: ${{ github.actor }}
-    REGISTRY_PASSWORD: ${{ github.token }}
+  IMAGE_NAME: ptr-test
+  IMAGE_TAGS: v1 ${{ github.sha }}
+  IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
+  REGISTRY_USER: ${{ github.actor }}
+  REGISTRY_PASSWORD: ${{ github.token }}
 
 jobs:
   push-ghcr:
@@ -35,9 +35,9 @@ jobs:
         github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
     - id: build_step
-      run: nix build
       outputs:
         image_path: ${{ steps.build_step.outputs.image_path }}
+      run: nix build
       run: echo "image_path=${{ runner.temp }}/result" >> $GITHUB_OUTPUT
 
 #    # Push the image to GHCR (Image Registry)
