@@ -2,14 +2,14 @@ name: "Build and publish image to ghcr.io"
 on:
   push:
     branches:
-    - main
+      - main
 
-env:
-  IMAGE_NAME: ptr-test
-  IMAGE_TAGS: v1 ${{ github.sha }}
-  IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
-  REGISTRY_USER: ${{ github.actor }}
-  REGISTRY_PASSWORD: ${{ github.token }}
+#env:
+#  IMAGE_NAME: ptr-test
+#  IMAGE_TAGS: v1 ${{ github.sha }}
+#  IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
+#  REGISTRY_USER: ${{ github.actor }}
+#  REGISTRY_PASSWORD: ${{ github.token }}
 
 jobs:
   push-ghcr:
