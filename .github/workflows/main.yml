@@ -53,7 +53,7 @@ jobs:
         id: build-and-push
         run: |
           nix build
-          skopeo copy docker-archive:./result docker://ghcr.io/automation-service:latest
+          skopeo copy docker-archive:./result docker://ghcr.io/ddellacosta/automation-service:latest
 
           #         skopeo copy docker-image://$(nix-build -A my-image --no-out-link) docker://$remotetag
           # 
