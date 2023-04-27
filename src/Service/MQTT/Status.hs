@@ -50,14 +50,15 @@ encodeAutomationStatus running scheduled deviceRegs groupRegs = encode $
 
     startTime' = Aeson.String . T.pack . iso8601Show
 
-    running' = Aeson.Array $ V.fromList $ flip M.foldMapWithKey running $ \autoName (auto, _async) ->
-      [ object
-        [ ("name", Aeson.String $ serializeAutomationName autoName)
-        , ("devices", deviceRegs' autoName)
-        , ("groups", groupRegs' autoName)
-        , ("startTime", startTime' (auto ^. startTime))
+    running' = Aeson.Array $ V.fromList $ flip M.foldMapWithKey running $
+      \autoName (auto, _async) ->
+        [ object
+          [ ("name", Aeson.String $ serializeAutomationName autoName)
+          , ("devices", deviceRegs' autoName)
+          , ("groups", groupRegs' autoName)
+          , ("startTime", startTime' (auto ^. startTime))
+          ]
         ]
-      ]
 
     scheduled' = Aeson.Array $ V.fromList $ flip M.foldMapWithKey scheduled $
       \k (schedule, msg, _) ->

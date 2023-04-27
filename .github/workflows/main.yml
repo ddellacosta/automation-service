@@ -35,7 +35,3 @@ jobs:
         run: |
           nix build
           skopeo copy docker-archive:./result docker://ghcr.io/ddellacosta/automation-service:latest
-
-      - name: Echo outputs
-        run: |
-          echo "${{ toJSON(steps.build-and-push.outputs) }}"
