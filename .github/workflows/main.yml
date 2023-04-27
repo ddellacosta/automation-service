@@ -15,25 +15,13 @@ jobs:
     name: Build and push image
     runs-on: ubuntu-latest
 
-    #    strategy:
-    #      fail-fast: false
-    #      matrix:
-    #        install_latest: [ true, false ]
-
     steps:
-      # Checkout push-to-registry action github repository
       - name: Checkout Push to Registry action
         uses: actions/checkout@v3
-
-        #      - name: Install latest podman
-        #        if: matrix.install_latest
-        #        run: |
-        #          bash .github/install_latest_podman.sh
 
       - uses: cachix/install-nix-action@v20
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
-
 
       - name: Log in to the Container registry
         uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
@@ -42,30 +30,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # - id: build_step
-      #   run: nix build
-      #   # echo "image_path=${{ runner.temp }}/result" >> $GITHUB_OUTPUT
-
-      #   #- id: test_step
-      #   #  run: ls -al "${{ github.workspace }}/result" # ${{ steps.build_step.outputs.image_path }}"
-
       - name: Build and Push to GHCR
         id: build-and-push
         run: |
           nix build
           skopeo copy docker-archive:./result docker://ghcr.io/ddellacosta/automation-service:latest
-
-          #         skopeo copy docker-image://$(nix-build -A my-image --no-out-link) docker://$remotetag
-          # 
-          # # ${oci} is what nix build returns
-          # # ${tag} is any docker registry tag like "redis:latest"
-          # skopeo \
-          #   --insecure-policy \
-          #   copy \
-          #   --dest-creds "${user}:${password}" \
-          #   "docker-archive://${oci}" \
-          #   "docker://${tag}"
-
 
       - name: Echo outputs
         run: |
