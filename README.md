@@ -14,7 +14,47 @@ If you don't want to configure SSL set caCertPath, clientCertPath, and clientKey
 
 ## Running
 
-This requires [nix](https://nixos.org/download.html). It is only used in one command, but makes it easy to ensure builds are consistent, including dependencies. I hope to offer pre-built docker images for direct download soon.
+Currently the automation-service docker image is built on every push to master and [published to the Github container registry](https://github.com/ddellacosta/automation-service/pkgs/container/automation-service). You can then run this in a docker-compose stack a la https://www.home-assistant.io/installation/linux#install-home-assistant-container:
+
+```yaml
+  automation-service:
+    container_name: automation-service
+    image: ghcr.io/ddellacosta/automation-service:latest
+    restart: unless-stopped
+    networks:
+      - localnet
+    volumes:
+       - ./automation-service/:/app
+    environment:
+      - TZ=America/New_York
+```
+
+You can then start this up with `docker-compose start automation-service`. Check out the automations in the `lua-automations` directory to get going. #TODO <- link here to examples
+
+
+## TODO
+
+* bug: an automation failing and shutting down or just not looping doesn't get removed from list of running automations
+* bug: trying to restart an automation blocks when listening on channel, have to send an interrupt message somehow
+* documentation
+* add HTTP client functionality and add Lua API
+* improvements to HA dashboard integration
+  * provide users with list of run-able automations somehow
+  * links to zigbee2mqtt for devices and groups
+  * general UI/UX cleanup
+* provide Lua API for lighting
+* better error handling and logging
+* should be able to record a scene easily based on a given group or arbitrarily specified set of devices. This could be an automation itself which just runs listening for the command to set scenes for any given room
+* auto-import scenes for devices
+* profile and better understand memory usage - seems like there is a very slow memory leak
+* CI build and deploy: tag build with sha vs. everything going to 'latest' (?)
+
+
+## Development
+
+### Building locally
+
+This requires [nix](https://nixos.org/download.html). It is only used in one command, but makes it easy to ensure builds are consistent, including dependencies.
 
 ```bash
 $ nix build; docker load < result
@@ -26,39 +66,8 @@ $
 
 You can now take this and drop it in your `compose.yml` file for docker-compose:
 
-```yaml
-  automation-service:
-    container_name: automation-service
-    image: automation-service:78921vslcfdribi4a6wyqx1cnl0nv67x
-    restart: unless-stopped
-    networks:
-      - localnet
-    volumes:
-       - ./automation-service/:/app
-    environment:
-      - TZ=America/New_York
-```
 
-You can then start this up `docker-compose start automation-service`, and can drop automations in the `lua-automations` directory to test.
-
-
-## TODO
-
-* bug: an automation failing and shutting down or just not looping doesn't get removed from list of running automations
-* bug: trying to restart an automation blocks when listening on channel, have to send an interrupt message somehow
-* set up GH actions (?) to run build and store docker image somewhere, I guess not docker hub any more (https://blog.alexellis.io/docker-is-deleting-open-source-images/) ...[github packages](https://docs.github.com/en/actions/publishing-packages/publishing-docker-images#publishing-images-to-github-packages)?
-* query-able data about running and scheduled automations
-  * HA dashboard integration
-* generalize Gledopto Lighting related Message module and provide Lua API for it
-* documentation
-* better error handling
-* should be able to record a scene easily based on a given group or arbitrarily specified set of devices. This could be an automation itself which just runs listening for the command to set scenes for any given room
-* auto-import scenes for devices
-* profile and better understand memory usage - seems like there is a very slow memory leak
-* CI build and deploy: tag build with sha vs. everything going to 'latest'
-
-
-## Testing
+### Testing
 
 Running tests:
 
