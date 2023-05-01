@@ -8,6 +8,7 @@ where
 import Test.Tasty (TestTree, defaultMain, localOption, mkTimeout, testGroup)
 import Test.Tasty.Hspec (TreatPendingAs(..), testSpec)
 import qualified Test.Integration.Service.Daemon as Daemon
+import qualified Test.Unit.Service.DateHelpers as DateHelpers
 import qualified Test.Unit.Service.Device as Devices
 import qualified Test.Unit.Service.Group as Groups
 import qualified Test.Unit.Service.MQTT.Status as MQTTStatus
@@ -28,11 +29,13 @@ allTests = do
 unit :: IO TestTree
 unit = do
   automationMessagesSpec <- testSpec "Daemon.Messages Spec" Daemon.Messages.spec
+  dateHelpersSpec <- testSpec "DateHelpers Spec" DateHelpers.spec
   devicesSpec <- testSpec "Devices Spec" Devices.spec
   groupsSpec <- testSpec "Groups Spec" Groups.spec
   mqttStatusSpec <- testSpec "MQTT Status Messages Spec" MQTTStatus.spec
   pure $ testGroup "Unit Tests"
     [ automationMessagesSpec
+    , dateHelpersSpec
     , devicesSpec
     , groupsSpec
     , mqttStatusSpec

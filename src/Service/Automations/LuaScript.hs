@@ -11,6 +11,7 @@ import Control.Lens (view)
 import Control.Monad.IO.Unlift (MonadUnliftIO(..), liftIO)
 import Control.Monad.Reader (MonadReader)
 import Data.Aeson (Value, decode, encode)
+import Data.Aeson.Types (emptyObject)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import Data.Foldable (for_)
@@ -35,6 +36,8 @@ import HsLua.Packaging.Function
   , parameter
   , pushDocumentedFunction
   )
+import Network.HTTP.Client (httpLbs, newManager, parseRequest, responseBody, responseStatus)
+import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Network.MQTT.Topic (mkTopic)
 import qualified Service.App as App
 import Service.App (Logger(..), MonadMQTT(..))
@@ -229,7 +232,8 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
     thisAutoName = AutomationName.LuaScript filepath
 
     functions =
-      [ (logDebugMsg, "logDebugMsg")
+      [ (httpGet, "httpGet")
+      , (logDebugMsg, "logDebugMsg")
       , (microSleep, "microSleep")
       , (publish, "publish")
       , (publishString, "publishString")
@@ -239,6 +243,20 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
       , (sleep, "sleep")
       , (subscribe, "subscribe")
       ]
+
+    httpGet :: DocumentedFunction Lua.Exception
+    httpGet =
+      defun "httpGet"
+      ### (\url -> do
+              manager <- liftIO $ newManager tlsManagerSettings
+              request <- liftIO $ parseRequest url
+              response <- liftIO $ httpLbs request manager
+              liftIO . logDebugMsg' filepath logger' $
+                "The status code was: " <> (T.pack $ show $ responseStatus response)
+              pure $ fromMaybe emptyObject . decode . responseBody $ response
+          )
+      <#> parameter LM.peekString "string" "url" "url string to get"
+      =#> functionResult LA.pushViaJSON "jsonResponse" "jsonResponse"
 
     logDebugMsg :: DocumentedFunction Lua.Exception
     logDebugMsg =
