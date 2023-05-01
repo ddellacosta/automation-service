@@ -248,9 +248,10 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
     httpGet =
       defun "httpGet"
       ### (\url -> do
-              manager <- liftIO $ newManager tlsManagerSettings
-              request <- liftIO $ parseRequest url
-              response <- liftIO $ httpLbs request manager
+              response <- liftIO $ do
+                manager <- newManager tlsManagerSettings
+                request <- parseRequest url
+                httpLbs request manager
               liftIO . logDebugMsg' filepath logger' $
                 "The status code was: " <> (T.pack $ show $ responseStatus response)
               pure $ fromMaybe emptyObject . decode . responseBody $ response
