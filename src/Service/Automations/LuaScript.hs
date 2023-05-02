@@ -13,6 +13,7 @@ import Data.Aeson.Lens (_String, key, values)
 import Data.Aeson.Types (emptyObject, object)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Char8 as BS
+import Data.Fixed (Pico)
 import Data.Foldable (for_)
 import Data.Hashable (Hashable)
 import Data.HashMap.Strict (HashMap)
@@ -45,7 +46,8 @@ import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Automation as Automation
 import Service.Automation (Automation(..))
 import qualified Service.AutomationName as AutomationName
-import Service.DateHelpers (getCurrentDateString, todayFromHour)
+import qualified Service.DateHelpers as DH
+import Service.DateHelpers (getCurrentDateString, getCurrentZonedTime, todayFromHour)
 import Service.Device (Device, DeviceId, toLuaDevice)
 import Service.Env
   ( Registrations
@@ -251,9 +253,21 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
     addMinutes :: DocumentedFunction Lua.Exception
     addMinutes =
       defun "addMinutes"
-      ### (\_minutes _date ->
+      ### (\minutes date ->
              do
-               pure "hey"
+               placeholderDate <- liftIO getCurrentZonedTime
+
+               let
+                 -- is this the best way to do this?
+                 minutes' = toEnum (minutes * ((10 ^ 12) :: Int)) :: Pico
+                 initialDate = ISO.iso8601ParseM date :: Maybe ZonedTime
+
+               updatedDate <- liftIO $ case initialDate of
+                 Just initialDate' -> DH.addMinutes minutes' initialDate'
+                 -- I am not sure how to handle failure here
+                 Nothing -> DH.addMinutes minutes' placeholderDate
+
+               pure $ ISO.iso8601Show updatedDate
           )
       <#> parameter LM.peekIntegral "pico" "minutes" "minutes to add"
       <#> parameter LM.peekString "string" "date" "date being added-to"
@@ -280,7 +294,7 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
 
               let
                 todaysEvents = fromMaybe emptyObject $
-                  (decode . responseBody $ response :: Maybe Value)
+                  decode . responseBody $ response
 
               sunrise <- liftIO $ mkZonedTimeFromVal "Rise" todaysEvents
               sunset <- liftIO $ mkZonedTimeFromVal "Set" todaysEvents
@@ -288,9 +302,6 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
               let
                 sunrise' = fromMaybe placeholder sunrise
                 sunset' = fromMaybe placeholder sunset
-
-              liftIO $ logDebugMsg' filepath logger' ("what is sunrise? " <> (T.pack . show $ sunrise))
-              liftIO $ logDebugMsg' filepath logger' ("what is sunset? " <> (T.pack . show $ sunset))
 
               pure $ object
                 [ ("sunrise", String . T.pack . ISO.iso8601Show $ sunrise')

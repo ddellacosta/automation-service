@@ -2,6 +2,7 @@ module Service.DateHelpers
   ( addMinutes
   , dayFromHour
   , getCurrentDateString
+  , getCurrentZonedTime
   , minuteDiff
   , todayFromHour
   , zonedTimeToCronInstant
@@ -20,6 +21,12 @@ import Data.Time.LocalTime (ZonedTime)
 
 minuteDiff :: Pico -> NominalDiffTime
 minuteDiff = C.secondsToNominalDiffTime . (* 60)
+
+getCurrentZonedTime :: IO ZonedTime
+getCurrentZonedTime = do
+  currentUTC <- C.getCurrentTime
+  tz <- LT.getCurrentTimeZone
+  pure $ LT.utcToZonedTime tz currentUTC
 
 zonedTimeToCronInstant :: ZonedTime -> String
 zonedTimeToCronInstant =
