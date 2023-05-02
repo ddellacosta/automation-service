@@ -281,19 +281,6 @@ luaScriptSpecs = do
         groupRegs' <- readTVarIO groupRegistrations'
         M.lookup groupId groupRegs' `shouldBe` Nothing
 
-  around initAndCleanup $ do
-    it "retrieves JSON with httpGet" $
-      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
-        let
-          daemonBroadcast' = env ^. daemonBroadcast
-          (QLogger qLogger) = env ^. logger
-
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testHTTP")
-        threadDelay 2000000
-
-        logs <- readTVarIO qLogger
-        print logs
-
 threadMapSpecs :: Spec
 threadMapSpecs = do
   around initAndCleanup $ do

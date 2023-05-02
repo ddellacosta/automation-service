@@ -1,16 +1,17 @@
 module Service.Automations.LuaScript
   ( luaAutomation
-  ,
+  , mkUTCTimeFromVal -- used in Test.Unit.Service.DateHelpers
   )
 where
 
 
 import Prelude hiding (id, init)
 
-import Control.Lens (view)
+import Control.Lens (filtered, preview, view)
 import Control.Monad.IO.Unlift (MonadUnliftIO(..), liftIO)
 import Control.Monad.Reader (MonadReader)
-import Data.Aeson (Value, decode, encode)
+import Data.Aeson (Value(String), decode, encode)
+import Data.Aeson.Lens (_String, key, values)
 import Data.Aeson.Types (emptyObject)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Char8 as BS
@@ -44,6 +45,7 @@ import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Automation as Automation
 import Service.Automation (Automation(..))
 import qualified Service.AutomationName as AutomationName
+import Service.DateHelpers (parseUTCTime)
 import Service.Device (Device, DeviceId, toLuaDevice)
 import Service.Env
   ( Registrations
@@ -383,3 +385,26 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
 logDebugMsg' :: FilePath -> LoggerVariant -> Text -> IO ()
 logDebugMsg' filepath logger' msg =
   App.logWithVariant logger' Debug (T.pack filepath <> ": " <> msg)
+
+--
+-- These two don't really fit well anywhere I don't think. They are
+-- used here for a very specialized function, and otherwise in the
+-- DateHelper tests. I think it's okay to consider them "owned" by
+-- LuaScript and referenced in the DateHelper tests, even if it's not
+-- a perfect fit.
+--
+
+mkUTCTimeFromVal :: Text -> Text -> Value -> Maybe UTCTime
+mkUTCTimeFromVal sundataKey dateString oneDay = parseUTCTime . T.unpack $
+  dateString <> "T" <> (fromMaybe "00:00" $ sundataVal sundataKey oneDay) <> ":00Z"
+
+sundataVal :: Text -> Value -> Maybe Text
+sundataVal sdk = preview
+  ( key "properties"
+  . key "data"
+  . key "sundata"
+  . values
+  . filtered ((== Just (String sdk)) . preview (key "phen"))
+  . key "time"
+  . _String
+  )
