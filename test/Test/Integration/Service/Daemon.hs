@@ -39,7 +39,7 @@ import Service.Env
   )
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
-import Test.Hspec (Spec, around, expectationFailure, it, shouldBe)
+import Test.Hspec (Spec, around, expectationFailure, it, shouldBe, xit)
 import Test.Integration.Service.DaemonTestHelpers
   ( initAndCleanup
   , testWithAsyncDaemon
@@ -280,6 +280,36 @@ luaScriptSpecs = do
 
         groupRegs' <- readTVarIO groupRegistrations'
         M.lookup groupId groupRegs' `shouldBe` Nothing
+
+  around initAndCleanup $ do
+    xit "retrieves dates for Sun events (rise & set)" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          (QLogger qLogger) = env ^. logger
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testSunEvents")
+        -- this takes extra-long I assume because of the HTTP GET
+        -- call. I guess I could stub that out since it's not really
+        -- testing that explicitly, but rather the logic of date
+        -- manipulation and getting data in and out of Lua. More to
+        -- the point, it would prevent issues w/DNS resolution in the
+        -- Github Actions build, but I should fix that regardless I
+        -- guess.
+        threadDelay 1000000
+
+        logs <- readTVarIO qLogger
+        let
+          matches = filter
+            (\l ->
+               (T.isPrefixOf "Debug: testSunEvents: sunrise: 202" l) ||
+               (T.isPrefixOf "Debug: testSunEvents: sunset: 202" l)
+            )
+            logs
+
+        print logs
+
+        length matches `shouldBe` 2
 
 threadMapSpecs :: Spec
 threadMapSpecs = do

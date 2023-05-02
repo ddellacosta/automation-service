@@ -8,7 +8,6 @@ where
 
 import Control.Monad (when)
 import Data.Either (fromRight)
-import Data.Foldable (for_)
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T

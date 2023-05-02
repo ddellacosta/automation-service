@@ -21,17 +21,26 @@ import Service.DateHelpers
   , zonedTimeToCronInstant
   )
 import qualified System.Cron.Parser as P
+import System.Environment (setEnv)
 
 spec :: Spec
 spec = describe "date utility functions" $ do
   it "generates a valid cron-format schedule from parsed dates" $ do
     oneDay <- loadOneDay
 
+    -- I've had to add this to this test so it passes when I'm running
+    -- nix build, because I can't seem to set the timezone there, but
+    -- if I set this to UTC these tests will pass
+    -- locally. Probably something stupid, as always...
+    -- Anyways, unfortunately, this fails to show how it automatically
+    -- converts to the local timezone, but I suppose that's implied by
+    -- the types and functions used.
+    setEnv "TZ" "UTC"
     placeholder <- LT.getZonedTime
 
     let
       testDate = fromMaybe placeholder $
-        ISO.iso8601ParseM "2023-05-01T00:00:00-04:00"
+        ISO.iso8601ParseM "2023-05-01T00:00:00+00:00"
 
     sunrise <- fromMaybe placeholder <$> mkZonedTimeFromVal "Rise" testDate oneDay
     sunset <- fromMaybe placeholder <$> mkZonedTimeFromVal "Set" testDate oneDay
@@ -42,22 +51,22 @@ spec = describe "date utility functions" $ do
     --
     show (P.parseCronSchedule . T.pack . zonedTimeToCronInstant $ sunrise)
       `shouldBe`
-      "Right CronSchedule 53 5 1 5 1"
+      "Right CronSchedule 53 9 1 5 1"
 
     show (P.parseCronSchedule . T.pack . zonedTimeToCronInstant $ sunset)
       `shouldBe`
-      "Right CronSchedule 54 19 1 5 1"
+      "Right CronSchedule 54 23 1 5 1"
 
     thirtyAfterSunrise <- addMinutes 30 sunrise
     thirtyBeforeSunset <- addMinutes (-30) sunset
 
     show (P.parseCronSchedule . T.pack . zonedTimeToCronInstant $ thirtyAfterSunrise)
       `shouldBe`
-      "Right CronSchedule 23 6 1 5 1"
+      "Right CronSchedule 23 10 1 5 1"
 
     show (P.parseCronSchedule . T.pack . zonedTimeToCronInstant $ thirtyBeforeSunset)
       `shouldBe`
-      "Right CronSchedule 24 19 1 5 1"
+      "Right CronSchedule 24 23 1 5 1"
 
   where
     mkZonedTimeFromVal :: Text -> ZonedTime -> Value -> IO (Maybe ZonedTime)
