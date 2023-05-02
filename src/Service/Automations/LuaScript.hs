@@ -1,9 +1,7 @@
 module Service.Automations.LuaScript
   ( luaAutomation
-  , mkUTCTimeFromVal -- used in Test.Unit.Service.DateHelpers
   )
 where
-
 
 import Prelude hiding (id, init)
 
@@ -12,7 +10,7 @@ import Control.Monad.IO.Unlift (MonadUnliftIO(..), liftIO)
 import Control.Monad.Reader (MonadReader)
 import Data.Aeson (Value(String), decode, encode)
 import Data.Aeson.Lens (_String, key, values)
-import Data.Aeson.Types (emptyObject)
+import Data.Aeson.Types (emptyObject, object)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import Data.Foldable (for_)
@@ -24,6 +22,8 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Data.Text (Text)
 import Data.Time.Clock (UTCTime)
+import Data.Time.LocalTime (ZonedTime, getZonedTime)
+import qualified Data.Time.Format.ISO8601 as ISO
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 import qualified HsLua.Aeson as LA
@@ -45,7 +45,7 @@ import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Automation as Automation
 import Service.Automation (Automation(..))
 import qualified Service.AutomationName as AutomationName
-import Service.DateHelpers (parseUTCTime)
+import Service.DateHelpers (getCurrentDateString, todayFromHour)
 import Service.Device (Device, DeviceId, toLuaDevice)
 import Service.Env
   ( Registrations
@@ -234,7 +234,9 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
     thisAutoName = AutomationName.LuaScript filepath
 
     functions =
-      [ (httpGet, "httpGet")
+      [ (addMinutes, "addMinutes")
+      , (getSunEvents, "getSunEvents")
+      , (httpGet, "httpGet")
       , (logDebugMsg, "logDebugMsg")
       , (microSleep, "microSleep")
       , (publish, "publish")
@@ -245,6 +247,58 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
       , (sleep, "sleep")
       , (subscribe, "subscribe")
       ]
+
+    addMinutes :: DocumentedFunction Lua.Exception
+    addMinutes =
+      defun "addMinutes"
+      ### (\_minutes _date ->
+             do
+               pure "hey"
+          )
+      <#> parameter LM.peekIntegral "pico" "minutes" "minutes to add"
+      <#> parameter LM.peekString "string" "date" "date being added-to"
+      =#> functionResult LM.pushString "dateString" "dateString with minutes added"
+
+    getSunEvents :: DocumentedFunction Lua.Exception
+    getSunEvents =
+      defun "getSunEvents"
+      ### (\coords -> do
+              date <- liftIO getCurrentDateString
+
+              let
+                url = "https://aa.usno.navy.mil/api/rstt/oneday?date="
+                  <> date <> "&coords=" <> coords
+
+              -- NEED TO HANDLE FAILED RESPONSE!
+
+              response <- liftIO $ do
+                manager <- newManager tlsManagerSettings
+                request <- parseRequest url
+                httpLbs request manager
+
+              placeholder <- liftIO getZonedTime
+
+              let
+                todaysEvents = fromMaybe emptyObject $
+                  (decode . responseBody $ response :: Maybe Value)
+
+              sunrise <- liftIO $ mkZonedTimeFromVal "Rise" todaysEvents
+              sunset <- liftIO $ mkZonedTimeFromVal "Set" todaysEvents
+
+              let
+                sunrise' = fromMaybe placeholder sunrise
+                sunset' = fromMaybe placeholder sunset
+
+              liftIO $ logDebugMsg' filepath logger' ("what is sunrise? " <> (T.pack . show $ sunrise))
+              liftIO $ logDebugMsg' filepath logger' ("what is sunset? " <> (T.pack . show $ sunset))
+
+              pure $ object
+                [ ("sunrise", String . T.pack . ISO.iso8601Show $ sunrise')
+                , ("sunset", String . T.pack . ISO.iso8601Show $ sunset')
+                ]
+          )
+      <#> parameter LM.peekString "string" "coords" "coordinate string in format 41.5020948,-73.982543"
+      =#> functionResult LA.pushViaJSON "sunEvents" "sunEvents"
 
     httpGet :: DocumentedFunction Lua.Exception
     httpGet =
@@ -394,9 +448,10 @@ logDebugMsg' filepath logger' msg =
 -- a perfect fit.
 --
 
-mkUTCTimeFromVal :: Text -> Text -> Value -> Maybe UTCTime
-mkUTCTimeFromVal sundataKey dateString oneDay = parseUTCTime . T.unpack $
-  dateString <> "T" <> (fromMaybe "00:00" $ sundataVal sundataKey oneDay) <> ":00Z"
+mkZonedTimeFromVal :: Text -> Value -> IO (Maybe ZonedTime)
+mkZonedTimeFromVal sundataKey oneDay = todayFromHour $ T.unpack hourString
+  where
+    hourString = fromMaybe "00:00" $ sundataVal sundataKey oneDay
 
 sundataVal :: Text -> Value -> Maybe Text
 sundataVal sdk = preview
