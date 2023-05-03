@@ -474,10 +474,9 @@ logDebugMsg' filepath logger' msg =
 
 --
 -- These two don't really fit well anywhere I don't think. They are
--- used here for a very specialized function, and otherwise in the
--- DateHelper tests. I think it's okay to consider them "owned" by
--- LuaScript and referenced in the DateHelper tests, even if it's not
--- a perfect fit.
+-- used here for a very specialized function. There are similar
+-- (identical wrt sundataVal) functions in the DateHelper tests. I
+-- think it's better to keep them distinct for now.
 --
 
 mkZonedTimeFromVal :: Text -> Value -> IO (Maybe ZonedTime)
