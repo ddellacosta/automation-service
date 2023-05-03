@@ -47,7 +47,12 @@ import qualified Service.Automation as Automation
 import Service.Automation (Automation(..))
 import qualified Service.AutomationName as AutomationName
 import qualified Service.DateHelpers as DH
-import Service.DateHelpers (getCurrentDateString, getCurrentZonedTime, todayFromHour)
+import Service.DateHelpers
+  ( getCurrentDateString
+  , getCurrentZonedTime
+  , todayFromHour
+  , zonedTimeToCronInstant
+  )
 import Service.Device (Device, DeviceId, toLuaDevice)
 import Service.Env
   ( Registrations
@@ -248,6 +253,7 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
       , (sendMessage, "sendMessage")
       , (sleep, "sleep")
       , (subscribe, "subscribe")
+      , (timestampToCron, "timestampToCron")
       ]
 
     addMinutes :: DocumentedFunction Lua.Exception
@@ -271,7 +277,7 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
           )
       <#> parameter LM.peekIntegral "pico" "minutes" "minutes to add"
       <#> parameter LM.peekString "string" "date" "date being added-to"
-      =#> functionResult LM.pushString "dateString" "dateString with minutes added"
+      =#> functionResult LM.pushString "dateString" "date with minutes added"
 
     getSunEvents :: DocumentedFunction Lua.Exception
     getSunEvents =
@@ -280,8 +286,11 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
               date <- liftIO getCurrentDateString
 
               let
-                url = "https://aa.usno.navy.mil/api/rstt/oneday?date="
-                  <> date <> "&coords=" <> coords
+                url =
+                     "https://aa.usno.navy.mil/api/rstt/oneday?date="
+                  <> date
+                  <> "&coords="
+                  <> coords
 
               -- NEED TO HANDLE FAILED RESPONSE!
 
@@ -293,8 +302,8 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
               placeholder <- liftIO getZonedTime
 
               let
-                todaysEvents = fromMaybe emptyObject $
-                  decode . responseBody $ response
+                todaysEvents =
+                  fromMaybe emptyObject $ decode . responseBody $ response
 
               sunrise <- liftIO $ mkZonedTimeFromVal "Rise" todaysEvents
               sunset <- liftIO $ mkZonedTimeFromVal "Set" todaysEvents
@@ -414,8 +423,8 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
     sendMessage :: DocumentedFunction Lua.Exception
     sendMessage =
       defun "sendMessage"
-      ### (\msg -> fromMaybe (pure ()) $
-             atomically <$> writeTChan daemonBroadcast' <$> decode msg
+      ### (\msg -> for_ (decode msg) $ \msg' ->
+             atomically . writeTChan daemonBroadcast' $ msg'
           )
       <#> parameter LM.peekLazyByteString "string" "message" "string to log"
       =#> []
@@ -443,6 +452,18 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
         defun (Lua.Name fnName)
         ### (atomically . readTChan $ listenerChan)
         =#> functionResult LA.pushViaJSON "msg" "incoming data from subscribed topic"
+
+    timestampToCron :: DocumentedFunction Lua.Exception
+    timestampToCron =
+      defun "timestampToCron"
+      ### (\date -> pure $
+              -- again, not sure this is the failure handling we want here
+              fromMaybe "* * * * *" $
+                zonedTimeToCronInstant <$>
+                  (ISO.iso8601ParseM date :: Maybe ZonedTime)
+          )
+      <#> parameter LM.peekString "string" "date" "date to convert to cron schedule"
+      =#> functionResult LM.pushString "cronString" "cron with minutes added"
 
 
 -- this is here because it's useful for throwing into other

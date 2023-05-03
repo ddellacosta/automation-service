@@ -9,4 +9,10 @@ function setup()
 
    logDebugMsg("updatedSunrise: " .. updatedSunrise)
    logDebugMsg("updatedSunset: " .. updatedSunset)
+
+   local cronifiedNewRise = timestampToCron(updatedSunrise)
+   local cronifiedNewSet = timestampToCron(updatedSunset)
+
+   logDebugMsg("cronifiedNewRise: " .. cronifiedNewRise)
+   logDebugMsg("cronifiedNewSet: " .. cronifiedNewSet)
 end

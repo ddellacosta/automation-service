@@ -39,6 +39,7 @@ import Service.Env
   )
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
+import System.Environment (setEnv)
 import Test.Hspec (Spec, around, expectationFailure, it, shouldBe, xit)
 import Test.Integration.Service.DaemonTestHelpers
   ( initAndCleanup
@@ -284,6 +285,12 @@ luaScriptSpecs = do
   around initAndCleanup $ do
     xit "retrieves dates for Sun events (rise & set)" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+
+        -- the DateHelpers tests set this to UTC, but I like seeing
+        -- the dates get converted to the local time zone when I'm
+        -- dumping out the logs
+        setEnv "TZ" "America/New_York"
+
         let
           daemonBroadcast' = env ^. daemonBroadcast
           (QLogger qLogger) = env ^. logger
@@ -296,7 +303,7 @@ luaScriptSpecs = do
         -- the point, it would prevent issues w/DNS resolution in the
         -- Github Actions build, but I should fix that regardless I
         -- guess.
-        threadDelay 1000000
+        threadDelay 2000000
 
         logs <- readTVarIO qLogger
         let
