@@ -22,7 +22,7 @@
 
         project = devTools: # [1]
           let
-            addBuildTools = (t.flip hl.addBuildTools) (devTools ++ [ zlib ]);
+            addBuildTools = (t.flip hl.addBuildTools) (devTools ++ [ zlib cacert ]);
           in
             haskellPackages.developPackage {
               # this prevents CHANGELOG/LICENSE/etc. from being found
