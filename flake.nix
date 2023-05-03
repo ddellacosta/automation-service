@@ -22,7 +22,8 @@
 
         project = devTools: # [1]
           let
-            addBuildTools = (t.flip hl.addBuildTools) (devTools ++ [ zlib cacert ]);
+            # addBuildTools = (t.flip hl.addBuildTools) (devTools ++ [ zlib cacert ]);
+            addBuildTools = (t.flip hl.addBuildTools) (devTools ++ [ zlib ]);
           in
             haskellPackages.developPackage {
               # this prevents CHANGELOG/LICENSE/etc. from being found
@@ -52,8 +53,10 @@
             name = "image-root";
             paths = [
               self.packages.${system}.pkg
+              # via https://nixos.org/manual/nixpkgs/unstable/#ssec-pkgs-dockerTools-buildImage
+              pkgs.cacert
               # stole from https://github.com/NixOS/nixpkgs/blob/dfa0dcbf684b3a715f2cd586dfdb5dd4893b8b9d/pkgs/build-support/docker/examples.nix#L718
-              pkgs.dockerTools.caCertificates
+              # pkgs.dockerTools.caCertificates
             ];
             pathsToLink = [ "/bin" ];
           };
