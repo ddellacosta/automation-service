@@ -50,7 +50,11 @@
 
           copyToRoot = pkgs.buildEnv {
             name = "image-root";
-            paths = [ self.packages.${system}.pkg ];
+            paths = [
+              self.packages.${system}.pkg
+              # stole from https://github.com/NixOS/nixpkgs/blob/dfa0dcbf684b3a715f2cd586dfdb5dd4893b8b9d/pkgs/build-support/docker/examples.nix#L718
+              pkgs.dockerTools.caCertificates
+            ];
             pathsToLink = [ "/bin" ];
           };
 
