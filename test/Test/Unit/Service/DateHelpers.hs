@@ -10,6 +10,8 @@ import Data.Aeson.Lens (_String, key, values)
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Data.Text (Text)
+import qualified Data.Time.Clock as C
+import Data.Time.Clock (UTCTime)
 import qualified Data.Time.Format.ISO8601 as ISO
 import qualified Data.Time.LocalTime as LT
 import Data.Time.LocalTime (ZonedTime)
@@ -35,15 +37,17 @@ spec = describe "date utility functions" $ do
     -- Anyways, unfortunately, this fails to show how it automatically
     -- converts to the local timezone, but I suppose that's implied by
     -- the types and functions used.
-    setEnv "TZ" "UTC"
-    placeholder <- LT.getZonedTime
+    setEnv "TZ" "America/New_York"
+
+    zonedNow <- LT.getZonedTime
+    utcNow <- C.getCurrentTime
 
     let
-      testDate = fromMaybe placeholder $
-        ISO.iso8601ParseM "2023-05-01T00:00:00+00:00"
+      testDate = fromMaybe utcNow $
+        ISO.iso8601ParseM "2023-05-01T00:00:00Z"
 
-    sunrise <- fromMaybe placeholder <$> mkZonedTimeFromVal "Rise" testDate oneDay
-    sunset <- fromMaybe placeholder <$> mkZonedTimeFromVal "Set" testDate oneDay
+    sunrise <- fromMaybe zonedNow <$> mkZonedTimeFromVal "Rise" testDate oneDay
+    sunset <- fromMaybe zonedNow <$> mkZonedTimeFromVal "Set" testDate oneDay
 
     --
     -- Using `show` here and below because producing a `CronSchedule`
@@ -51,25 +55,25 @@ spec = describe "date utility functions" $ do
     --
     show (P.parseCronSchedule . T.pack . zonedTimeToCronInstant $ sunrise)
       `shouldBe`
-      "Right CronSchedule 53 9 1 5 1"
+      "Right CronSchedule 53 5 1 5 1"
 
     show (P.parseCronSchedule . T.pack . zonedTimeToCronInstant $ sunset)
       `shouldBe`
-      "Right CronSchedule 54 23 1 5 1"
+      "Right CronSchedule 54 19 1 5 1"
 
     thirtyAfterSunrise <- addMinutes 30 sunrise
     thirtyBeforeSunset <- addMinutes (-30) sunset
 
     show (P.parseCronSchedule . T.pack . zonedTimeToCronInstant $ thirtyAfterSunrise)
       `shouldBe`
-      "Right CronSchedule 23 10 1 5 1"
+      "Right CronSchedule 23 6 1 5 1"
 
     show (P.parseCronSchedule . T.pack . zonedTimeToCronInstant $ thirtyBeforeSunset)
       `shouldBe`
-      "Right CronSchedule 24 23 1 5 1"
+      "Right CronSchedule 24 19 1 5 1"
 
   where
-    mkZonedTimeFromVal :: Text -> ZonedTime -> Value -> IO (Maybe ZonedTime)
+    mkZonedTimeFromVal :: Text -> UTCTime -> Value -> IO (Maybe ZonedTime)
     mkZonedTimeFromVal sundataKey date oneDay = do
       flip dayFromHour date $ T.unpack hourString
       where
