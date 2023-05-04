@@ -38,11 +38,21 @@
               ];
             };
 
+        nixFromDockerHub = pkgs.dockerTools.pullImage {
+          imageName = "nixos/nix";
+          imageDigest = "sha256:31b808456afccc2a419507ea112e152cf27e9bd2527517b0b6ca8639cc423501";
+          sha256 = "0bbw3r0civlcm3inj23fq8f25aw63rnaay09qjbrvfjd7pcfbyqn";
+          finalImageName = "nixos/nix";
+          finalImageTag = "2.15.0";
+        };
+
       in {
         packages.pkg = project [];
 
         defaultPackage = pkgs.dockerTools.buildImage {
           name = "automation-service";
+          created = "now";
+          fromImage = nixFromDockerHub;
 
           extraCommands = ''
             mkdir ./app
@@ -51,19 +61,15 @@
 
           copyToRoot = pkgs.buildEnv {
             name = "image-root";
-            paths = [
-              self.packages.${system}.pkg
-              # via https://nixos.org/manual/nixpkgs/unstable/#ssec-pkgs-dockerTools-buildImage
-              pkgs.cacert
-              # stole from https://github.com/NixOS/nixpkgs/blob/dfa0dcbf684b3a715f2cd586dfdb5dd4893b8b9d/pkgs/build-support/docker/examples.nix#L718
-              # pkgs.dockerTools.caCertificates
-            ];
+            paths = [ self.packages.${system}.pkg ];
             pathsToLink = [ "/bin" ];
           };
 
           config = {
             WorkingDir = "/app";
+
             Cmd = [ "/bin/automation-service" ];
+
             Volumes = {
               "/app" = {};
             };
