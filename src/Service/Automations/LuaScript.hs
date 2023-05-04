@@ -22,8 +22,8 @@ import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Data.Text (Text)
+import qualified Data.Time.Clock as C
 import Data.Time.Clock (UTCTime)
-import Data.Time.LocalTime (ZonedTime, getZonedTime)
 import qualified Data.Time.Format.ISO8601 as ISO
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
@@ -49,9 +49,8 @@ import qualified Service.AutomationName as AutomationName
 import qualified Service.DateHelpers as DH
 import Service.DateHelpers
   ( getCurrentDateString
-  , getCurrentZonedTime
   , todayFromHour
-  , zonedTimeToCronInstant
+  , utcTimeToCronInstant
   )
 import Service.Device (Device, DeviceId, toLuaDevice)
 import Service.Env
@@ -260,20 +259,19 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
     addMinutes =
       defun "addMinutes"
       ### (\minutes date ->
-             do
-               placeholderDate <- liftIO getCurrentZonedTime
+              do
+                utcNow <- liftIO C.getCurrentTime
 
-               let
-                 -- is this the best way to do this?
-                 minutes' = toEnum (minutes * ((10 ^ 12) :: Int)) :: Pico
-                 initialDate = ISO.iso8601ParseM date :: Maybe ZonedTime
+                let
+                  -- is this the best way to do this?
+                  minutes' = toEnum (minutes * ((10 ^ 12) :: Int)) :: Pico
+                  initialDate = ISO.iso8601ParseM date :: Maybe UTCTime
+                  updatedDate = case initialDate of
+                    Just initialDate' -> DH.addMinutes minutes' initialDate'
+                    -- I am not sure how to handle failure here
+                    Nothing -> DH.addMinutes minutes' utcNow
 
-               updatedDate <- liftIO $ case initialDate of
-                 Just initialDate' -> DH.addMinutes minutes' initialDate'
-                 -- I am not sure how to handle failure here
-                 Nothing -> DH.addMinutes minutes' placeholderDate
-
-               pure $ ISO.iso8601Show updatedDate
+                pure $ ISO.iso8601Show updatedDate
           )
       <#> parameter LM.peekIntegral "pico" "minutes" "minutes to add"
       <#> parameter LM.peekString "string" "date" "date being added-to"
@@ -299,18 +297,18 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
                 request <- parseRequest url
                 httpLbs request manager
 
-              placeholder <- liftIO getZonedTime
+              utcNow <- liftIO C.getCurrentTime
 
               let
                 todaysEvents =
                   fromMaybe emptyObject $ decode . responseBody $ response
 
-              sunrise <- liftIO $ mkZonedTimeFromVal "Rise" todaysEvents
-              sunset <- liftIO $ mkZonedTimeFromVal "Set" todaysEvents
+              sunrise <- liftIO $ mkUtcTimeFromVal "Rise" todaysEvents
+              sunset <- liftIO $ mkUtcTimeFromVal "Set" todaysEvents
 
               let
-                sunrise' = fromMaybe placeholder sunrise
-                sunset' = fromMaybe placeholder sunset
+                sunrise' = fromMaybe utcNow sunrise
+                sunset' = fromMaybe utcNow sunset
 
               pure $ object
                 [ ("sunrise", String . T.pack . ISO.iso8601Show $ sunrise')
@@ -459,8 +457,8 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
       ### (\date -> pure $
               -- again, not sure this is the failure handling we want here
               fromMaybe "* * * * *" $
-                zonedTimeToCronInstant <$>
-                  (ISO.iso8601ParseM date :: Maybe ZonedTime)
+                utcTimeToCronInstant <$>
+                  (ISO.iso8601ParseM date :: Maybe UTCTime)
           )
       <#> parameter LM.peekString "string" "date" "date to convert to cron schedule"
       =#> functionResult LM.pushString "cronString" "cron with minutes added"
@@ -479,8 +477,8 @@ logDebugMsg' filepath logger' msg =
 -- think it's better to keep them distinct for now.
 --
 
-mkZonedTimeFromVal :: Text -> Value -> IO (Maybe ZonedTime)
-mkZonedTimeFromVal sundataKey oneDay = todayFromHour $ T.unpack hourString
+mkUtcTimeFromVal :: Text -> Value -> IO (Maybe UTCTime)
+mkUtcTimeFromVal sundataKey oneDay = todayFromHour $ T.unpack hourString
   where
     hourString = fromMaybe "00:00" $ sundataVal sundataKey oneDay
 
