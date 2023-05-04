@@ -38,7 +38,9 @@ zonedTimeToCronInstant =
   F.formatTime F.defaultTimeLocale "%M %H %d %m %w"
 
 addMinutes :: Pico -> ZonedTime -> IO ZonedTime
-addMinutes min initial = LT.utcToLocalZonedTime updatedUTC
+addMinutes min initial = do
+  tz <- loadCurrentTimeZoneFromEnv
+  pure $ LT.utcToZonedTime tz updatedUTC
   where
     initialUTC = LT.zonedTimeToUTC initial
     updatedUTC = C.addUTCTime (minuteDiff min) initialUTC
