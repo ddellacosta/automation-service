@@ -34,7 +34,6 @@ You can then start this up with `docker-compose start automation-service`. Check
 
 ## TODO
 
-* bug: an automation failing and shutting down or just not looping doesn't get removed from list of running automations
 * bug: trying to restart an automation blocks when listening on channel, have to send an interrupt message somehow
 * documentation
 * add HTTP client functionality and add Lua API
