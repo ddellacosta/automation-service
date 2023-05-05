@@ -31,6 +31,9 @@ utcTimeToCronInstant :: UTCTime -> String
 utcTimeToCronInstant =
   F.formatTime F.defaultTimeLocale "%M %H %d %m %w"
 
+-- | Given Pico minutes and a UTCTime, returns an updated UTCTime with
+-- the minutes added.
+--
 addMinutes :: Pico -> UTCTime -> UTCTime
 addMinutes = C.addUTCTime . minuteDiff
 
