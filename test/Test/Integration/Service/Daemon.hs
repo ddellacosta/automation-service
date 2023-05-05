@@ -327,7 +327,7 @@ threadMapSpecs = do
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
 
         waitUntilEqSTM (Just Gold) $
-          readTVar threadMapTV >>= pure . preview (ix Gold . _1 . name)
+          preview (ix Gold . _1 . name) <$> readTVar threadMapTV
 
   around initAndCleanup $ do
     it "removes entries from ThreadMap when stopping" $
