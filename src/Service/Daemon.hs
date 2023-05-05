@@ -13,7 +13,7 @@ import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
 import qualified Data.Aeson as Aeson
 import Data.Aeson (Value, decode, object)
-import Data.Foldable (for_)
+import Data.Foldable (foldl', foldMap', for_)
 import Data.Hashable (Hashable)
 import qualified Data.HashMap.Strict as M
 import Data.HashMap.Strict (HashMap)
@@ -23,9 +23,10 @@ import qualified Data.Text as T
 import Data.Time.Clock (getCurrentTime)
 import Data.Traversable (for)
 import qualified Data.Vector as V
+import GHC.Conc (ThreadStatus(..), threadStatus)
 import Network.MQTT.Topic (Topic)
 import qualified Service.Automation as Automation
-import Service.Automation (Message(..))
+import Service.Automation (Automation(_name), Message(..))
 import Service.AutomationName (AutomationName(..), parseAutomationNameText, serializeAutomationName)
 import Service.Automations (findAutomation)
 import Service.App (Logger(..), MonadMQTT(..))
@@ -62,7 +63,7 @@ import Service.MQTT.Messages.Daemon (AutomationSchedule)
 import Service.MQTT.Status (encodeAutomationStatus)
 import qualified Service.StateStore as StateStore
 import System.Cron (addJob, execSchedule)
-import UnliftIO.Async (Async, async, cancel)
+import UnliftIO.Async (Async, async, asyncThreadId, cancel)
 import UnliftIO.Concurrent (killThread)
 import UnliftIO.Exception (bracket, finally)
 import UnliftIO.STM
@@ -122,6 +123,8 @@ run' threadMapTV = do
 
   where
     go = do
+      cleanDeadAutomations threadMapTV
+
       tryRestoreRunningAutomations
 
       messageChan' <- view messageChan
@@ -194,17 +197,31 @@ run' threadMapTV = do
     loadPriorRunningAutomations dbPath' = liftIO $ StateStore.allRunning dbPath' <&>
       fromMaybe [] . sequence . fmap (parseAutomationNameText . snd)
 
-cleanupAutomations
-  :: (Logger m, MonadIO m, MonadReader Env m, MonadUnliftIO m)
-  => IO ()
-  -> TVar (ThreadMap m)
-  -> m ()
-cleanupAutomations appCleanup' threadMapTV = do
-  threadMap <- atomically . readTVar $ threadMapTV
-  for_ (M.toList threadMap) $ \(automationName, (_, async')) -> do
-    info $ "Shutting down Automation " <> serializeAutomationName automationName
-    cancel async'
-  liftIO appCleanup'
+    cleanupAutomations
+      :: (Logger m, MonadIO m, MonadReader Env m, MonadUnliftIO m)
+      => IO ()
+      -> TVar (ThreadMap m)
+      -> m ()
+    cleanupAutomations appCleanup' threadMapTV' = do
+      threadMap <- atomically . readTVar $ threadMapTV'
+      for_ (M.toList threadMap) $ \(automationName, (_, async')) -> do
+        info $ "Shutting down Automation " <> serializeAutomationName automationName
+        cancel async'
+      liftIO appCleanup'
+
+cleanDeadAutomations :: (MonadIO m) => TVar (ThreadMap m) -> m ()
+cleanDeadAutomations threadMapTV = do
+  threadMap <- atomically $ readTVar threadMapTV
+  cleanupAutoNames <- liftIO $ foldMap'
+    (\(auto, autoAsync) -> do
+        autoStatus <- liftIO . threadStatus . asyncThreadId $ autoAsync
+        case autoStatus of
+          ThreadFinished -> pure [_name auto]
+          ThreadDied -> pure [_name auto]
+          _ -> pure [])
+    threadMap
+  let cleanedTM = foldl' (flip M.delete) threadMap cleanupAutoNames
+  atomically $ writeTVar threadMapTV cleanedTM
 
 tryRestoreRunningAutomations :: (MonadIO m, MonadReader Env m) => m ()
 tryRestoreRunningAutomations = do

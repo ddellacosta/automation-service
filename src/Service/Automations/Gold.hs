@@ -81,6 +81,9 @@ runAutomation broadcastChan = do
   atomically $ writeTChan daemonBroadcast' mirrorLightRegMsg
   atomically $ writeTChan daemonBroadcast' basementStandingLampRegMsg
 
+  -- note that this is going to return Nothing in Integration tests
+  -- without explicitly loading the group and device having the IDs
+  -- above
   lightStrip <- findDeviceM mirrorLightId
 
   for_ lightStrip $ \lightStrip' -> do
