@@ -9,6 +9,7 @@ where
 import Prelude hiding (filter)
 
 import Control.Lens (Lens', (&), (<&>), (^.), (.~), view)
+import Control.Monad (unless)
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
 import qualified Data.Aeson as Aeson
@@ -128,7 +129,6 @@ run' threadMapTV = do
       tryRestoreRunningAutomations
 
       messageChan' <- view messageChan
-      daemonBroadcast' <- view daemonBroadcast
       msg <- atomically $ readTChan messageChan'
 
       debug $ "Daemon received Message: " <> T.pack (show msg)
@@ -150,8 +150,7 @@ run' threadMapTV = do
           sendClientMsg automationName msg' *> go
 
         Daemon.Schedule jobId automationSchedule automationMessage -> do
-          runScheduledMessage
-            jobId automationMessage automationSchedule daemonBroadcast'
+          runScheduledMessage jobId automationMessage automationSchedule
           publishUpdatedStatus threadMapTV
           go
 
@@ -209,7 +208,8 @@ run' threadMapTV = do
         cancel async'
       liftIO appCleanup'
 
-cleanDeadAutomations :: (MonadIO m) => TVar (ThreadMap m) -> m ()
+cleanDeadAutomations
+  :: (MonadIO m, MonadMQTT m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
 cleanDeadAutomations threadMapTV = do
   threadMap <- atomically $ readTVar threadMapTV
   cleanupAutoNames <- liftIO $ foldMap'
@@ -220,6 +220,8 @@ cleanDeadAutomations threadMapTV = do
           ThreadDied -> pure [_name auto]
           _ -> pure [])
     threadMap
+  unless (null cleanupAutoNames) $
+    publishUpdatedStatus threadMapTV
   let cleanedTM = foldl' (flip M.delete) threadMap cleanupAutoNames
   atomically $ writeTVar threadMapTV cleanedTM
 
@@ -359,10 +361,12 @@ runScheduledMessage
   => Daemon.JobId
   -> Daemon.Message
   -> AutomationSchedule
-  -> TChan Daemon.Message
   -> m ()
-runScheduledMessage jobId automationMessage automationSchedule messageChan' = do
-  let dispatchScheduledMessage = atomically . writeTChan messageChan' $ automationMessage
+runScheduledMessage jobId automationMessage automationSchedule = do
+  daemonBroadcast' <- view daemonBroadcast
+  let
+    dispatchScheduledMessage =
+      atomically . writeTChan daemonBroadcast' $ automationMessage
 
   schedulerThreads <- liftIO . execSchedule $
     addJob dispatchScheduledMessage automationSchedule

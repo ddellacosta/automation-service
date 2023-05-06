@@ -124,6 +124,13 @@ mkCleanupAutomation filepath = \_broadcastChan -> do
     callWhenExists "cleanup"
 
   --
+  -- Maybe all of this Device/Group de-reg stuff should be done via
+  -- messages and handled by Service.Daemon? This is arguably not
+  -- LuaScript's domain, even if it should be ensuring cleanup happens
+  -- somehow (?)
+  --
+
+  --
   -- I would mask here but bracket in UnliftIO.Exception uses
   -- uninterruptible masking for the cleanup handler so it's
   -- unnecessary...have to be careful about what we allow in cleanup
