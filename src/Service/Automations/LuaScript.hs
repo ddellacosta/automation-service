@@ -397,10 +397,8 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
     sendMessage :: DocumentedFunction Lua.Exception
     sendMessage =
       defun "sendMessage"
-      ### (\msg -> for_ (decode msg) $ \msg' ->
-             atomically . writeTChan daemonBroadcast' $ msg'
-          )
-      <#> parameter LM.peekLazyByteString "string" "message" "string to log"
+      ### (atomically . writeTChan daemonBroadcast')
+      <#> parameter LA.peekViaJSON "json" "message" "message to send"
       =#> []
 
     subscribe :: DocumentedFunction Lua.Exception

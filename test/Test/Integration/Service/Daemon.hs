@@ -298,13 +298,9 @@ luaScriptSpecs = do
           (QLogger qLogger) = env ^. logger
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testSunEvents")
-        -- this takes extra-long I assume because of the HTTP GET
-        -- call. I guess I could stub that out since it's not really
-        -- testing that explicitly, but rather the logic of date
-        -- manipulation and getting data in and out of Lua. More to
-        -- the point, it would prevent issues w/DNS resolution in the
-        -- Github Actions build, but I should fix that regardless I
-        -- guess.
+        -- not sure how to handle how slow this is due to HTTP call,
+        -- or the bigger issue of not being able to make HTTPS calls
+        -- in the nix build
         threadDelay 2000000
 
         logs <- readTVarIO qLogger
@@ -316,9 +312,26 @@ luaScriptSpecs = do
             )
             logs
 
-        print logs
-
         length matches `shouldBe` 2
+
+  around initAndCleanup $ do
+    it "can send Daemon messages in Lua scripts" $
+      testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          luaScriptSentMsg = Daemon.Start Gold
+
+        atomically $ writeTChan daemonBroadcast' $
+          Daemon.Start (LuaScript "testSendMsg")
+
+        threadDelay 50000
+
+        startGold <- atomically $ do
+          _ <- readTChan daemonSnooper
+          _ <- readTChan daemonSnooper
+          readTChan daemonSnooper
+
+        luaScriptSentMsg `shouldBe` startGold
 
 
 threadMapSpecs :: Spec
