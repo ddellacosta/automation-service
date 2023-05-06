@@ -45,6 +45,8 @@ data Message where
   GroupUpdate :: [Group] -> Message
   RegisterDevice :: DeviceId -> AutomationName -> Message
   RegisterGroup :: GroupId -> AutomationName -> Message
+  DeRegisterDevicesAndGroups :: AutomationName -> Message
+  DeadAutoCleanup :: Message
   Subscribe :: AutomationName -> Maybe Topic -> TChan Value -> Message
   Status :: Message
   Null :: Message
@@ -67,7 +69,7 @@ instance Show Message where
     SendTo automationName msg ->
       "SendTo " <> show automationName <> " " <> show msg
     Schedule jobId schedule msg ->
-      "Schedule " <> " " <> show jobId <> " " <> show schedule <> show msg
+      "Schedule " <> " " <> show jobId <> " " <> show schedule <> " " <> show msg
     Unschedule jobId -> "Unschedule " <> show jobId
     DeviceUpdate devices -> "DeviceUpdate " <> show devices
     GroupUpdate groups -> "GroupUpdate " <> show groups
@@ -75,6 +77,9 @@ instance Show Message where
       "RegisterDevice " <> show deviceId <> " " <> show automationName
     RegisterGroup groupId automationName ->
       "RegisterGroup " <> show groupId <> " " <> show automationName
+    DeRegisterDevicesAndGroups automationName ->
+      "DeRegisterDevicesAndGroups " <> show automationName
+    DeadAutoCleanup -> "DeadAutoCleanup"
     Subscribe automationName mTopic _automationListenerChannel ->
       "Subscribe " <> show automationName <> " " <> show mTopic <> ", with listener channel"
     Status -> "Status"

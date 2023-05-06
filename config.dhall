@@ -19,6 +19,5 @@ in    { mqttBroker =
       , logLevel = LogLevel.Debug
       , luaScriptPath = "lua-automations/"
       , dbPath = "automationState.db"
-      , cleaningLoopDelay = +5000000
       }
     : ./config/Config.dhall

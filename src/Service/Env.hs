@@ -18,7 +18,6 @@ module Service.Env
   , automationBroadcast
   , automationServiceTopic
   , caCertPath
-  , cleaningLoopDelay
   , clientCertPath
   , clientKeyPath
   , config
@@ -120,7 +119,6 @@ data Config = Config
   , _logLevel :: LogLevel
   , _luaScriptPath :: FilePath
   , _dbPath :: FilePath
-  , _cleaningLoopDelay :: Int
   }
   deriving (Generic, Show)
 
@@ -135,7 +133,6 @@ configDecoder =
         <*> field "logLevel" auto
         <*> field "luaScriptPath" string
         <*> field "dbPath" string
-        <*> field "cleaningLoopDelay" int
     )
 
 -- this is testing-motivated boilerplate

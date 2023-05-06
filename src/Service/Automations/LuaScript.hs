@@ -15,10 +15,8 @@ import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import Data.Fixed (Pico)
 import Data.Foldable (for_)
-import Data.Hashable (Hashable)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as M
-import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Data.Text (Text)
@@ -54,16 +52,13 @@ import Service.DateHelpers
   )
 import Service.Device (Device, DeviceId, toLuaDevice)
 import Service.Env
-  ( Registrations
-  , Env
+  ( Env
   , LogLevel(Debug)
   , LoggerVariant(..)
   , MQTTClientVariant(..)
   , config
   , daemonBroadcast
-  , deviceRegistrations
   , devices
-  , groupRegistrations
   , groups
   , logger
   , luaScriptPath
@@ -76,12 +71,10 @@ import UnliftIO.Exception (handle, throwIO)
 -- One really nice thing about UnliftIO.STM is that all you need is
 -- MonadIO for the most part, so I can use all of these in LuaE.
 import UnliftIO.STM
-  ( STM
-  , TChan
+  ( TChan
   , TVar
   , atomically
   , dupTChan
-  , modifyTVar'
   , newBroadcastTChan
   , readTChan
   , readTVar
@@ -123,25 +116,11 @@ mkCleanupAutomation filepath = \_broadcastChan -> do
     loadScript luaScriptPath' filepath *> Lua.callTrace 0 0
     callWhenExists "cleanup"
 
-  --
-  -- Maybe all of this Device/Group de-reg stuff should be done via
-  -- messages and handled by Service.Daemon? This is arguably not
-  -- LuaScript's domain, even if it should be ensuring cleanup happens
-  -- somehow (?)
-  --
-
-  --
-  -- I would mask here but bracket in UnliftIO.Exception uses
-  -- uninterruptible masking for the cleanup handler so it's
-  -- unnecessary...have to be careful about what we allow in cleanup
-  -- functions though. Also see comment in Service.App.Daemon.
-  --
-  deviceRegs <- view deviceRegistrations
-  groupRegs <- view groupRegistrations
-
+  -- ensure all Device and Groups are unregistered
   atomically $ do
-    updateRegs deviceRegs
-    updateRegs groupRegs
+    writeTChan daemonBroadcast' $
+      Daemon.DeRegisterDevicesAndGroups automationName
+    writeTChan daemonBroadcast' $ Daemon.DeadAutoCleanup
 
   debug $
        "Finished Cleanup: LuaScript "
@@ -153,16 +132,6 @@ mkCleanupAutomation filepath = \_broadcastChan -> do
   where
     automationName = AutomationName.LuaScript filepath
 
-    updateRegs :: (Hashable a) => TVar (Registrations a) -> STM ()
-    updateRegs regs = modifyTVar' regs $ \regs' ->
-      M.foldrWithKey'
-        (\idx autos newRegs ->
-            case NE.nonEmpty . NE.filter (/= automationName) $ autos of
-              Just autos' -> M.insert idx autos' newRegs
-              Nothing -> newRegs
-        )
-        M.empty
-        regs'
 
 type StatusMsg = String
 

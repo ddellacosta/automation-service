@@ -393,15 +393,7 @@ threadMapSpecs = do
         let daemonBroadcast' = env ^. daemonBroadcast
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testNoLoop")
-        threadDelay 10000
-
-        threadMap <- readTVarIO threadMapTV
-        (void . M.lookup (LuaScript "testNoLoop") $ threadMap)
-          `shouldBe`
-          Just ()
-
-        -- waiting long enough for the cleanup loop to kick in
-        threadDelay 40000
+        threadDelay 20000 -- cleanup kicks in pretty quickly
 
         threadMapNext <- readTVarIO threadMapTV
         (void . M.lookup (LuaScript "testNoLoop") $ threadMapNext)

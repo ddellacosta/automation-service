@@ -9,7 +9,6 @@ where
 import Prelude hiding (filter)
 
 import Control.Lens (Lens', (&), (<&>), (^.), (.~), view)
-import Control.Monad (forever, unless, void)
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
 import qualified Data.Aeson as Aeson
@@ -18,6 +17,7 @@ import Data.Foldable (foldl', foldMap', for_)
 import Data.Hashable (Hashable)
 import qualified Data.HashMap.Strict as M
 import Data.HashMap.Strict (HashMap)
+import qualified Data.List.NonEmpty as NE
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
@@ -28,19 +28,23 @@ import GHC.Conc (ThreadStatus(..), threadStatus)
 import Network.MQTT.Topic (Topic)
 import qualified Service.Automation as Automation
 import Service.Automation (Automation(_name), Message(..))
-import Service.AutomationName (AutomationName(..), parseAutomationNameText, serializeAutomationName)
+import Service.AutomationName
+  ( AutomationName(..)
+  , parseAutomationNameText
+  , serializeAutomationName
+  )
 import Service.Automations (findAutomation)
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Device as Device
 import Service.Env
   ( AutomationEntry
   , Env
+  , Registrations
   , RestartConditions(..)
   , ThreadMap
   , appCleanup
   , automationBroadcast
   , automationServiceTopic
-  , cleaningLoopDelay
   , config
   , daemonBroadcast
   , dbPath
@@ -66,7 +70,7 @@ import Service.MQTT.Status (encodeAutomationStatus)
 import qualified Service.StateStore as StateStore
 import System.Cron (addJob, execSchedule)
 import UnliftIO.Async (Async, async, asyncThreadId, cancel)
-import UnliftIO.Concurrent (killThread, threadDelay)
+import UnliftIO.Concurrent (killThread)
 import UnliftIO.Exception (bracket, finally)
 import UnliftIO.STM
   ( STM
@@ -110,17 +114,6 @@ run' threadMapTV = do
 
   flip finally (cleanupAutomations appCleanup' threadMapTV) $ do
     debug . T.pack . show $ config'
-
-    let
-      cleaningLoopDelay' = config' ^. cleaningLoopDelay
-
-    --
-    -- Dead Automation cleanup thread, so it doesn't depend on the
-    -- message queue being triggered to update.
-    --
-    void . async . forever $ do
-      void $ threadDelay cleaningLoopDelay'
-      cleanDeadAutomations threadMapTV
 
     --
     -- Considering that we try to load previously running Automations
@@ -194,9 +187,19 @@ run' threadMapTV = do
           publishUpdatedStatus threadMapTV
           go
 
+        Daemon.DeRegisterDevicesAndGroups automationName -> do
+          deregisterDevicesAndGroups automationName
+          publishUpdatedStatus threadMapTV
+          go
+
         Daemon.Subscribe automationName mTopic listenerBcastChan -> do
           for_ mTopic $ \topic -> do
             subscribe automationName topic listenerBcastChan
+          go
+
+        Daemon.DeadAutoCleanup -> do
+          cleanDeadAutomations threadMapTV
+          publishUpdatedStatus threadMapTV
           go
 
         Daemon.Status -> publishUpdatedStatus threadMapTV *> go
@@ -231,8 +234,6 @@ cleanDeadAutomations threadMapTV = do
           ThreadDied -> pure [_name auto]
           _ -> pure [])
     threadMap
-  unless (null cleanupAutoNames) $
-    publishUpdatedStatus threadMapTV
   let cleanedTM = foldl' (flip M.delete) threadMap cleanupAutoNames
   atomically $ writeTVar threadMapTV cleanedTM
 
@@ -330,6 +331,7 @@ stopAutomation threadMapTV automationName = do
   for_ (M.lookup automationName threadMap) (async . cancel . snd)
 
   subscriptions' <- view subscriptions
+
   atomically $ do
     writeTVar threadMapTV . M.delete automationName $ threadMap
 
@@ -436,6 +438,28 @@ addRegisteredResource
 addRegisteredResource resourceId newAutoName resourceStore =
   atomically $ modifyTVar' resourceStore $
     M.insertWith (<>) resourceId $ newAutoName :| []
+
+deregisterDevicesAndGroups
+  :: (Logger m, MonadIO m, MonadReader Env m) => AutomationName -> m ()
+deregisterDevicesAndGroups automationName = do
+  deviceRegs <- view deviceRegistrations
+  groupRegs <- view groupRegistrations
+
+  atomically $ do
+    updateRegs deviceRegs
+    updateRegs groupRegs
+
+  where
+    updateRegs :: (Hashable a) => TVar (Registrations a) -> STM ()
+    updateRegs regs = modifyTVar' regs $ \regs' ->
+      M.foldrWithKey'
+        (\idx autos newRegs ->
+            case NE.nonEmpty . NE.filter (/= automationName) $ autos of
+              Just autos' -> M.insert idx autos' newRegs
+              Nothing -> newRegs
+        )
+        M.empty
+        regs'
 
 subscribe
   :: (MonadIO m, MonadMQTT m, MonadReader Env m)
