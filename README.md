@@ -25,8 +25,6 @@ Currently the automation-service docker image is built on every push to master a
       - localnet
     volumes:
        - ./automation-service/:/app
-    environment:
-      - TZ=America/New_York
 ```
 
 You can then start this up with `docker-compose start automation-service`. Check out the automations in the `lua-automations` directory to get going. #TODO <- link here to examples
