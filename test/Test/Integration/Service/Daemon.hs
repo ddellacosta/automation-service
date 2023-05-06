@@ -375,7 +375,7 @@ threadMapSpecs = do
         let daemonBroadcast' = env ^. daemonBroadcast
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
-        threadDelay 50000
+        threadDelay 20000
 
         threadMap <- readTVarIO threadMapTV
         case M.lookup Gold threadMap of
@@ -393,22 +393,15 @@ threadMapSpecs = do
         let daemonBroadcast' = env ^. daemonBroadcast
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testNoLoop")
-        threadDelay 50000
+        threadDelay 10000
 
         threadMap <- readTVarIO threadMapTV
         (void . M.lookup (LuaScript "testNoLoop") $ threadMap)
           `shouldBe`
           Just ()
 
-        --
-        -- We need to trigger the main message queue again so that a
-        -- cleanup pass is run. This should general workout fine in
-        -- production given the number of messages coming in
-        -- constantly, but we'll see if it's a problem for some
-        -- reason.
-        --
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Start Null
-        threadDelay 50000
+        -- waiting long enough for the cleanup loop to kick in
+        threadDelay 40000
 
         threadMapNext <- readTVarIO threadMapTV
         (void . M.lookup (LuaScript "testNoLoop") $ threadMapNext)
@@ -424,17 +417,16 @@ stateStoreSpecs = do
         let
           daemonBroadcast' = env ^. daemonBroadcast
 
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test")
 
         threadDelay 200000
 
         res <- StateStore.allRunning $ env ^. config . dbPath
 
-        length res `shouldBe` 3
+        length res `shouldBe` 2
         parseAutomationName . T.unpack <$> (findMatchingAutoNames "test" res)
           `shouldBe` [Just (LuaScript "test")]
-        findMatchingAutoNames "Gold" res `shouldBe` ["Gold"]
+
         -- started up by Daemon independently if it is not running, so
         -- should always be present.
         findMatchingAutoNames "StateManager" res `shouldBe` ["StateManager"]

@@ -3,4 +3,5 @@
 , logLevel : ./LogLevel.dhall
 , luaScriptPath : Text
 , dbPath : Text
+, cleaningLoopDelay : Integer
 }

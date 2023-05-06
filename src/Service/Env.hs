@@ -18,6 +18,7 @@ module Service.Env
   , automationBroadcast
   , automationServiceTopic
   , caCertPath
+  , cleaningLoopDelay
   , clientCertPath
   , clientKeyPath
   , config
@@ -60,7 +61,7 @@ import qualified Data.HashMap.Strict as M
 import Data.HashMap.Strict (HashMap)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
-import Dhall (Decoder, Generic, FromDhall(..), auto, field, inputFile, record, strictText, string)
+import Dhall (Decoder, Generic, FromDhall(..), auto, field, inputFile, int, record, strictText, string)
 import Network.MQTT.Client (MQTTClient)
 import Network.MQTT.Topic (Topic, unTopic)
 import Network.URI (URI, nullURI, parseURI)
@@ -119,6 +120,7 @@ data Config = Config
   , _logLevel :: LogLevel
   , _luaScriptPath :: FilePath
   , _dbPath :: FilePath
+  , _cleaningLoopDelay :: Int
   }
   deriving (Generic, Show)
 
@@ -133,6 +135,7 @@ configDecoder =
         <*> field "logLevel" auto
         <*> field "luaScriptPath" string
         <*> field "dbPath" string
+        <*> field "cleaningLoopDelay" int
     )
 
 -- this is testing-motivated boilerplate

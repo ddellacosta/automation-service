@@ -9,7 +9,7 @@ where
 import Prelude hiding (filter)
 
 import Control.Lens (Lens', (&), (<&>), (^.), (.~), view)
-import Control.Monad (unless)
+import Control.Monad (forever, unless, void)
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
 import qualified Data.Aeson as Aeson
@@ -40,6 +40,7 @@ import Service.Env
   , appCleanup
   , automationBroadcast
   , automationServiceTopic
+  , cleaningLoopDelay
   , config
   , daemonBroadcast
   , dbPath
@@ -65,7 +66,7 @@ import Service.MQTT.Status (encodeAutomationStatus)
 import qualified Service.StateStore as StateStore
 import System.Cron (addJob, execSchedule)
 import UnliftIO.Async (Async, async, asyncThreadId, cancel)
-import UnliftIO.Concurrent (killThread)
+import UnliftIO.Concurrent (killThread, threadDelay)
 import UnliftIO.Exception (bracket, finally)
 import UnliftIO.STM
   ( STM
@@ -109,6 +110,18 @@ run' threadMapTV = do
 
   flip finally (cleanupAutomations appCleanup' threadMapTV) $ do
     debug . T.pack . show $ config'
+
+    let
+      cleaningLoopDelay' = config' ^. cleaningLoopDelay
+
+    --
+    -- Dead Automation cleanup thread, so it doesn't depend on the
+    -- message queue being triggered to update.
+    --
+    void . async . forever $ do
+      void $ threadDelay cleaningLoopDelay'
+      cleanDeadAutomations threadMapTV
+
     --
     -- Considering that we try to load previously running Automations
     -- after a restart, this represents the first and only
@@ -124,8 +137,6 @@ run' threadMapTV = do
 
   where
     go = do
-      cleanDeadAutomations threadMapTV
-
       tryRestoreRunningAutomations
 
       messageChan' <- view messageChan
