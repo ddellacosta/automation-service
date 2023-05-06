@@ -79,18 +79,22 @@ class AutomationServiceCard extends LitElement {
     if (attributes.runningAutomations?.length > 0) {
       return html`
         <div class="automation-list">
-           ${attributes.runningAutomations.map(({name: name, startTime: startTime, devices: devices, groups: groups}) => {
-	     const date = new Date(startTime);
-             return html`
-               <div class="automation-entry">
-                 <div class="automation-header running-automation-header">
-                   <span class="${isLowerCase(name.slice(0,1)) ? "luascript-automation" : "system-automation"}">${name}</span>
-                   <span class="automation-info start-time">started ${date.toLocaleString()}</span>
-                 </div>
-                 ${this.renderDevices(name, devices)}
-                 ${this.renderGroups(name, groups)}
-               </div>
-             `
+          <div class="automation-list-header">
+           <span class="automation-name-header">name</span><span class="started-header">started</span>
+          </div>
+
+          ${attributes.runningAutomations.map(({name: name, startTime: startTime, devices: devices, groups: groups}) => {
+	    const date = new Date(startTime);
+            return html`
+              <div class="automation-entry">
+                <div class="automation-header running-automation-header">
+                  <span class="${isLowerCase(name.slice(0,1)) ? "luascript-automation" : "system-automation"}">${name}</span>
+                  <span class="automation-info start-time">${date.toLocaleString()}</span>
+                </div>
+                ${this.renderDevices(name, devices)}
+                ${this.renderGroups(name, groups)}
+              </div>
+            `
 	   })}
          </div>
       `;
@@ -106,7 +110,12 @@ class AutomationServiceCard extends LitElement {
           ${attributes.scheduledAutomations.map(({schedule: schedule, jobId: jobId, job: job}) =>
             html`
               <div class="automation-entry">
-                <div>${schedule} - ${jobId} - Job: ${job}</div>
+                <div>
+                  <span class="job-id">${jobId}</span>:
+                  <div class="job-details">
+		    <span class="schedule">${schedule}</span> - <span class="job">${job}</span>
+                  </div>
+                </div>
               </div>
             `
           )}
@@ -134,8 +143,10 @@ class AutomationServiceCard extends LitElement {
       <ha-card>
         <div class="automation-service-container">
 	  <h2>automation-service</h2>
+
           <h3>Running Automations:</h3>
 	  ${this.runningAutomations(attributes)}
+
           <h3>Scheduled Automations:</h3>
 	  ${this.scheduledAutomations(attributes)}
 	</div>
@@ -148,6 +159,7 @@ class AutomationServiceCard extends LitElement {
       margin-top: 2%;
       margin-left: 5%;
       width: 80%;
+      margin-bottom: 4%;
     }
 
     .automation-service-container h2 {
@@ -162,6 +174,12 @@ class AutomationServiceCard extends LitElement {
       margin-left: 4%;
       display: flex;
       flex-direction: column;
+    }
+
+    .automation-list-header {
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
     }
 
     .automation-entry {
@@ -187,6 +205,8 @@ class AutomationServiceCard extends LitElement {
 
     .start-time {
       color: #428018;
+      font-family: monospace;
+      font-size: 0.9em;
     }
 
     .running-automation-header {
@@ -203,6 +223,8 @@ class AutomationServiceCard extends LitElement {
     .device-id {
       margin-left: 3px;
       color: #D05148;
+      font-family: monospace;
+      font-size: 0.9em;
     }
 
     .group-info {
@@ -211,6 +233,26 @@ class AutomationServiceCard extends LitElement {
     .group-id {
       margin-left: 3px;
       color: #E25C8D;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+
+    .job-id {
+      color: #D21404;
+    }
+
+    .job-details {
+      margin-left: 2%;
+    }
+
+    .schedule {
+      margin-right: 2%;
+      font-family: monospace;
+    }
+
+    .job {
+      margin-left: 2%;
+      color: #44C544;
     }
   `;
 }
