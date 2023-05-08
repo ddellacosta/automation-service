@@ -5,11 +5,10 @@ where
 
 import Prelude hiding (id, init)
 
-import Control.Lens (filtered, preview, view)
+import Control.Lens (view)
 import Control.Monad.IO.Unlift (MonadUnliftIO(..), liftIO)
 import Control.Monad.Reader (MonadReader)
 import Data.Aeson (Value(String), decode, encode)
-import Data.Aeson.Lens (_String, key, values)
 import Data.Aeson.Types (emptyObject, object)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Char8 as BS
@@ -46,8 +45,7 @@ import Service.Automation (Automation(..))
 import qualified Service.AutomationName as AutomationName
 import qualified Service.DateHelpers as DH
 import Service.DateHelpers
-  ( getCurrentDateString
-  , todayFromHour
+  ( getSunriseAndSunset
   , utcTimeToCronInstant
   )
 import Service.Device (Device, DeviceId, toLuaDevice)
@@ -240,7 +238,7 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
 
                 let
                   -- is this the best way to do this?
-                  minutes' = toEnum (minutes * ((10 ^ 12) :: Int)) :: Pico
+                  minutes' = toEnum (minutes * (10 ^ (12 :: Int))) :: Pico
                   initialDate = ISO.iso8601ParseM date :: Maybe UTCTime
                   updatedDate = case initialDate of
                     Just initialDate' -> DH.addMinutes minutes' initialDate'
@@ -256,42 +254,22 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
     getSunEvents :: DocumentedFunction Lua.Exception
     getSunEvents =
       defun "getSunEvents"
-      ### (\coords -> do
-              date <- liftIO getCurrentDateString
-
-              let
-                url =
-                     "https://aa.usno.navy.mil/api/rstt/oneday?date="
-                  <> date
-                  <> "&coords="
-                  <> coords
-
-              -- NEED TO HANDLE FAILED RESPONSE!
-
-              response <- liftIO $ do
-                manager <- newManager tlsManagerSettings
-                request <- parseRequest url
-                httpLbs request manager
-
+      ### (\lat long -> do
               utcNow <- liftIO C.getCurrentTime
 
-              let
-                todaysEvents =
-                  fromMaybe emptyObject $ decode . responseBody $ response
+              sunEvents <- liftIO $ getSunriseAndSunset utcNow (lat, long)
 
-              sunrise <- liftIO $ mkUtcTimeFromVal "Rise" todaysEvents
-              sunset <- liftIO $ mkUtcTimeFromVal "Set" todaysEvents
-
-              let
-                sunrise' = fromMaybe utcNow sunrise
-                sunset' = fromMaybe utcNow sunset
-
-              pure $ object
-                [ ("sunrise", String . T.pack . ISO.iso8601Show $ sunrise')
-                , ("sunset", String . T.pack . ISO.iso8601Show $ sunset')
-                ]
+              case sunEvents of
+                (Nothing, _) -> Lua.failLua "Got a bad sunrise"
+                (_, Nothing) -> Lua.failLua "Got a bad sunset"
+                (Just sunrise, Just sunset) ->
+                  pure $ object
+                    [ ("sunrise", String . T.pack . ISO.iso8601Show $ sunrise)
+                    , ("sunset", String . T.pack . ISO.iso8601Show $ sunset)
+                    ]
           )
-      <#> parameter LM.peekString "string" "coords" "coordinate string in format 41.5020948,-73.982543"
+      <#> parameter LM.peekRealFloat "double" "lattitude" "e.g. 41.5020948"
+      <#> parameter LM.peekRealFloat "double" "lattitude" "e.g. -73.982543"
       =#> functionResult LA.pushViaJSON "sunEvents" "sunEvents"
 
     httpGet :: DocumentedFunction Lua.Exception
@@ -443,26 +421,3 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
 logDebugMsg' :: FilePath -> LoggerVariant -> Text -> IO ()
 logDebugMsg' filepath logger' msg =
   App.logWithVariant logger' Debug (T.pack filepath <> ": " <> msg)
-
---
--- These two don't really fit well anywhere I don't think. They are
--- used here for a very specialized function. There are similar
--- (identical wrt sundataVal) functions in the DateHelper tests. I
--- think it's better to keep them distinct for now.
---
-
-mkUtcTimeFromVal :: Text -> Value -> IO (Maybe UTCTime)
-mkUtcTimeFromVal sundataKey oneDay = todayFromHour $ T.unpack hourString
-  where
-    hourString = fromMaybe "00:00" $ sundataVal sundataKey oneDay
-
-sundataVal :: Text -> Value -> Maybe Text
-sundataVal sdk = preview
-  ( key "properties"
-  . key "data"
-  . key "sundata"
-  . values
-  . filtered ((== Just (String sdk)) . preview (key "phen"))
-  . key "time"
-  . _String
-  )

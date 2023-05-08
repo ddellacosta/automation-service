@@ -42,7 +42,7 @@ import Service.Env
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
 import System.Environment (setEnv)
-import Test.Hspec (Spec, around, expectationFailure, it, shouldBe, xit)
+import Test.Hspec (Spec, around, expectationFailure, it, shouldBe)
 import Test.Integration.Service.DaemonTestHelpers
   ( initAndCleanup
   , testWithAsyncDaemon
@@ -285,12 +285,9 @@ luaScriptSpecs = do
         M.lookup groupId groupRegs' `shouldBe` Nothing
 
   around initAndCleanup $ do
-    xit "retrieves dates for Sun events (rise & set)" $
+    it "retrieves dates for Sun events (rise & set)" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
 
-        -- the DateHelpers tests set this to UTC, but I like seeing
-        -- the dates get converted to the local time zone when I'm
-        -- dumping out the logs
         setEnv "TZ" "America/New_York"
 
         let
@@ -298,10 +295,8 @@ luaScriptSpecs = do
           (QLogger qLogger) = env ^. logger
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testSunEvents")
-        -- not sure how to handle how slow this is due to HTTP call,
-        -- or the bigger issue of not being able to make HTTPS calls
-        -- in the nix build
-        threadDelay 2000000
+
+        threadDelay 50000
 
         logs <- readTVarIO qLogger
         let

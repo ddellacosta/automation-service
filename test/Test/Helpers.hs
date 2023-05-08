@@ -1,13 +1,11 @@
 module Test.Helpers
-  ( loadOneDay
-  , loadTestDevices
+  ( loadTestDevices
   , loadTestGroups
   , 
   )
 where
 
-import Data.Aeson (Value, decode)
-import Data.Aeson.Types (emptyObject)
+import Data.Aeson (decode)
 import Data.ByteString.Lazy as BL
 import Data.ByteString as BS
 import Data.Maybe (fromMaybe)
@@ -23,8 +21,3 @@ loadTestGroups :: IO [Group]
 loadTestGroups = do
   groupsRawJSON <- BL.fromStrict <$> BS.readFile "test/fixtures/groups.json"
   pure $ fromMaybe [] $ decode groupsRawJSON
-
-loadOneDay :: IO Value
-loadOneDay = do
-  oneDayRawJSON <- BL.fromStrict <$> BS.readFile "test/fixtures/oneday.json"
-  pure $ fromMaybe emptyObject $ decode oneDayRawJSON

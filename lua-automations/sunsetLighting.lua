@@ -1,6 +1,7 @@
 function setup()
-   local coords = "41.5020948,-73.982543"
-   local sunEvents = getSunEvents(coords)
+   local latitude = 41.5020948
+   local longitude = -73.982543
+   local sunEvents = getSunEvents(latitude, longitude)
 
    -- logDebugMsg("sunrise: " .. sunEvents.sunrise)
    logDebugMsg("sunset: " .. sunEvents.sunset)

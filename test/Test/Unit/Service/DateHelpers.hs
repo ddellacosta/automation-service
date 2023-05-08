@@ -6,21 +6,14 @@ module Test.Unit.Service.DateHelpers
   )
 where
 
-import Control.Lens (filtered, preview)
-import Data.Aeson (Value(String))
-import Data.Aeson.Lens (_String, key, values)
 import Data.Foldable (for_)
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
-import Data.Text (Text)
 import qualified Data.Time.Clock as C
-import Data.Time.Clock (UTCTime)
 import qualified Data.Time.Format.ISO8601 as ISO
-import Test.Helpers (loadOneDay)
 import Test.Hspec (Spec, describe, it, shouldBe)
 import Service.DateHelpers
   ( addMinutes
-  , dayFromHour
   , getSunriseAndSunset
   , utcTimeToCronInstant
   )
@@ -30,16 +23,17 @@ import System.Environment (setEnv)
 spec :: Spec
 spec = describe "date utility functions" $ do
   it "generates a valid cron-format schedule from parsed dates" $ do
-    oneDay <- loadOneDay
+
+    setEnv "TZ" "America/New_York"
 
     utcNow <- C.getCurrentTime
 
     let
+      coords = (41.5020948, (-73.982543))
       testDate = fromMaybe utcNow $
-        ISO.iso8601ParseM "2023-05-01T00:00:00Z"
+        ISO.iso8601ParseM "2023-05-02T00:00:00Z" -- this will give me 05-01 in EDT
 
-    sunrise <- fromMaybe utcNow <$> mkUtcTimeFromVal "Rise" testDate oneDay
-    sunset <- fromMaybe utcNow <$> mkUtcTimeFromVal "Set" testDate oneDay
+    (Just sunrise, Just sunset) <- getSunriseAndSunset testDate coords
 
     --
     -- Using `show` here and below because producing a `CronSchedule`
@@ -51,7 +45,7 @@ spec = describe "date utility functions" $ do
 
     show (P.parseCronSchedule . T.pack . utcTimeToCronInstant $ sunset)
       `shouldBe`
-      "Right CronSchedule 54 23 1 5 1"
+      "Right CronSchedule 53 23 1 5 1"
 
     let
       thirtyAfterSunrise = addMinutes 30 sunrise
@@ -63,7 +57,7 @@ spec = describe "date utility functions" $ do
 
     show (P.parseCronSchedule . T.pack . utcTimeToCronInstant $ thirtyBeforeSunset)
       `shouldBe`
-      "Right CronSchedule 24 23 1 5 1"
+      "Right CronSchedule 23 23 1 5 1"
 
   it "correctly generates sunrise and sunset values according to TZ env var" $ do
     let
@@ -106,28 +100,3 @@ spec = describe "date utility functions" $ do
             "(Just 2023-05-08 15:56:27.287977337837 UTC,Just 2023-05-09 04:59:31.597565710544 UTC)"
           "Pacific/Auckland" ->
             "(Just 2023-05-09 19:07:33.402958810329 UTC,Just 2023-05-10 05:27:09.667979478836 UTC)"
-
-  where
-    mkUtcTimeFromVal :: Text -> UTCTime -> Value -> IO (Maybe UTCTime)
-    mkUtcTimeFromVal sundataKey date oneDay =
-      pure $ flip dayFromHour date $ T.unpack hourString
-      where
-        hourString = fromMaybe "00:00" $ sundataVal sundataKey oneDay
-
-    --
-    -- This is duplicated in Service.Automation.LuaScript. I will pull
-    -- it out when it makes sense to do so, but for now this is
-    -- preferable to exporting that function so I can use it here, or
-    -- creating a new module just for handling the output of the
-    -- aa.usno.navy.mil API.
-    --
-    sundataVal :: Text -> Value -> Maybe Text
-    sundataVal sdk = preview
-      ( key "properties"
-      . key "data"
-      . key "sundata"
-      . values
-      . filtered ((== Just (String sdk)) . preview (key "phen"))
-      . key "time"
-      . _String
-      )
