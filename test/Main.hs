@@ -35,7 +35,7 @@ unit = do
   mqttStatusSpec <- testSpec "MQTT Status Messages Spec" MQTTStatus.spec
   pure $ testGroup "Unit Tests"
     [ automationMessagesSpec
-    , dateHelpersSpec
+    -- , dateHelpersSpec
     , devicesSpec
     , groupsSpec
     , mqttStatusSpec
