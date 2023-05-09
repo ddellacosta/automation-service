@@ -13,7 +13,7 @@ where
 import Prelude hiding (min)
 
 import Control.Exception (IOException, handle)
-import Control.Lens ((^?), _1, _Just)
+import Control.Lens (_1, _Just, preview)
 import qualified Data.Astro.Sun as AstroSun
 import qualified Data.Astro.Time.Conv as AstroConv
 import qualified Data.Astro.Types as AstroTypes
@@ -57,12 +57,14 @@ getZonedTimeForUTC ts = do
 getTimeZone :: UTCTime -> IO TimeZone
 getTimeZone ts = do
   tzVar <- handle (\(_e :: IOException) -> pure "UTC") $ getEnv "TZ"
+  -- need to handle this failing too
   tz <- Z.loadTZFromDB tzVar
   pure $ Z.timeZoneForUTCTime tz ts
 
 getSunriseAndSunset :: UTCTime -> (Double, Double) -> IO (Maybe UTCTime, Maybe UTCTime)
 getSunriseAndSunset ts (lat, long) = do
   utcTs <- getZonedTimeForUTC ts
+
   let
     sunEvents@(sunrise, sunset) = getSunriseAndSunset' utcTs (lat, long)
 
@@ -82,14 +84,21 @@ getSunriseAndSunset ts (lat, long) = do
       pure sunset
 
 getSunriseAndSunset' :: ZonedTime -> (Double, Double) -> (Maybe UTCTime, Maybe UTCTime)
-getSunriseAndSunset' ts (lat, long) = (sunrise', sunset')
+getSunriseAndSunset' ts (lat, long) =
+  (toUTC sunrise, toUTC sunset)
+
   where
     coords =
       AstroTypes.GeoC (AstroTypes.DD lat) (AstroTypes.DD long)
+
     -- see docs for sunRiseAndSet:
     verticalShift = (AstroTypes.DD 0.833333)
+
     lcd = AstroConv.zonedTimeToLCD ts
+
     -- fno-warn-incomplete-uni-patterns at the top is for this
-    (AstroSun.RiseSet sunrise sunset) = AstroSun.sunRiseAndSet coords verticalShift lcd
-    sunrise' = LT.zonedTimeToUTC . AstroConv.lctToZonedTime <$> sunrise ^? _Just . _1
-    sunset' = LT.zonedTimeToUTC . AstroConv.lctToZonedTime <$> sunset ^? _Just . _1
+    (AstroSun.RiseSet sunrise sunset) =
+      AstroSun.sunRiseAndSet coords verticalShift lcd
+
+    toUTC sunEvent =
+      LT.zonedTimeToUTC . AstroConv.lctToZonedTime <$> preview (_Just . _1) sunEvent
