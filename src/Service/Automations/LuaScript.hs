@@ -264,8 +264,8 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
                     , ("sunset", String . T.pack . ISO.iso8601Show $ sunset)
                     ]
           )
-      <#> parameter LM.peekRealFloat "double" "lattitude" "e.g. 41.5020948"
-      <#> parameter LM.peekRealFloat "double" "lattitude" "e.g. -73.982543"
+      <#> parameter LM.peekRealFloat "double" "latitude" "e.g. 41.5020948"
+      <#> parameter LM.peekRealFloat "double" "longitude" "e.g. -73.982543"
       =#> functionResult LA.pushViaJSON "sunEvents" "sunEvents"
 
     httpGet :: DocumentedFunction Lua.Exception
