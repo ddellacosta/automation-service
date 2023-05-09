@@ -1,10 +1,15 @@
 {-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
 
 module Service.TimeHelpers
-  ( addMinutes
-  , getCurrentZonedTime
+  ( Coordinates
+  , SunEvent
+  , SunEvents
+  , Sunrise
+  , Sunset
+  , addMinutes
   , getSunriseAndSunset
   , getTimeZone
+  , getZonedTimeForUTC
   , minuteDiff
   , utcTimeToCronInstant
   )
@@ -46,14 +51,17 @@ utcTimeToCronInstant =
 addMinutes :: Pico -> UTCTime -> UTCTime
 addMinutes = C.addUTCTime . minuteDiff
 
-getCurrentZonedTime :: IO ZonedTime
-getCurrentZonedTime = C.getCurrentTime >>= getZonedTimeForUTC
-
-getZonedTimeForUTC :: UTCTime -> IO ZonedTime
-getZonedTimeForUTC ts = do
-  tz <- getTimeZone ts
-  pure $ LT.utcToZonedTime tz ts
-
+-- | Given a UTCTime, returns the timezone, calculated using the
+-- environment variable "TZ" exclusively.
+--
+-- This was necessitated by getting inconsistent results between local
+-- testing and in the context of a docker container when using
+-- Data.Time.LocalTime's getCurrentTimeZone or getTimeZone. As a
+-- result I abandoned efforts to configure my docker container's linux
+-- instance and instead opted to calculate the timezone internally
+-- based on the value of the TZ env. var, as I was able to
+-- consistently confirm that was being set successfully.
+--
 getTimeZone :: UTCTime -> IO TimeZone
 getTimeZone ts = do
   tzVar <- handle (\(_e :: IOException) -> pure "UTC") $ getEnv "TZ"
@@ -61,7 +69,32 @@ getTimeZone ts = do
   tz <- Z.loadTZFromDB tzVar
   pure $ Z.timeZoneForUTCTime tz ts
 
-getSunriseAndSunset :: UTCTime -> (Double, Double) -> IO (Maybe UTCTime, Maybe UTCTime)
+-- | Given a UTCTime, converts it into a ZonedTime using the current
+-- TZ env. var setting per getTimeZone.
+--
+getZonedTimeForUTC :: UTCTime -> IO ZonedTime
+getZonedTimeForUTC ts = do
+  tz <- getTimeZone ts
+  pure $ LT.utcToZonedTime tz ts
+
+type Coordinates = (Double, Double)
+
+type Sunrise = Maybe UTCTime
+type Sunset = Maybe UTCTime
+type SunEvent = Maybe UTCTime
+type SunEvents = (Sunrise, Sunset)
+
+-- | Takes a UTCTime representing the day we want sun events
+-- for--whatever that translates to in the local timezone, meaning
+-- what is explicitly set to the environment var *TZ--and a set of
+-- latitude/longitude coordinates in decimal format, and returns a
+-- sunrise/sunset pair, each value wrapped in a Maybe.
+--
+-- *(Due to a number of issues getting reliable results configuring
+-- timezone to work with time as expected, all calculations to
+-- calculate the timezone is handled internally. See getTimeZone.)
+--
+getSunriseAndSunset :: UTCTime -> Coordinates -> IO SunEvents
 getSunriseAndSunset ts (lat, long) = do
   utcTs <- getZonedTimeForUTC ts
 
@@ -76,14 +109,14 @@ getSunriseAndSunset ts (lat, long) = do
       pure sunEvents
 
   where
-    getNextDaySunset :: UTCTime -> (Double, Double) -> IO (Maybe UTCTime)
+    getNextDaySunset :: UTCTime -> Coordinates -> IO SunEvent
     getNextDaySunset ts' (lat', long') = do
       nextDay <- getZonedTimeForUTC . addMinutes 1440 $ ts'
       let
         (_sunrise, sunset) = getSunriseAndSunset' nextDay (lat', long')
       pure sunset
 
-getSunriseAndSunset' :: ZonedTime -> (Double, Double) -> (Maybe UTCTime, Maybe UTCTime)
+getSunriseAndSunset' :: ZonedTime -> Coordinates -> SunEvents
 getSunriseAndSunset' ts (lat, long) =
   (toUTC sunrise, toUTC sunset)
 
