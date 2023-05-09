@@ -107,14 +107,18 @@ class AutomationServiceCard extends LitElement {
     if (attributes.scheduledAutomations?.length > 0) {
       return html`
         <div class="automation-list">
+          <div class="scheduled-autos-header">
+           <span class="job-id-header">job id</span><span class="started-header">schedule</span>
+          </div>
+
           ${attributes.scheduledAutomations.map(({schedule: schedule, jobId: jobId, job: job}) =>
             html`
-              <div class="automation-entry">
-                <div>
-                  <span class="job-id">${jobId}</span>:
-                  <div class="job-details">
-		    <span class="schedule">${schedule}</span> - <span class="job">${job}</span>
-                  </div>
+              <div class="job-entry">
+                <div class="job-header">
+                  <span class="job-id">${jobId}</span>
+                  <span class="schedule">${schedule}</span>
+                </div>
+		<div class="job">${job}</div>
                 </div>
               </div>
             `
@@ -144,10 +148,10 @@ class AutomationServiceCard extends LitElement {
         <div class="automation-service-container">
 	  <h2>automation-service</h2>
 
-          <h3>Running Automations:</h3>
+          <h3>Running</h3>
 	  ${this.runningAutomations(attributes)}
 
-          <h3>Scheduled Automations:</h3>
+          <h3>Scheduled</h3>
 	  ${this.scheduledAutomations(attributes)}
 	</div>
       </ha-card>
@@ -176,7 +180,7 @@ class AutomationServiceCard extends LitElement {
       flex-direction: column;
     }
 
-    .automation-list-header {
+    .automation-list-header, .scheduled-autos-header {
       display: flex;
       flex-direction: row;
       justify-content: space-between;
@@ -188,7 +192,6 @@ class AutomationServiceCard extends LitElement {
     }
 
     .none {
-      color: #a9a9a9;
     }
 
     .luascript-automation {
@@ -204,7 +207,6 @@ class AutomationServiceCard extends LitElement {
     }
 
     .start-time {
-      color: #428018;
       font-family: monospace;
       font-size: 0.9em;
     }
@@ -215,14 +217,16 @@ class AutomationServiceCard extends LitElement {
       justify-content: space-between;
     }
 
-    .device-info {
+    .devices-header {
       cursor: pointer;
+    }
+
+    .devices-header:hover {
       color: #484CD0;
     }
 
     .device-id {
       margin-left: 3px;
-      color: #D05148;
       font-family: monospace;
       font-size: 0.9em;
     }
@@ -232,13 +236,22 @@ class AutomationServiceCard extends LitElement {
 
     .group-id {
       margin-left: 3px;
-      color: #E25C8D;
       font-family: monospace;
       font-size: 0.9em;
     }
 
+    .job-entry {
+      margin-bottom: 3%;
+    }
+
+    .job-header {
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+    }
+
     .job-id {
-      color: #D21404;
+      color: #44C544;
     }
 
     .job-details {
@@ -252,7 +265,7 @@ class AutomationServiceCard extends LitElement {
 
     .job {
       margin-left: 2%;
-      color: #44C544;
+      color: #428018;
     }
   `;
 }
