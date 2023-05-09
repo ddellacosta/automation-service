@@ -43,11 +43,7 @@ import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Automation as Automation
 import Service.Automation (Automation(..))
 import qualified Service.AutomationName as AutomationName
-import qualified Service.DateHelpers as DH
-import Service.DateHelpers
-  ( getSunriseAndSunset
-  , utcTimeToCronInstant
-  )
+import qualified Service.TimeHelpers as TH
 import Service.Device (Device, DeviceId, toLuaDevice)
 import Service.Env
   ( Env
@@ -241,9 +237,9 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
                   minutes' = toEnum (minutes * (10 ^ (12 :: Int))) :: Pico
                   initialDate = ISO.iso8601ParseM date :: Maybe UTCTime
                   updatedDate = case initialDate of
-                    Just initialDate' -> DH.addMinutes minutes' initialDate'
+                    Just initialDate' -> TH.addMinutes minutes' initialDate'
                     -- I am not sure how to handle failure here
-                    Nothing -> DH.addMinutes minutes' utcNow
+                    Nothing -> TH.addMinutes minutes' utcNow
 
                 pure $ ISO.iso8601Show updatedDate
           )
@@ -257,7 +253,7 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
       ### (\lat long -> do
               utcNow <- liftIO C.getCurrentTime
 
-              sunEvents <- liftIO $ getSunriseAndSunset utcNow (lat, long)
+              sunEvents <- liftIO $ TH.getSunriseAndSunset utcNow (lat, long)
 
               case sunEvents of
                 (Nothing, _) -> Lua.failLua "Got a bad sunrise"
@@ -409,7 +405,7 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
       ### (\date -> pure $
               -- again, not sure this is the failure handling we want here
               fromMaybe "* * * * *" $
-                utcTimeToCronInstant <$>
+                TH.utcTimeToCronInstant <$>
                   (ISO.iso8601ParseM date :: Maybe UTCTime)
           )
       <#> parameter LM.peekString "string" "date" "date to convert to cron schedule"

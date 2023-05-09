@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
 
-module Service.DateHelpers
+module Service.TimeHelpers
   ( addMinutes
   , getCurrentZonedTime
   , getSunriseAndSunset

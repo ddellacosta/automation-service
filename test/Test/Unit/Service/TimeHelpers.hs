@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
 
-module Test.Unit.Service.DateHelpers
+module Test.Unit.Service.TimeHelpers
   ( spec
   ,
   )
@@ -12,7 +12,7 @@ import qualified Data.Text as T
 import qualified Data.Time.Clock as C
 import qualified Data.Time.Format.ISO8601 as ISO
 import Test.Hspec (Spec, describe, it, shouldBe)
-import Service.DateHelpers
+import Service.TimeHelpers
   ( addMinutes
   , getSunriseAndSunset
   , utcTimeToCronInstant

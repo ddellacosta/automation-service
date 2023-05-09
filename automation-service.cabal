@@ -87,7 +87,7 @@ library
     , Service.Automations.StateManager
     , Service.App
     , Service.Daemon
-    , Service.DateHelpers
+    , Service.TimeHelpers
     , Service.Device
     , Service.Group
     , Service.Env
@@ -123,7 +123,7 @@ test-suite automation-service-tests
       Test.Helpers
     , Test.Integration.Service.Daemon
     , Test.Integration.Service.DaemonTestHelpers
-    , Test.Unit.Service.DateHelpers
+    , Test.Unit.Service.TimeHelpers
     , Test.Unit.Service.Device
     , Test.Unit.Service.Group
     , Test.Unit.Service.MQTT.Messages.Daemon
