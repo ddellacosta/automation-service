@@ -42,7 +42,7 @@ import Service.Env
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
 import System.Environment (setEnv)
-import Test.Hspec (Spec, around, expectationFailure, it, shouldBe, xit)
+import Test.Hspec (Spec, around, expectationFailure, it, shouldBe)
 import Test.Integration.Service.DaemonTestHelpers
   ( initAndCleanup
   , testWithAsyncDaemon
@@ -285,7 +285,7 @@ luaScriptSpecs = do
         M.lookup groupId groupRegs' `shouldBe` Nothing
 
   around initAndCleanup $ do
-    xit "retrieves dates for Sun events (rise & set)" $
+    it "retrieves dates for Sun events (rise & set)" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
 
         setEnv "TZ" "America/New_York"
