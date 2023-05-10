@@ -108,7 +108,8 @@ class AutomationServiceCard extends LitElement {
       return html`
         <div class="automation-list">
           <div class="scheduled-autos-header">
-           <span class="job-id-header">job id</span><span class="started-header">schedule</span>
+           <span class="job-id-header">job id</span>
+           <span class="started-header">schedule (<a href="https://crontab.cronhub.io/">syntax</a>)</span>
           </div>
 
           ${attributes.scheduledAutomations.map(({schedule: schedule, jobId: jobId, job: job}) =>
@@ -151,7 +152,9 @@ class AutomationServiceCard extends LitElement {
           <h3>Running</h3>
 	  ${this.runningAutomations(attributes)}
 
-          <h3>Scheduled</h3>
+          <div class="scheduled-header">
+            <h3>Scheduled</h3>
+          </div>
 	  ${this.scheduledAutomations(attributes)}
 	</div>
       </ha-card>
@@ -238,6 +241,9 @@ class AutomationServiceCard extends LitElement {
       margin-left: 3px;
       font-family: monospace;
       font-size: 0.9em;
+    }
+
+    .scheduled-header {
     }
 
     .job-entry {
