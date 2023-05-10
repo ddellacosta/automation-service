@@ -78,6 +78,7 @@ spec = describe "date utility functions" $ do
       let
         testDate = fromMaybe utcNow $
           ISO.iso8601ParseM "2023-05-08T20:00:00Z"
+
       sunEvents@(sunrise, sunset) <- getSunriseAndSunset testDate coords
 
       -- sunset should not be before sunrise
@@ -89,12 +90,10 @@ spec = describe "date utility functions" $ do
           "America/New_York" ->
             "(Just 2023-05-08 09:44:34.938793480396 UTC,Just 2023-05-09 00:01:04.509460330009 UTC)"
           "Europe/Kyiv" ->
-            -- "(Just 2023-05-09 02:20:05.546441674232 UTC,Just 2023-05-09 17:29:46.558659374713 UTC)"
             "(Just 2023-05-08 02:21:43.064078092575 UTC,Just 2023-05-08 17:28:15.654907822608 UTC)"
           "Asia/Tokyo" ->
             "(Just 2023-05-09 19:41:06.513182222843 UTC,Just 2023-05-10 09:34:51.927377879619 UTC)"
           "Africa/Cairo" ->
-            -- "(Just 2023-05-09 03:06:03.68356347084 UTC,Just 2023-05-09 16:37:30.942675769329 UTC)"
             "(Just 2023-05-08 03:06:49.180118143558 UTC,Just 2023-05-08 16:36:51.859363317489 UTC)"
           "America/Mendoza" ->
             "(Just 2023-05-08 11:13:29.21167731285 UTC,Just 2023-05-08 21:49:50.850725769996 UTC)"
