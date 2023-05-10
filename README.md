@@ -144,6 +144,7 @@ $ cabal test --test-show-details=always --test-options '--color=always -l -p Int
 * profile and better understand memory usage - seems like there is a very slow memory leak
 * CI build and deploy: tag build with sha vs. everything going to 'latest' (?)
 * move these todos into GH issues (?)
+* figure out how to generate Lua docs rather than writing them by hand
 
 
 ## License/Copyright
