@@ -17,7 +17,7 @@ Right now this software is usable, but in a very alpha state. See [TODO](#todo) 
 
 Currently it is assumed you will be running automation-service in a container setup [as described below](#running).
 
-In the root directory of your automation-service install (as configured in docker-compose), in the same location as the config.dhall file, place a directory called `lua-automations--the easy way to set all of this up is to simply clone/copy the repo into place and tweak.
+In the root directory of your automation-service install (as configured in docker-compose), in the same location as the config.dhall file, place a directory called `lua-automations`--the easy way to set all of this up is to simply clone/copy the repo into place and tweak.
 
 Any Lua scripts in the `lua-automations` directory will be available for running. Here is a basic example which flashes lights when a sensor is triggered and a specific condition is met:
 
