@@ -1,5 +1,7 @@
 # automation-service
 
+[alt text](/docs/ha-custom-card.png)
+
 automation-service is a tool for setting up simple-to-complicated automations. It communicates via MQTT and can automatically pull and use device and group information from Zigbee2MQTT, but it can be used with anything that can communicate over MQTT. It provides a simple message protocol for starting, stopping, and scheduling automations. It provides the ability to script your automations in Lua with batteries-included helpers, or build them in Haskell for more complex or "infrastructural" requirements.
 
 Right now this software is usable, but in a very alpha state. See [TODO](#todo) below.
@@ -69,7 +71,9 @@ Check out other examples in the [/lua-automations/](/lua-automations/) directory
 
 ## Configuration
 
-The `mqttBroker`'s `uri` setting determines how automation-service is going to connect to the network's broker. See the default config for an example of connecting with a password via SSL. 
+automation-service itself is configured in the [config.dhall](/config.dhall) file.
+
+The `mqttBroker`'s `uri` setting determines how automation-service is going to connect to the network's broker. See the default config for an example of connecting via SSL using a password. 
 
 If you don't want to configure SSL set caCertPath, clientCertPath, and clientKeyPath to `None`.
 
