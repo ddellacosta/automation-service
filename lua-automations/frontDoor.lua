@@ -1,8 +1,8 @@
 
-local frontDoorSensor = nil
-local frontDoorSensorChan = nil
-local basementMirrorLight = nil
-local livingRoomWindowLight = nil
+local frontDoorSensor
+local frontDoorSensorChan
+local basementMirrorLight
+local livingRoomWindowLight
 
 function setup ()
    frontDoorSensor = register("0x0015bc001e00f658")
