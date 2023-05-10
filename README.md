@@ -2,7 +2,13 @@
 
 <img style="width: 30%" src="docs/ha-custom-card.png" alt="screenshot of HA custom card" />
 
-automation-service is a tool for setting up simple-to-complicated automations. It communicates via MQTT and can automatically pull and use device and group information from Zigbee2MQTT, but it can be used with anything that can communicate over MQTT. It provides a simple message protocol for starting, stopping, and scheduling automations. It provides the ability to script your automations in Lua with batteries-included helpers, or build them in Haskell for more complex or "infrastructural" requirements. There is a custom card available for showing status information (and more soon) in Home Assistant as well, seen in the above screenshot.
+automation-service is a tool for setting up simple-to-complicated automations. Its goals include:
+  * allowing quick feedback loops for experimentation and testing
+  * robustness, stability, efficiency
+  * supporting open standards and interoperability
+  * **being simple to understand and start using for home automation DIYers and makers**
+
+It communicates via MQTT and can automatically pull and use device and group information from Zigbee2MQTT, but it can potentially be used with anything that can communicate over MQTT. It provides a simple message protocol for starting, stopping, and scheduling automations over MQTT, and lets you script automations in Lua with batteries-included helpers by dropping them in the `lua-automations` directory. There is a custom card available for showing status information (and more soon) in Home Assistant as well, seen in the above screenshot.
 
 Right now this software is usable, but in a very alpha state. See [TODO](#todo) below.
 
