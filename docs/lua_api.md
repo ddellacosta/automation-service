@@ -8,7 +8,7 @@
 * [Scripting helpers](#scripting-helpers)
   * [addMinutes](#addMinutes)
   * [getSunEvents](#getSunEvents)
-  * [httpGet](#httpGet)
+  * [httpGet](#httpGet-experimental)
   * [logDebugMsg](#logDebugMsg)
   * [microSleep](#microSleep)
   * [publish](#publish)
