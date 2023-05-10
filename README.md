@@ -67,7 +67,7 @@ $ mosquitto_pub -u user -p password -t automation-service/set m "{\"unschedule\"
 
 If you use Home Assistant, you can send messages to MQTT topics via it's developer console as well. These messages and more can also be sent by scripts, so scripts can start and schedule other scripts. See an example of this in [/lua-automations/sunsetLighting.lua](lua-automations/sunsetLighting.lua).
 
-Check out other examples in the [/lua-automations/](/lua-automations/) directory, and see the current Lua API reference documentation [here]().
+Check out other examples in the [/lua-automations/](/lua-automations/) directory, and see the current Lua API reference documentation [here](docs/lua_api.md).
 
 
 ## Configuration

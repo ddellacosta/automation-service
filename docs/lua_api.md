@@ -1,5 +1,24 @@
 # Lua API
 
+* [Core structure](#core-structure)
+  * [setup](#setup)
+  * [loop](#loop)
+  * [cleanup](#cleanup)
+
+* [Scripting helpers](#scripting-helpers)
+  * [addMinutes](#addMinutes)
+  * [getSunEvents](#getSunEvents)
+  * [httpGet](#httpGet)
+  * [logDebugMsg](#logDebugMsg)
+  * [microSleep](#microSleep)
+  * [publish](#publish)
+  * [register](#register)
+  * [registerGroup](#registerGroup)
+  * [sendMessage](#sendMessage)
+  * [sleep](#sleep)
+  * [subscribe](#subscribe)
+  * [timestampToCron](#timestampToCron)
+
 ## Core structure
 
 None of the core functions are technically required, but a script without any of them will just end (unless you want to draw outside the lines with Lua...do it, and let me know how it turns out (seriously)).
@@ -91,7 +110,7 @@ Takes a string and logs a message to the automation-service log, at Debug log le
    end
 
    -- Log output:
-   -- Debug - 10/May/2023:20:01:45 +0000 - myLuaScript: hey, look at me, I'm a log message 
+   -- Debug - 10/May/2023:20:01:45 +0000 - myScript: hey, look at me, I'm a log message 
 ```
 
 
@@ -139,7 +158,7 @@ Same as `register` for devices, but expects a Zigbee2MQTT group id, and the attr
 
 ### sendMessage
 
-Sends a message to the automation-service daemon, per the messaging protocol:
+Sends a message to the automation-service daemon, per the messaging protocol (this is not sent via the MQTT broker, but internally):
 
 ```lua
    sendMessage({
