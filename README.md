@@ -1,6 +1,6 @@
 # automation-service
 
-<img style="width: 30%" src="docs/ha-custom-card.png" alt="screenshot of HA custom card" />
+<img style="width: 45%" src="docs/ha-custom-card.png" alt="screenshot of HA custom card" />
 
 automation-service is a tool for setting up simple-to-complicated automations. Its goals include:
   * allowing quick feedback loops for experimentation and testing
