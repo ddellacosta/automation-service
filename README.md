@@ -80,7 +80,7 @@ If you don't want to configure SSL set caCertPath, clientCertPath, and clientKey
 
 ## Running
 
-Currently the automation-service docker image is built on every push to master and [published to the Github container registry](https://github.com/ddellacosta/automation-service/pkgs/container/automation-service). You can then run this in a docker-compose stack a la https://www.home-assistant.io/installation/linux#install-home-assistant-container:
+Currently the automation-service docker image is built on every push to master, and [published to the Github container registry](https://github.com/ddellacosta/automation-service/pkgs/container/automation-service). You can run this in a docker-compose stack a la https://www.home-assistant.io/installation/linux#install-home-assistant-container:
 
 ```yaml
   automation-service:
@@ -94,8 +94,6 @@ Currently the automation-service docker image is built on every push to master a
     environment:
       - TZ=America/New_York
 ```
-
-You can then start this up with `docker-compose start automation-service`. Check out the automations in the `lua-automations` directory to get going. #TODO <- link here to examples
 
 
 ## TODO
