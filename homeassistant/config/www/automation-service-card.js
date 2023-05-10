@@ -109,7 +109,7 @@ class AutomationServiceCard extends LitElement {
         <div class="automation-list">
           <div class="scheduled-autos-header">
            <span class="job-id-header">job id</span>
-           <span class="started-header">schedule (<a href="https://crontab.cronhub.io/">syntax</a>)</span>
+           <span class="started-header">schedule (<a target="_blank" href="https://crontab.cronhub.io/">syntax</a>)</span>
           </div>
 
           ${attributes.scheduledAutomations.map(({schedule: schedule, jobId: jobId, job: job}) =>

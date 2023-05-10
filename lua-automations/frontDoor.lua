@@ -21,6 +21,4 @@ function loop ()
       publish(basementMirrorLight.topicSet, { effect = "blink" })
       publish(livingRoomWindowLight.topicSet, { effect = "blink" })
    end
-
-   sleep(1)
 end
