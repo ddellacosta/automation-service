@@ -6,6 +6,7 @@ automation-service is a tool for setting up simple-to-complicated automations. I
 
 Right now this software is usable, but in a very alpha state. See [TODO](#todo) below.
 
+
 ## How It Works
 
 Currently it is assumed you will be running automation-service in a container setup [as described below](#running).
@@ -96,6 +97,35 @@ Currently the automation-service docker image is built on every push to master, 
 ```
 
 
+## Development
+
+### Building locally
+
+This requires [nix](https://nixos.org/download.html).
+
+```bash
+$ nix build; docker load < result
+...
+Loaded image: automation-service:78921vslcfdribi4a6wyqx1cnl0nv67x
+$
+
+```
+
+You can now take this and drop it in your `compose.yml` file for docker-compose.
+
+
+### Testing
+
+Running tests:
+
+```bash
+# watchexec is handy:
+$ watchexec -w test -w src -w app -i "*.db" -i "test/dbs/*" 'cabal test --test-show-details=always --test-options "--color=always"'
+$ cabal test --test-show-details=always --test-options '--color=always -l -p Unit'
+$ cabal test --test-show-details=always --test-options '--color=always -l -p Integration'
+```
+
+
 ## TODO
 
 * bug: trying to restart an automation blocks when listening on channel, have to send an interrupt message somehow
@@ -114,35 +144,6 @@ Currently the automation-service docker image is built on every push to master, 
 * profile and better understand memory usage - seems like there is a very slow memory leak
 * CI build and deploy: tag build with sha vs. everything going to 'latest' (?)
 * move these todos into GH issues (?)
-
-
-## Development
-
-### Building locally
-
-This requires [nix](https://nixos.org/download.html). It is only used in one command, but makes it easy to ensure builds are consistent, including dependencies.
-
-```bash
-$ nix build; docker load < result
-...
-Loaded image: automation-service:78921vslcfdribi4a6wyqx1cnl0nv67x
-$
-
-```
-
-You can now take this and drop it in your `compose.yml` file for docker-compose:
-
-
-### Testing
-
-Running tests:
-
-```bash
-# watchexec is handy:
-$ watchexec -w test -w src -w app -i "*.db" -i "test/dbs/*" 'cabal test --test-show-details=always --test-options "--color=always"'
-$ cabal test --test-show-details=always --test-options '--color=always -l -p Unit'
-$ cabal test --test-show-details=always --test-options '--color=always -l -p Integration'
-```
 
 
 ## License/Copyright
