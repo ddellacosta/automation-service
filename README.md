@@ -1,6 +1,8 @@
-# automation-service
+<div style="display: flex; flex-direction: row; justify-content: space-between">
+  <h1>automation-service</h1>
 
-![alt text](docs/ha-custom-card.png)
+  <img style="width: 30%" src="docs/ha-custom-card.png" />
+</div>
 
 automation-service is a tool for setting up simple-to-complicated automations. It communicates via MQTT and can automatically pull and use device and group information from Zigbee2MQTT, but it can be used with anything that can communicate over MQTT. It provides a simple message protocol for starting, stopping, and scheduling automations. It provides the ability to script your automations in Lua with batteries-included helpers, or build them in Haskell for more complex or "infrastructural" requirements.
 
