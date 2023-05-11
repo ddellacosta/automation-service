@@ -131,9 +131,6 @@ function loop ()
       if resp.action == "on_press_release" then
          publish(diningRoomTableLight.topicSet, { state = "TOGGLE" })
 -- ...
-end
-
--- or an automation-service internal message:
 ```
 
 
