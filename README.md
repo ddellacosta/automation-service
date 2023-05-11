@@ -84,6 +84,10 @@ The `mqttBroker`'s `uri` setting determines how automation-service is going to c
 
 If you don't want to configure SSL set caCertPath, clientCertPath, and clientKeyPath to `None`.
 
+### Home Assistant Custom Card
+
+The Custom Card receives data from automation-service as a sensor (honestly not sure if this is hacky or the right way to do it lol). The configuration for this is at [homeassistant/config/configuration.yaml](homeassistant/config/configuration.yaml), and the custom card itself is at [homeassistant/config/www/automation-service-card.js](homeassistant/config/www/automation-service-card.js), which is where you want to put it in your own system, and load it as a resource to enable it (p.s. I am a super newbie at writing HA code, so I'd appreciate any pointers on what I may be doing wrong here).
+
 
 ## Running
 
