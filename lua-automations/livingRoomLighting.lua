@@ -27,6 +27,7 @@ end
 function loop ()
    resp = switchChan()
 
+   -- I am not a very good Lua programmer, yet
    if resp.action == "button_1_press_release" then
       publish(livingRoomLightStrip.topicSet, { state = "TOGGLE" })
    elseif resp.action == "button_2_press_release" then
