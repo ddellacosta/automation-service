@@ -15,7 +15,7 @@ Right now this software is usable, but in a very alpha state. See [TODO](#todo) 
 
 ## How It Works
 
-Currently it is assumed you will be running automation-service in a container setup [as described below](#running).
+Currently it is assumed you will be running automation-service in a container setup [as described below](#running). I'd like to figure out how to add it as an integration in Home Assistant soon as well.
 
 In the root directory of your automation-service install (as configured in docker-compose), in the same location as the config.dhall file, place a directory called `lua-automations`--the easy way to set all of this up is to simply clone/copy the repo into place and tweak.
 
