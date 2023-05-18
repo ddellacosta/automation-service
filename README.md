@@ -28,6 +28,7 @@ local basementMirrorLight
 local livingRoomWindowLight
 
 function setup ()
+   # these IDs correspond to IEEE Addresses in Zigbee2MQTT
    frontDoorSensor = register("0x0015bc001e00f658")
    basementMirrorLight = register("0xb4e3f9fffe14c707")
    livingRoomWindowLight = register("0x680ae2fffe4577ac")
