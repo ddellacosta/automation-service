@@ -5,9 +5,8 @@ module Test.Unit.Service.MQTT.Status
 where
 
 import Control.Concurrent (myThreadId)
-import Control.Lens ((^..), (^?), _Just, folded, lengthOf)
-import qualified Data.Aeson as Aeson
-import Data.Aeson (Value, decode)
+import Control.Lens ((^..), _Just, filtered, folded, lengthOf, toListOf)
+import Data.Aeson (Value(..), decode)
 import Data.Aeson.Lens (_Array, _String, key, nth, values)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.List (sort)
@@ -78,21 +77,15 @@ spec = describe "Status message generation" $ do
       `shouldBe`
       2
 
-    -- don't like that this depends on the order returned
-    mStatus ^? _Just . key "runningAutomations" . nth 0 . key "devices" . nth 0
+    lengthOf
+      (_Just . key "runningAutomations" . values . key "devices" . values . filtered (== String "device2"))
+      mStatus
       `shouldBe`
-      Just (Aeson.String "device1")
+      2
 
-    -- first group in the list of groups for `LuaScript "baz"`
-    -- same re: order
-    lengthOf (_Just . key "runningAutomations" . nth 1 . key "groups" . values) mStatus
+    (sort . toListOf (_Just . key "runningAutomations" . values . key "groups" . values) $ mStatus)
       `shouldBe`
-      1
-
-    -- same re: order
-    mStatus ^? _Just . key "runningAutomations" . nth 1 . key "groups" . nth 0
-      `shouldBe`
-      Just (Aeson.Number 1)
+      [ Number 1.0, Number 2.0 ]
 
     mStatus ^.. (_Just . key "runningAutomations" . _Array . folded . key "startTime" . _String)
       `shouldBe`

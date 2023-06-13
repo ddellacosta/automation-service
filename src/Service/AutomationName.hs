@@ -16,9 +16,10 @@ import Data.Text (Text)
 import GHC.Generics (Generic)
 
 data AutomationName
-  = Null
+  = Gold
+  | HAState
   | LuaScript FilePath
-  | Gold
+  | Null
   | StateManager
   deriving (Generic, Show, Eq, Ord)
 
