@@ -222,261 +222,258 @@ run' threadMapTV = do
         cancel async'
       liftIO appCleanup'
 
-cleanDeadAutomations
-  :: (MonadIO m, MonadMQTT m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
-cleanDeadAutomations threadMapTV = do
-  threadMap <- atomically $ readTVar threadMapTV
-  cleanupAutoNames <- liftIO $ foldMap'
-    (\(auto, autoAsync) -> do
-        autoStatus <- liftIO . threadStatus . asyncThreadId $ autoAsync
-        case autoStatus of
-          ThreadFinished -> pure [_name auto]
-          ThreadDied -> pure [_name auto]
-          _ -> pure [])
-    threadMap
-  let cleanedTM = foldl' (flip M.delete) threadMap cleanupAutoNames
-  atomically $ writeTVar threadMapTV cleanedTM
+    cleanDeadAutomations
+      :: (MonadIO m, MonadMQTT m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
+    cleanDeadAutomations threadMapTV' = do
+      threadMap <- atomically $ readTVar threadMapTV'
+      cleanupAutoNames <- liftIO $ foldMap'
+        (\(auto, autoAsync) -> do
+            autoStatus <- liftIO . threadStatus . asyncThreadId $ autoAsync
+            case autoStatus of
+              ThreadFinished -> pure [_name auto]
+              ThreadDied -> pure [_name auto]
+              _ -> pure [])
+        threadMap
+      let cleanedTM = foldl' (flip M.delete) threadMap cleanupAutoNames
+      atomically $ writeTVar threadMapTV' cleanedTM
 
-tryRestoreRunningAutomations :: (MonadIO m, MonadReader Env m) => m ()
-tryRestoreRunningAutomations = do
-  rc <- view restartConditions
-  -- Possible to get a race condition here? I don't think so, because
-  -- the only thing that ever accesses the RestartConditions is this
-  -- single Daemon thread. I'd put it all in an atomically block
-  -- regardless but it would be awkward with the MonadReader stuff I
-  -- think.
-  rc' <- atomically . readTVar $ rc
-  case rc' of
-    (RestartConditions True True True) -> do
-      daemonBroadcast' <- view daemonBroadcast
-      priorRunningAutos <- view startupAutomations
+    tryRestoreRunningAutomations :: (MonadIO m, MonadReader Env m) => m ()
+    tryRestoreRunningAutomations = do
+      rc <- view restartConditions
+      -- Possible to get a race condition here? I don't think so, because
+      -- the only thing that ever accesses the RestartConditions is this
+      -- single Daemon thread. I'd put it all in an atomically block
+      -- regardless but it would be awkward with the MonadReader stuff I
+      -- think.
+      rc' <- atomically . readTVar $ rc
+      case rc' of
+        (RestartConditions True True True) -> do
+          daemonBroadcast' <- view daemonBroadcast
+          priorRunningAutos <- view startupAutomations
+          atomically $ do
+            priorRunningAutos' <- readTVar priorRunningAutos
+            for_ priorRunningAutos' $
+              writeTChan daemonBroadcast' . Daemon.Start
+            writeTVar rc $ rc' & notAlreadyRestarted .~ False
+        _ -> pure ()
+
+    initializeAndRunAutomation
+      :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+      => TVar (ThreadMap m)
+      -> AutomationName
+      -> m ()
+    initializeAndRunAutomation
+      threadMapTV' automationName = do
+        automationBroadcast' <- view automationBroadcast
+        clientChan <- atomically $ dupTChan automationBroadcast'
+
+        startTime <- liftIO getCurrentTime
+        let automation = findAutomation automationName $ startTime
+
+        --
+        -- > The more subtle difference is that this function will use
+        -- > uninterruptible masking for its cleanup handler. This is a
+        -- > subtle distinction, but at a high level, means that resource
+        -- > cleanup has more guarantees to complete. This comes at the cost
+        -- > that an incorrectly written cleanup function cannot be
+        -- > interrupted.
+        --
+        -- https://hackage.haskell.org/package/unliftio-0.2.24.0/docs/UnliftIO-Exception.html#v:bracket
+        --
+        clientAsync <- async $
+          bracket (pure clientChan) (Automation._cleanup automation) (Automation._run automation)
+
+        mPriorAutomationAsync <- atomically $
+          insertAutomation threadMapTV' automationName (automation, clientAsync)
+
+        for_ mPriorAutomationAsync cancel
+
+      where
+        --
+        -- Given a TVar ThreadMap and a (AutomationName, (Automation m, Async ()))
+        -- pair, inserts a new entry into the ThreadMap, or it replaces
+        -- the previous entry. If an entry already exists for that
+        -- AutomationName, then the previous entry's Async () is returned.
+        --
+        insertAutomation
+          :: TVar (ThreadMap m) -> AutomationName -> AutomationEntry m -> STM (Maybe (Async ()))
+        insertAutomation threadMapTV'' automationName' automationEntry = do
+          threadMap' <- readTVar threadMapTV''
+          let mPriorAutomation = M.lookup automationName' threadMap'
+          writeTVar threadMapTV'' $ M.insert automationName' automationEntry threadMap'
+          pure $ snd <$> mPriorAutomation
+
+    stopAutomation
+      :: (Logger m, MonadReader Env m, MonadUnliftIO m)
+      => TVar (ThreadMap m)
+      -> AutomationName
+      -> m ()
+    stopAutomation threadMapTV' automationName = do
+      info $ "Shutting down Automation " <> serializeAutomationName automationName
+
+      threadMap <- atomically . readTVar $ threadMapTV'
+
+      --
+      -- The cancel below is somewhat ironically wrapped in an async
+      -- because cancel will block when a topic channel is being read from
+      -- inside an automation thread and we need to send a message to the
+      -- topic channel immediately after, so we don't want it to
+      -- block...especially because the purpose of the message sent to the
+      -- topic channel is explicitly to allow the readTChan call inside of
+      -- `subscribe` calls to be unblocked so `cancel`'s `AsyncCancelled`
+      -- exception is picked up by the thread and shuts it down.
+      --
+      -- I assume the thread blocks when the channel is being read because
+      -- UnliftIO.Exception's bracket runs the main thread masked, but
+      -- is it just caused by the `calltrace` call blocking in LuaScript,
+      -- as that'll create a bound thread?
+      --
+      for_ (M.lookup automationName threadMap) (async . cancel . snd)
+
+      subscriptions' <- view subscriptions
+
       atomically $ do
-        priorRunningAutos' <- readTVar priorRunningAutos
-        for_ priorRunningAutos' $
-          writeTChan daemonBroadcast' . Daemon.Start
-        writeTVar rc $ rc' & notAlreadyRestarted .~ False
-    _ -> pure ()
+        writeTVar threadMapTV' . M.delete automationName $ threadMap
 
-initializeAndRunAutomation
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
-  => TVar (ThreadMap m)
-  -> AutomationName
-  -> m ()
-initializeAndRunAutomation
-  threadMapTV automationName = do
-    automationBroadcast' <- view automationBroadcast
-    clientChan <- atomically $ dupTChan automationBroadcast'
+        -- we have to send a final message to any topic channels that the
+        -- automation has open so that they won't block when we cancel
+        subs <- readTVar $ subscriptions'
+        for_ (M.lookup automationName subs) $
+          traverse
+            (\bc -> writeTChan bc (object [("shutdownMessage", Aeson.Bool True)]))
 
-    startTime <- liftIO getCurrentTime
-    let automation = findAutomation automationName $ startTime
+    signalStateUpdate :: (MonadIO m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
+    signalStateUpdate threadMapTV' = do
+      runningAutos <- M.keys <$> (atomically . readTVar $ threadMapTV')
+      sendClientMsg StateManager $
+        Aeson.Array . V.fromList $ Aeson.String . serializeAutomationName <$> runningAutos
 
-    --
-    -- > The more subtle difference is that this function will use
-    -- > uninterruptible masking for its cleanup handler. This is a
-    -- > subtle distinction, but at a high level, means that resource
-    -- > cleanup has more guarantees to complete. This comes at the cost
-    -- > that an incorrectly written cleanup function cannot be
-    -- > interrupted.
-    --
-    -- https://hackage.haskell.org/package/unliftio-0.2.24.0/docs/UnliftIO-Exception.html#v:bracket
-    --
-    clientAsync <- async $
-      bracket (pure clientChan) (Automation._cleanup automation) (Automation._run automation)
+    publishUpdatedStatus
+      :: (MonadIO m, MonadMQTT m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
+    publishUpdatedStatus threadMapTV' = do
+      automationServiceTopic' <- view $ config . mqttConfig . automationServiceTopic
+      deviceRegs <- view deviceRegistrations
+      groupRegs <- view groupRegistrations
+      scheduled <- view scheduledJobs
+      statusMsg <- atomically $ do
+        running <- readTVar threadMapTV'
+        scheduled' <- readTVar scheduled
+        deviceRegs' <- readTVar deviceRegs
+        groupRegs' <- readTVar groupRegs
+        pure $ encodeAutomationStatus running scheduled' deviceRegs' groupRegs'
+      publishMQTT automationServiceTopic' statusMsg
 
-    mPriorAutomationAsync <- atomically $
-      insertAutomation threadMapTV automationName (automation, clientAsync)
+    sendClientMsg
+      :: (MonadIO m, MonadReader Env m) => AutomationName -> Value -> m ()
+    sendClientMsg automationName msg = do
+      automationBroadcast' <- view automationBroadcast
+      atomically . writeTChan automationBroadcast' . Client automationName $ msg
 
-    for_ mPriorAutomationAsync cancel
+    runScheduledMessage
+      :: (Logger m, MonadIO m, MonadReader Env m)
+      => Daemon.JobId
+      -> Daemon.Message
+      -> AutomationSchedule
+      -> m ()
+    runScheduledMessage jobId automationMessage automationSchedule = do
+      daemonBroadcast' <- view daemonBroadcast
+      let
+        dispatchScheduledMessage =
+          atomically . writeTChan daemonBroadcast' $ automationMessage
 
-  where
-    --
-    -- Given a TVar ThreadMap and a (AutomationName, (Automation m, Async ()))
-    -- pair, inserts a new entry into the ThreadMap, or it replaces
-    -- the previous entry. If an entry already exists for that
-    -- AutomationName, then the previous entry's Async () is returned.
-    --
-    insertAutomation
-      :: TVar (ThreadMap m) -> AutomationName -> AutomationEntry m -> STM (Maybe (Async ()))
-    insertAutomation threadMapTV' automationName' automationEntry = do
-      threadMap' <- readTVar threadMapTV'
-      let mPriorAutomation = M.lookup automationName' threadMap'
-      writeTVar threadMapTV' $ M.insert automationName' automationEntry threadMap'
-      pure $ snd <$> mPriorAutomation
+      schedulerThreads <- liftIO . execSchedule $
+        addJob dispatchScheduledMessage automationSchedule
 
-stopAutomation
-  :: (Logger m, MonadReader Env m, MonadUnliftIO m)
-  => TVar (ThreadMap m)
-  -> AutomationName
-  -> m ()
-stopAutomation threadMapTV automationName = do
-  info $ "Shutting down Automation " <> serializeAutomationName automationName
+      scheduledJobs' <- view scheduledJobs
 
-  threadMap <- atomically . readTVar $ threadMapTV
+      case schedulerThreads of
+        [threadId] -> do
+          sjs <- atomically . readTVar $ scheduledJobs'
+          let mPriorThreadId = M.lookup jobId sjs
+          atomically $ modifyTVar' scheduledJobs' $
+            M.insert jobId (automationSchedule, automationMessage, threadId)
+          for_ mPriorThreadId $ \(_, _, priorThreadId) ->
+            killThread priorThreadId
 
-  --
-  -- The cancel below is somewhat ironically wrapped in an async
-  -- because cancel will block when a topic channel is being read from
-  -- inside an automation thread and we need to send a message to the
-  -- topic channel immediately after, so we don't want it to
-  -- block...especially because the purpose of the message sent to the
-  -- topic channel is explicitly to allow the readTChan call inside of
-  -- `subscribe` calls to be unblocked so `cancel`'s `AsyncCancelled`
-  -- exception is picked up by the thread and shuts it down.
-  --
-  -- I assume the thread blocks when the channel is being read because
-  -- UnliftIO.Exception's bracket runs the main thread masked, but
-  -- is it just caused by the `calltrace` call blocking in LuaScript,
-  -- as that'll create a bound thread?
-  --
-  for_ (M.lookup automationName threadMap) (async . cancel . snd)
+        -- these two will probably never happen
 
-  subscriptions' <- view subscriptions
+        [] -> warn "Received no ThreadIds back when running execSchedule."
 
-  atomically $ do
-    writeTVar threadMapTV . M.delete automationName $ threadMap
+        ids -> do
+          mapM_ killThread ids
+          warn
+            "Received multiple ThreadIds back when running execSchedule, all have been cancelled."
 
-    -- we have to send a final message to any topic channels that the
-    -- automation has open so that they won't block when we cancel
-    subs <- readTVar $ subscriptions'
-    for_ (M.lookup automationName subs) $
-      traverse
-        (\bc -> writeTChan bc (object [("shutdownMessage", Aeson.Bool True)]))
+    unscheduleJob :: (MonadIO m, MonadReader Env m) => Daemon.JobId -> m ()
+    unscheduleJob jobId = do
+      scheduledJobs' <- view scheduledJobs
+      mPriorThreadId <- atomically $ do
+        scheduledJob <- M.lookup jobId <$> readTVar scheduledJobs'
+        for scheduledJob $ \(_, _, priorThreadId) -> do
+          modifyTVar' scheduledJobs' $ M.delete jobId
+          pure priorThreadId
+      for_ mPriorThreadId killThread
 
-signalStateUpdate :: (MonadIO m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
-signalStateUpdate threadMapTV = do
-  runningAutos <- M.keys <$> (atomically . readTVar $ threadMapTV)
-  sendClientMsg StateManager $
-    Aeson.Array . V.fromList $ Aeson.String . serializeAutomationName <$> runningAutos
+    updateRestartConditionsSet
+      :: (MonadIO m, MonadReader Env m) => Lens' RestartConditions Bool -> Bool -> m ()
+    updateRestartConditionsSet field conditionState = do
+      restartConditions' <- view restartConditions
+      atomically $ modifyTVar' restartConditions' $ field .~ conditionState
 
-publishUpdatedStatus
-  :: (MonadIO m, MonadMQTT m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
-publishUpdatedStatus threadMapTV = do
-  automationServiceTopic' <- view $ config . mqttConfig . automationServiceTopic
-  deviceRegs <- view deviceRegistrations
-  groupRegs <- view groupRegistrations
-  scheduled <- view scheduledJobs
-  statusMsg <- atomically $ do
-    running <- readTVar threadMapTV
-    scheduled' <- readTVar scheduled
-    deviceRegs' <- readTVar deviceRegs
-    groupRegs' <- readTVar groupRegs
-    pure $ encodeAutomationStatus running scheduled' deviceRegs' groupRegs'
-  publishMQTT automationServiceTopic' statusMsg
+    addRegisteredResource
+      :: (MonadReader Env m, MonadUnliftIO m, Hashable k)
+      => k
+      -> AutomationName
+      -> TVar (HashMap k (NonEmpty AutomationName))
+      -> m ()
+    addRegisteredResource resourceId newAutoName resourceStore =
+      atomically $ modifyTVar' resourceStore $
+        M.insertWith (<>) resourceId $ newAutoName :| []
 
-sendClientMsg
-  :: (MonadIO m, MonadReader Env m) => AutomationName -> Value -> m ()
-sendClientMsg automationName msg = do
-  automationBroadcast' <- view automationBroadcast
-  atomically . writeTChan automationBroadcast' . Client automationName $ msg
+    deregisterDevicesAndGroups
+      :: (Logger m, MonadIO m, MonadReader Env m) => AutomationName -> m ()
+    deregisterDevicesAndGroups automationName = do
+      deviceRegs <- view deviceRegistrations
+      groupRegs <- view groupRegistrations
 
-runScheduledMessage
-  :: (Logger m, MonadIO m, MonadReader Env m)
-  => Daemon.JobId
-  -> Daemon.Message
-  -> AutomationSchedule
-  -> m ()
-runScheduledMessage jobId automationMessage automationSchedule = do
-  daemonBroadcast' <- view daemonBroadcast
-  let
-    dispatchScheduledMessage =
-      atomically . writeTChan daemonBroadcast' $ automationMessage
+      atomically $ do
+        updateRegs deviceRegs
+        updateRegs groupRegs
 
-  schedulerThreads <- liftIO . execSchedule $
-    addJob dispatchScheduledMessage automationSchedule
+      where
+        updateRegs :: (Hashable a) => TVar (Registrations a) -> STM ()
+        updateRegs regs = modifyTVar' regs $ \regs' ->
+          M.foldrWithKey'
+            (\idx autos newRegs ->
+                case NE.nonEmpty . NE.filter (/= automationName) $ autos of
+                  Just autos' -> M.insert idx autos' newRegs
+                  Nothing -> newRegs
+            )
+            M.empty
+            regs'
 
-  scheduledJobs' <- view scheduledJobs
+    subscribe
+      :: (MonadIO m, MonadMQTT m, MonadReader Env m)
+      => AutomationName
+      -> Topic
+      -> TChan Value
+      -> m ()
+    subscribe automationName topic listenerBcastChan = do
+      subscriptions' <- view subscriptions
+      mqttDispatch' <- view mqttDispatch
+      atomically $ do
+        modifyTVar' mqttDispatch' $
+          M.insertWith (<>) topic $ mkDefaultTopicMsgAction :| []
+        modifyTVar' subscriptions' $
+          M.insertWith (<>) automationName $ listenerBcastChan :| []
+      subscribeMQTT topic
 
-  case schedulerThreads of
-    [threadId] -> do
-      sjs <- atomically . readTVar $ scheduledJobs'
-      let mPriorThreadId = M.lookup jobId sjs
-      atomically $ modifyTVar' scheduledJobs' $
-        M.insert jobId (automationSchedule, automationMessage, threadId)
-      for_ mPriorThreadId $ \(_, _, priorThreadId) ->
-        killThread priorThreadId
-
-    --
-    -- I can't understand why either of the two possibilities below
-    -- would happen, but better be safe than sorry:
-    --
-
-    [] -> warn "Received no ThreadIds back when running execSchedule."
-
-    ids -> do
-      mapM_ killThread ids
-      warn
-        "Received multiple ThreadIds back when running execSchedule, all have been cancelled."
-
-unscheduleJob :: (MonadIO m, MonadReader Env m) => Daemon.JobId -> m ()
-unscheduleJob jobId = do
-  scheduledJobs' <- view scheduledJobs
-  mPriorThreadId <- atomically $ do
-    scheduledJob <- M.lookup jobId <$> readTVar scheduledJobs'
-    for scheduledJob $ \(_, _, priorThreadId) -> do
-      modifyTVar' scheduledJobs' $ M.delete jobId
-      pure priorThreadId
-  for_ mPriorThreadId killThread
+      where
+        mkDefaultTopicMsgAction = \topicMsg ->
+          for_ (decode topicMsg) $ atomically . writeTChan listenerBcastChan
 
 loadResources
   :: (MonadUnliftIO m, Hashable k) => (v -> k) -> TVar (HashMap k v) -> [v] -> m ()
 loadResources mkResourceKey stored newResources =
   atomically . writeTVar stored . M.fromList $
     (\r -> (mkResourceKey r, r)) <$> newResources
-
-updateRestartConditionsSet
-  :: (MonadIO m, MonadReader Env m) => Lens' RestartConditions Bool -> Bool -> m ()
-updateRestartConditionsSet field conditionState = do
-  restartConditions' <- view restartConditions
-  atomically $ modifyTVar' restartConditions' $ field .~ conditionState
-
-addRegisteredResource
-  :: (MonadReader Env m, MonadUnliftIO m, Hashable k)
-  => k
-  -> AutomationName
-  -> TVar (HashMap k (NonEmpty AutomationName))
-  -> m ()
-addRegisteredResource resourceId newAutoName resourceStore =
-  atomically $ modifyTVar' resourceStore $
-    M.insertWith (<>) resourceId $ newAutoName :| []
-
-deregisterDevicesAndGroups
-  :: (Logger m, MonadIO m, MonadReader Env m) => AutomationName -> m ()
-deregisterDevicesAndGroups automationName = do
-  deviceRegs <- view deviceRegistrations
-  groupRegs <- view groupRegistrations
-
-  atomically $ do
-    updateRegs deviceRegs
-    updateRegs groupRegs
-
-  where
-    updateRegs :: (Hashable a) => TVar (Registrations a) -> STM ()
-    updateRegs regs = modifyTVar' regs $ \regs' ->
-      M.foldrWithKey'
-        (\idx autos newRegs ->
-            case NE.nonEmpty . NE.filter (/= automationName) $ autos of
-              Just autos' -> M.insert idx autos' newRegs
-              Nothing -> newRegs
-        )
-        M.empty
-        regs'
-
-subscribe
-  :: (MonadIO m, MonadMQTT m, MonadReader Env m)
-  => AutomationName
-  -> Topic
-  -> TChan Value
-  -> m ()
-subscribe automationName topic listenerBcastChan = do
-  subscriptions' <- view subscriptions
-  mqttDispatch' <- view mqttDispatch
-  atomically $ do
-    modifyTVar' mqttDispatch' $
-      M.insertWith (<>) topic $ mkDefaultTopicMsgAction :| []
-    modifyTVar' subscriptions' $
-      M.insertWith (<>) automationName $ listenerBcastChan :| []
-  subscribeMQTT topic
-
-  where
-    mkDefaultTopicMsgAction = \topicMsg ->
-      for_ (decode topicMsg) $ atomically . writeTChan listenerBcastChan

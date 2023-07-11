@@ -5,7 +5,7 @@ where
 
 import Prelude hiding (id, init)
 
-import Control.Lens (view)
+import Control.Lens ((^.), _Just, preview, view)
 import Control.Monad.IO.Unlift (MonadUnliftIO(..), liftIO)
 import Control.Monad.Reader (MonadReader)
 import Data.Aeson (Value(String), decode, encode)
@@ -13,7 +13,7 @@ import Data.Aeson.Types (emptyObject, object)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import Data.Fixed (Pico)
-import Data.Foldable (for_)
+import Data.Foldable (for_, traverse_)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromMaybe)
@@ -37,14 +37,13 @@ import HsLua.Packaging.Function
   )
 import Network.HTTP.Client (httpLbs, newManager, parseRequest, responseBody, responseStatus)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
-import Network.MQTT.Topic (mkTopic)
+import Network.MQTT.Topic (mkTopic, unTopic)
 import qualified Service.App as App
 import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Automation as Automation
 import Service.Automation (Automation(..))
 import qualified Service.AutomationName as AutomationName
-import qualified Service.TimeHelpers as TH
-import Service.Device (Device, DeviceId, toLuaDevice)
+import Service.Device (Device, DeviceId, toLuaDevice, topicSet)
 import Service.Env
   ( Env
   , LogLevel(Debug)
@@ -58,8 +57,11 @@ import Service.Env
   , luaScriptPath
   , mqttClient
   )
-import Service.Group (Group, GroupId, toLuaGroup)
+import Service.Group (Group, GroupId, memberId, members, toLuaGroup)
 import qualified Service.MQTT.Messages.Daemon as Daemon
+import Service.MQTT.Messages.Lighting (mkRGB)
+import qualified Service.TimeHelpers as TH
+import System.Random (initStdGen, uniformR)
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.Exception (handle, throwIO)
 -- One really nice thing about UnliftIO.STM is that all you need is
@@ -72,6 +74,7 @@ import UnliftIO.STM
   , newBroadcastTChan
   , readTChan
   , readTVar
+  , readTVarIO
   , writeTChan
   )
 
@@ -217,6 +220,7 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
       , (microSleep, "microSleep")
       , (publish, "publish")
       , (publishString, "publishString")
+      , (randomColorsOverGroup, "randomColorsOverGroup")
       , (register, "register")
       , (registerGroup, "registerGroup")
       , (sendMessage, "sendMessage")
@@ -312,6 +316,29 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
       ### publishImpl
       <#> parameter LM.peekText "string" "topic" "topic for device"
       <#> parameter LM.peekLazyByteString "string" "msg" "MQTT JSON string msg to send"
+      =#> []
+
+    randomColorsOverGroup :: DocumentedFunction Lua.Exception
+    randomColorsOverGroup =
+      defun "randomColorsOverGroup"
+      ### (\groupId -> do
+              mMembers <- preview (_Just . members) <$> M.lookup groupId <$> readTVarIO groups'
+              for_ mMembers $
+                traverse_
+                  (\m -> do
+                      let deviceId' = m ^. memberId
+                      mDevice <- M.lookup deviceId' <$> readTVarIO devices'
+                      gen1 <- initStdGen
+                      let
+                        (r, gen2) = uniformR (0 :: Int, 255 :: Int) gen1
+                        (g, gen3) = uniformR (0 :: Int, 255 :: Int) gen2
+                        (b, _gen4) = uniformR (0 :: Int, 255 :: Int) gen3
+
+                      for_ mDevice $ \d ->
+                        publishImpl (unTopic $ d ^. topicSet) $ encode $ mkRGB r g b
+                  )
+          )
+      <#> parameter LM.peekIntegral "string" "groupId" "Id for group to dispatch random colors over"
       =#> []
 
     register :: DocumentedFunction Lua.Exception

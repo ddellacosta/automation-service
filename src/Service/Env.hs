@@ -60,7 +60,7 @@ import qualified Data.HashMap.Strict as M
 import Data.HashMap.Strict (HashMap)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
-import Dhall (Decoder, Generic, FromDhall(..), auto, field, inputFile, int, record, strictText, string)
+import Dhall (Decoder, Generic, FromDhall(..), auto, field, inputFile, record, strictText, string)
 import Network.MQTT.Client (MQTTClient)
 import Network.MQTT.Topic (Topic, unTopic)
 import Network.URI (URI, nullURI, parseURI)
