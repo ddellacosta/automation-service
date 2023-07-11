@@ -6,17 +6,17 @@ function setup()
    -- logDebugMsg("sunrise: " .. sunEvents.sunrise)
    logDebugMsg("sunset: " .. sunEvents.sunset)
 
-   local thirtyBeforeSunset = addMinutes(-30, sunEvents.sunset)
+   local seventyFiveBeforeSunset = addMinutes(-75, sunEvents.sunset)
 
-   logDebugMsg("thirtyBeforeSunset: " .. thirtyBeforeSunset)
+   logDebugMsg("seventyFiveBeforeSunset: " .. seventyFiveBeforeSunset)
 
-   local thirtyBeforeSunsetCron = timestampToCron(thirtyBeforeSunset)
+   local seventyFiveBeforeSunsetCron = timestampToCron(seventyFiveBeforeSunset)
 
-   logDebugMsg("thirtyBeforeSunsetCron: " .. thirtyBeforeSunsetCron)
+   logDebugMsg("seventyFiveBeforeSunsetCron: " .. seventyFiveBeforeSunsetCron)
 
    sendMessage({
       jobId = "sunsetLightsOn",
-      schedule = thirtyBeforeSunsetCron,
+      schedule = seventyFiveBeforeSunsetCron,
       job = { start = "sunsetLightsOn" }
    })
 end
