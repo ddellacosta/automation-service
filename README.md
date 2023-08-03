@@ -10,7 +10,7 @@ automation-service is a tool for setting up simple-to-complicated home automatio
 
 It communicates via MQTT and can automatically pull and use device and group information from Zigbee2MQTT, but it can potentially be used with anything that can communicate over MQTT. It provides a simple message protocol for starting, stopping, and scheduling automations over MQTT, and lets you write automations in Lua with [batteries-included helpers](docs/lua_api.md) by dropping scripts in the `lua-automations` directory. There is a custom card available for showing status information (and more soon) in Home Assistant as well, seen in the above screenshot.
 
-Right now this software is usable, but in a very alpha state. See [TODO](#todo) below.
+Right now this software is usable, but in an alpha state (see [issues](https://github.com/ddellacosta/automation-service/issues) for more).
 
 
 ## How It Works
@@ -22,10 +22,10 @@ In the root directory of your automation-service install (as configured in docke
 Any Lua scripts in the `lua-automations` directory will be available for running. Here is a basic example which flashes lights when a sensor is triggered and a specific condition is met:
 
 ```lua
-local frontDoorSensor
-local frontDoorSensorChan
-local basementMirrorLight
-local livingRoomWindowLight
+frontDoorSensor = nil
+frontDoorSensorChan = nil
+basementMirrorLight = nil
+livingRoomWindowLight = nil
 
 function setup ()
    -- these IDs correspond to IEEE Addresses in Zigbee2MQTT
@@ -135,27 +135,6 @@ $ watchexec -w test -w src -w app -i "*.db" -i "test/dbs/*" 'cabal test --test-s
 $ cabal test --test-show-details=always --test-options '--color=always -l -p Unit'
 $ cabal test --test-show-details=always --test-options '--color=always -l -p Integration'
 ```
-
-
-## TODO
-
-* bug: trying to restart an automation blocks when listening on channel, have to send an interrupt message somehow
-* ensure scheduled automations are re-scheduled on restart
-* better error handling and logging
-* more, better documentation
-* add (more) HTTP client functionality to Lua API
-* improvements to HA dashboard integration
-  * provide users with list of run-able automations somehow
-  * ability to send messages
-  * links to zigbee2mqtt for devices and groups
-  * general UI/UX cleanup
-* provide Lua API for lighting DSL (`Service.MQTT.Messages.Lighting`)
-* should be able to record a scene easily based on a given group or arbitrarily specified set of devices. This could be an automation itself which just runs listening for the command to set scenes for any given room
-* auto-import scenes for devices
-* profile and better understand memory usage - seems like there is a very slow memory leak
-* CI build and deploy: tag build with sha vs. everything going to 'latest' (?)
-* move these todos into GH issues (?)
-* figure out how to generate Lua docs rather than writing them by hand
 
 
 ## License/Copyright
