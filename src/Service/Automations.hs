@@ -10,7 +10,6 @@ import Service.App (Logger, MonadMQTT)
 import Service.Automation (Automation, nullAutomation)
 import Service.AutomationName (AutomationName(..))
 import Service.Automations.Gold (goldAutomation)
-import Service.Automations.HAState (haStateAutomation)
 import Service.Automations.LuaScript (luaAutomation)
 import Service.Automations.StateManager (stateManagerAutomation)
 import Service.Env (Env)
@@ -22,6 +21,5 @@ findAutomation
 findAutomation = \case
   Null -> nullAutomation
   Gold -> goldAutomation
-  HAState -> haStateAutomation
   LuaScript filePath -> luaAutomation filePath
   StateManager -> stateManagerAutomation

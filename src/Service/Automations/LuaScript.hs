@@ -64,8 +64,6 @@ import qualified Service.TimeHelpers as TH
 import System.Random (initStdGen, uniformR)
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.Exception (handle, throwIO)
--- One really nice thing about UnliftIO.STM is that all you need is
--- MonadIO for the most part, so I can use all of these in LuaE.
 import UnliftIO.STM
   ( TChan
   , TVar

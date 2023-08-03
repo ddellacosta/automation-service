@@ -232,7 +232,8 @@ run' threadMapTV = do
             case autoStatus of
               ThreadFinished -> pure [_name auto]
               ThreadDied -> pure [_name auto]
-              _ -> pure [])
+              _ -> pure []
+        )
         threadMap
       let cleanedTM = foldl' (flip M.delete) threadMap cleanupAutoNames
       atomically $ writeTVar threadMapTV' cleanedTM

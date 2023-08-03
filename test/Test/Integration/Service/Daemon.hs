@@ -132,6 +132,7 @@ luaScriptSpecs = do
         waitUntilEq Nothing $ atomically $
           readTVar threadMapTV <&> preview (ix (LuaScript "test") . _1 . name)
 
+  -- flaky
   around initAndCleanup $ do
     it "returns Lua exception info when a Lua script run fails" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
@@ -192,6 +193,7 @@ luaScriptSpecs = do
           `shouldBe`
           (Just (LuaScript "testRegistration" :| [Gold]))
 
+  -- flaky
   -- I don't love this test
   around initAndCleanup $ do
     it "subscribes to topic and receives topic messages" $
@@ -256,6 +258,7 @@ luaScriptSpecs = do
           logs <- readTVarIO qLogger
           pure . fromMaybe "" . headMay . filter (== expectedLogEntry) $ logs
 
+  -- flaky
   around initAndCleanup $ do
     it "removes Device and Group Registration entries upon cleanup" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do

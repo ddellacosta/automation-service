@@ -84,7 +84,6 @@ library
     , Service.AutomationName
     , Service.Automations
     , Service.Automations.Gold
-    , Service.Automations.HAState
     , Service.Automations.LuaScript
     , Service.Automations.StateManager
     , Service.App
