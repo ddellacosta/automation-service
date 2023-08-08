@@ -17,6 +17,7 @@ import GHC.Generics (Generic)
 
 data AutomationName
   = Gold
+  | HTTP
   | LuaScript FilePath
   | Null
   | StateManager
@@ -37,6 +38,7 @@ serializeAutomationName = \case
 parseAutomationName :: String -> Maybe AutomationName
 parseAutomationName = \case
   "Gold" -> Just Gold
+  "HTTP" -> Just HTTP
   "Null" -> Just Null
   "StateManager" -> Just StateManager
   maybeLuaScript -> do
