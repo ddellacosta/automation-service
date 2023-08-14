@@ -26534,7 +26534,7 @@ For more info, visit https://reactjs.org/link/mock-scheduler`);
   var pure4 = /* @__PURE__ */ pure(trApplicative);
   var view = function(v) {
     return function(v1) {
-      return div3("container-sm mx-auto mt-5")([text5("Hello, "), strong2("")("World!")]);
+      return div3("container mx-auto mt-5 d-flex flex-row justify-content-between")([div3("")([text5("Hello, "), strong2("")("World!")]), div3("")([text5("again, "), strong2("")("hello world")])]);
     };
   };
   var update = function(v) {

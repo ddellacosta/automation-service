@@ -10,6 +10,8 @@ import Elmish.Boot (defaultMain)
 import Effect (Effect)
 import Effect.Console (log)
 
+import Web.Socket.WebSocket
+
 -- Nothing happens in our UI so far, so there are no messages
 data Message
 
@@ -26,9 +28,15 @@ update _ _ = pure unit
 
 view :: State -> Dispatch Message -> ReactElement
 view _ _ =
-  H.div "container-sm mx-auto mt-5"
-  [ H.text "Hello, "
-  , H.strong "" "World!"
+  H.div "container mx-auto mt-5 d-flex flex-row justify-content-between"
+  [ H.div ""
+    [ H.text "Hello, "
+    , H.strong "" "World!"
+    ]
+  , H.div ""
+    [ H.text "again, "
+    , H.strong "" "hello world"
+    ]
   ]
 
 main :: Effect Unit
