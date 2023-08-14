@@ -67,7 +67,7 @@ common shared
     , wai ^>= 3.2.3
     , wai-middleware-static ^>= 0.9.2
     , wai-websockets ^>= 3.0.1.2
-    , warp ^>= 3.3.25
+    , warp ^>= 3.3.23
     , websockets ^>= 0.12.7.3
     , x509-store ^>= 1.6.9
 
