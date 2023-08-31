@@ -23,6 +23,7 @@ import Control.Lens (makePrisms)
 import qualified Data.Aeson as Aeson
 import Data.Aeson (FromJSON(..), ToJSON(..), Value, (.:?), withObject)
 import Data.Aeson.Types (Parser)
+import Data.ByteString.Lazy (ByteString)
 import Data.Text (Text)
 import Data.Maybe (fromMaybe)
 import GHC.Generics (Generic)
@@ -41,8 +42,8 @@ data Message where
   SendTo :: AutomationName -> Value -> Message
   Schedule :: JobId -> AutomationSchedule -> Message -> Message
   Unschedule :: JobId -> Message
-  DeviceUpdate :: [Device] -> Message
-  GroupUpdate :: [Group] -> Message
+  DeviceUpdate :: [Device] -> ByteString -> Message
+  GroupUpdate :: [Group] -> ByteString -> Message
   RegisterDevice :: DeviceId -> AutomationName -> Message
   RegisterGroup :: GroupId -> AutomationName -> Message
   DeRegisterDevicesAndGroups :: AutomationName -> Message
@@ -71,8 +72,9 @@ instance Show Message where
     Schedule jobId schedule msg ->
       "Schedule " <> " " <> show jobId <> " " <> show schedule <> " " <> show msg
     Unschedule jobId -> "Unschedule " <> show jobId
-    DeviceUpdate devices -> "DeviceUpdate " <> show devices
-    GroupUpdate groups -> "GroupUpdate " <> show groups
+    -- todo: show truncated msg for these two
+    DeviceUpdate devices _msg -> "DeviceUpdate " <> show devices
+    GroupUpdate groups _msg -> "GroupUpdate " <> show groups
     RegisterDevice deviceId automationName ->
       "RegisterDevice " <> show deviceId <> " " <> show automationName
     RegisterGroup groupId automationName ->

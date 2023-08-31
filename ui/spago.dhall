@@ -12,7 +12,26 @@ to generate this file without the comments in this block.
 -}
 { name = "my-project"
 , dependencies =
-  [ "console", "effect", "elmish", "elmish-html", "prelude", "web-socket" ]
+  [ "aff"
+  , "argonaut"
+  , "argonaut-codecs"
+  , "bifunctors"
+  , "console"
+  , "datetime"
+  , "effect"
+  , "either"
+  , "elmish"
+  , "elmish-html"
+  , "foldable-traversable"
+  , "foreign"
+  , "foreign-object"
+  , "maybe"
+  , "nullable"
+  , "ordered-collections"
+  , "prelude"
+  , "web-events"
+  , "web-socket"
+  ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs" ]
 }

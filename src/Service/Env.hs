@@ -26,8 +26,10 @@ module Service.Env
   , dbPath
   , deviceRegistrations
   , devices
+  , devicesRawJSON
   , groupRegistrations
   , groups
+  , groupsRawJSON
   , initialize
   , invertRegistrations
   , loadedDevices
@@ -196,6 +198,8 @@ data Env = Env
   , _scheduledJobs :: TVar ScheduledJobs
   , _restartConditions :: TVar RestartConditions
   , _startupAutomations :: TVar [AutomationName]
+  , _devicesRawJSON :: TVar ByteString
+  , _groupsRawJSON :: TVar ByteString
   -- do I need to mark this explicitly as being lazy so it's not called immediately?
   , _appCleanup :: IO ()
   }
@@ -231,6 +235,8 @@ initialize configFilePath mkLogger mkMQTTClient = do
     <*> (newTVarIO M.empty) -- scheduledJobs
     <*> (newTVarIO $ RestartConditions False False True)
     <*> (newTVarIO []) -- startupAutomations
+    <*> (newTVarIO "") -- devicesRawJSON
+    <*> (newTVarIO "") -- groupsRawJSON
     <*> pure (loggerCleanup >> mcCleanup)
 
   where
@@ -252,8 +258,8 @@ initialize configFilePath mkLogger mkMQTTClient = do
                   Just [] -> pure ()
                   Nothing -> pure ()
                   Just devicesJSON -> do
-                    write daemonBroadcast' $ Daemon.DeviceUpdate devicesJSON
-                ) :| []
+                    write daemonBroadcast' $ Daemon.DeviceUpdate devicesJSON msg
+             ) :| []
             )
 
           , (Zigbee2MQTT.groupsTopic,
@@ -262,8 +268,8 @@ initialize configFilePath mkLogger mkMQTTClient = do
                   Just [] -> pure ()
                   Nothing -> pure ()
                   Just groupsJSON -> do
-                    write daemonBroadcast' $ Daemon.GroupUpdate groupsJSON
-                ) :| []
+                    write daemonBroadcast' $ Daemon.GroupUpdate groupsJSON msg
+             ) :| []
             )
 
           , (statusTopic', (const $ write daemonBroadcast' Daemon.Status) :| [])
