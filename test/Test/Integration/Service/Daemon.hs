@@ -430,6 +430,9 @@ stateStoreSpecs = do
         let
           daemonBroadcast' = env ^. daemonBroadcast
 
+        -- let StateManager start up, or else this won't be recorded
+        threadDelay 200000
+
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test")
 
         threadDelay 200000
