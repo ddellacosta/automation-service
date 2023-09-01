@@ -6,11 +6,13 @@ module Test.Integration.Service.Daemon
   )
 where
 
-import Control.Lens ((^.), (^?), (<&>), _1, _2, _3, _Just, ix, preview)
+import Control.Lens ((^.), (^?), (<&>), _1, _2, _3, _Just, _head, ix, preview)
 import Control.Monad (void)
 import qualified Data.Aeson as Aeson
-import Data.Aeson (Value, decode)
+import Data.Aeson (Value, encode, decode)
 import Data.Aeson.Lens (_Array, key)
+import qualified Data.ByteString.Char8 as SBS
+import qualified Data.ByteString.Lazy as LBS
 import Data.Foldable (for_)
 import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.HashMap.Strict as M
@@ -428,6 +430,9 @@ stateStoreSpecs = do
         let
           daemonBroadcast' = env ^. daemonBroadcast
 
+        -- let StateManager start up, or else this won't be recorded
+        threadDelay 200000
+
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test")
 
         threadDelay 200000
@@ -435,12 +440,12 @@ stateStoreSpecs = do
         res <- StateStore.allRunning $ env ^. config . dbPath
 
         length res `shouldBe` 2
-        parseAutomationName . T.unpack <$> (findMatchingAutoNames "test" res)
+        parseAutomationName . T.unpack <$> (findMatchingSerialized "test" res)
           `shouldBe` [Just (LuaScript "test")]
 
         -- started up by Daemon independently if it is not running, so
         -- should always be present.
-        findMatchingAutoNames "StateManager" res `shouldBe` ["StateManager"]
+        findMatchingSerialized "StateManager" res `shouldBe` ["StateManager"]
 
   around initAndCleanup $ do
     it "updates stored automations when an automation is shut down" $
@@ -461,11 +466,11 @@ stateStoreSpecs = do
         res <- StateStore.allRunning dbPath'
 
         length res `shouldBe` 2
-        parseAutomationName . T.unpack <$> (findMatchingAutoNames "test" res)
+        parseAutomationName . T.unpack <$> (findMatchingSerialized "test" res)
           `shouldBe` [Just (LuaScript "test")]
         -- started up by Daemon independently if it is not running, so
         -- should always be present.
-        findMatchingAutoNames "StateManager" res `shouldBe` ["StateManager"]
+        findMatchingSerialized "StateManager" res `shouldBe` ["StateManager"]
 
   around initAndCleanup $ do
     it "starts any automations stored in the running table upon load" $ \preEnv -> do
@@ -557,10 +562,57 @@ stateStoreSpecs = do
 
         filter (== StateManager) runningAutos `shouldBe` [StateManager]
 
+  around initAndCleanup $ do
+    it "stores the current set of scheduled automations in sqlite" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          scheduleMsg =
+            Daemon.Schedule "test" "0 6 * * *" $ Daemon.Start (LuaScript "test")
+
+        -- let StateManager start up, or else this won't be recorded
+        threadDelay 200000
+
+        atomically $ writeTChan daemonBroadcast' scheduleMsg
+
+        -- without this seems to lock up DB, presumably in conflict with
+        -- write happening in Daemon as a result of scheduling? I
+        -- think I need to put the dbPath in a TVar or something to
+        -- enforce atomic updates to the DB
+        threadDelay 200000
+
+        res <- StateStore.allScheduled $ env ^. config . dbPath
+
+        res ^? _head . _2 `shouldBe`
+          (Just . encodeStrict $ scheduleMsg)
+
+  around initAndCleanup $ do
+    it "starts previously scheduled automations when starting" $ \preEnv -> do
+      let
+        scheduleMsg =
+          Daemon.Schedule "test" "0 6 * * *" $ Daemon.Start (LuaScript "test")
+
+      StateStore.updateScheduled (preEnv ^. config . dbPath) $ [encodeStrict scheduleMsg]
+
+      flip testWithAsyncDaemon preEnv $ \env _threadMapTV _daemonSnooper -> do
+        let
+          restartConditions' = env ^. restartConditions
+
+        atomically . writeTVar restartConditions' $ RestartConditions True True True
+        threadDelay 200000
+
+        scheduled <- readTVarIO $ env ^. scheduledJobs
+        let testJob = M.lookup "test" scheduled
+
+        testJob ^? _Just . _1 `shouldBe` Just "0 6 * * *"
+        testJob ^? _Just . _2 `shouldBe` Just (Daemon.Start (LuaScript "test"))
+
   where
-    findMatchingAutoNames :: Text -> [(Int, Text)] -> [Text]
-    findMatchingAutoNames autoName res =
-      (snd <$> (filter (\(_id, auto) -> auto == autoName) res))
+    findMatchingSerialized :: (Eq a) => a -> [(Int, a)] -> [a]
+    findMatchingSerialized serialized res =
+      snd <$> filter (\(_id, serialized') -> serialized' == serialized) res
+
+    encodeStrict = SBS.concat . LBS.toChunks . encode
 
 schedulerSpecs :: Spec
 schedulerSpecs = do

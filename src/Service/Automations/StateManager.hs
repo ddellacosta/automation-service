@@ -15,7 +15,8 @@ import qualified Data.Aeson as Aeson
 import Data.Time.Clock (UTCTime)
 import qualified Data.Vector as V
 import Service.App (Logger(..), MonadMQTT(..))
-import Service.Automation as Automation
+import qualified Service.Automation as Automation
+import Service.Automation (Automation(..))
 import Service.AutomationName (AutomationName(..))
 import Service.Env (Env, config, dbPath)
 import qualified Service.StateStore as StateStore
@@ -47,19 +48,25 @@ runAutomation
 runAutomation broadcastChan = do
   info "Running StateManager"
   dbPath' <- view $ config . dbPath
-  go broadcastChan dbPath'
+  go dbPath'
 
   where
     go
       :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m)
-      => TChan Automation.Message
-      -> FilePath
+      => FilePath
       -> m ()
-    go broadcastChan' dbPath' = do
-      msg <- atomically . readTChan $ broadcastChan'
+    go dbPath' = do
+      msg <- atomically . readTChan $ broadcastChan
+
       case msg of
-        Client StateManager (Aeson.Array runningAutos) -> do
+        Automation.Client StateManager (Automation.ValueMsg (Aeson.Array runningAutos)) -> do
           liftIO $
-            StateStore.updateRunning dbPath' . V.toList $ (\(Aeson.String t) -> t) <$> runningAutos
-          go broadcastChan' dbPath'
-        _ -> go broadcastChan' dbPath'
+            StateStore.updateRunning dbPath' . V.toList $
+              (\(Aeson.String t) -> t) <$> runningAutos
+          go dbPath'
+
+        Automation.Client StateManager (Automation.ByteStringMsg msgs) -> do
+          liftIO $ StateStore.updateScheduled dbPath' msgs
+          go dbPath'
+
+        _ -> go dbPath'

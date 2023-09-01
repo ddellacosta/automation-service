@@ -1,21 +1,57 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE TemplateHaskell #-}
+
 module Service.Automation
-  ( Automation(..)
+  ( _ValueMsg
+  , Automation(..)
+  , ClientMsg(..)
   , Message(..)
+  , ServerMsg(..)
   , name
   , nullAutomation
   , startTime
   )
   where
 
-import Control.Lens (Lens', lens)
-import Data.Aeson (Value)
+import Control.Lens (Lens', lens, makePrisms)
+import Data.Aeson
+  ( FromJSON(..)
+  , ToJSON(..)
+  , Value(Object)
+  , toJSONList
+  , withObject
+  )
+import Data.Aeson.Types (Parser)
+import Data.ByteString.Char8 (ByteString)
+import Data.Either (rights)
+import qualified Data.Text.Encoding as T
 import Data.Time.Clock (UTCTime)
+import GHC.Generics (Generic)
 import Service.AutomationName (AutomationName(..))
 import UnliftIO.STM (TChan)
 
+data ClientMsg
+  = ByteStringMsg [ByteString]
+  | ValueMsg Value
+  deriving (Eq, Generic, Show)
+
+makePrisms ''ClientMsg
+
+instance ToJSON ClientMsg where
+  toJSON (ByteStringMsg msgBSs) = toJSONList . rights $ T.decodeUtf8' <$> msgBSs
+  toJSON (ValueMsg v) = v
+
+instance FromJSON ClientMsg where
+  parseJSON :: Value -> Parser ClientMsg
+  parseJSON = withObject "ClientMsg" (pure . ValueMsg . Object)
+
+data ServerMsg
+  = ServerMsg Value
+  deriving (Eq, Generic, Show)
+
 data Message
-  = Client AutomationName Value
-  | Server AutomationName Value
+  = Client AutomationName ClientMsg
+  | Server AutomationName ServerMsg
   deriving (Show)
 
 data Automation monad = Automation
