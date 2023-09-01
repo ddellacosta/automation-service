@@ -21,7 +21,7 @@ import qualified Data.HashMap.Strict as M
 import Data.HashMap.Strict (HashMap)
 import qualified Data.List.NonEmpty as NE
 import Data.List.NonEmpty (NonEmpty((:|)))
-import Data.Maybe (fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe)
 import qualified Data.Text as T
 import Data.Time.Clock (getCurrentTime)
 import Data.Traversable (for)
@@ -62,7 +62,7 @@ import Service.Env
   , notAlreadyRestarted
   , restartConditions
   , scheduledJobs
-  , startupAutomations
+  , startupMessages
   , subscriptions
   )
 import qualified Service.Group as Group
@@ -111,8 +111,11 @@ run' threadMapTV = do
   appCleanup' <- view appCleanup
 
   priorRunningAutomations <- loadPriorRunningAutomations (config' ^. dbPath)
-  startupAutomations' <- view startupAutomations
-  atomically . writeTVar startupAutomations' $ priorRunningAutomations
+  priorScheduledAutomations <- loadPriorScheduledAutomations (config' ^. dbPath)
+
+  startupMessages' <- view startupMessages
+  atomically . writeTVar startupMessages' $
+    priorRunningAutomations <> priorScheduledAutomations
 
   flip finally (cleanupAutomations appCleanup' threadMapTV) $ do
     debug . T.pack . show $ config'
@@ -208,9 +211,15 @@ run' threadMapTV = do
 
         Daemon.Null -> debug "Null Automation" *> go
 
-    loadPriorRunningAutomations :: (MonadIO m) => FilePath -> m [AutomationName]
-    loadPriorRunningAutomations dbPath' = liftIO $ StateStore.allRunning dbPath' <&>
-      fromMaybe [] . sequence . fmap (parseAutomationNameText . snd)
+    loadPriorRunningAutomations :: (MonadIO m) => FilePath -> m [Daemon.Message]
+    loadPriorRunningAutomations dbPath' = liftIO $ do
+      allRunning <- StateStore.allRunning dbPath'
+      pure $ catMaybes $ allRunning <&> \(_, autoNameStr) ->
+        Daemon.Start <$> parseAutomationNameText autoNameStr
+
+    loadPriorScheduledAutomations :: (MonadIO m) => FilePath -> m [Daemon.Message]
+    loadPriorScheduledAutomations dbPath' = liftIO $ StateStore.allScheduled dbPath' <&>
+      fromMaybe [] . sequence . fmap (decode . LBS.fromStrict . snd)
 
     cleanupAutomations
       :: (Logger m, MonadIO m, MonadReader Env m, MonadUnliftIO m)
@@ -243,20 +252,14 @@ run' threadMapTV = do
     tryRestoreRunningAutomations :: (MonadIO m, MonadReader Env m) => m ()
     tryRestoreRunningAutomations = do
       rc <- view restartConditions
-      -- Possible to get a race condition here? I don't think so, because
-      -- the only thing that ever accesses the RestartConditions is this
-      -- single Daemon thread. I'd put it all in an atomically block
-      -- regardless but it would be awkward with the MonadReader stuff I
-      -- think.
       rc' <- atomically . readTVar $ rc
       case rc' of
         (RestartConditions True True True) -> do
           daemonBroadcast' <- view daemonBroadcast
-          priorRunningAutos <- view startupAutomations
+          priorRunning <- view startupMessages
           atomically $ do
-            priorRunningAutos' <- readTVar priorRunningAutos
-            for_ priorRunningAutos' $
-              writeTChan daemonBroadcast' . Daemon.Start
+            priorRunning' <- readTVar priorRunning
+            for_ priorRunning' $ writeTChan daemonBroadcast'
             writeTVar rc $ rc' & notAlreadyRestarted .~ False
         _ -> pure ()
 

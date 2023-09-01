@@ -584,12 +584,35 @@ stateStoreSpecs = do
         res <- StateStore.allScheduled $ env ^. config . dbPath
 
         res ^? _head . _2 `shouldBe`
-          (Just . SBS.concat . LBS.toChunks $ encode scheduleMsg)
+          (Just . encodeStrict $ scheduleMsg)
+
+  around initAndCleanup $ do
+    it "starts previously scheduled automations when starting" $ \preEnv -> do
+      let
+        scheduleMsg =
+          Daemon.Schedule "test" "0 6 * * *" $ Daemon.Start (LuaScript "test")
+
+      StateStore.updateScheduled (preEnv ^. config . dbPath) $ [encodeStrict scheduleMsg]
+
+      flip testWithAsyncDaemon preEnv $ \env _threadMapTV _daemonSnooper -> do
+        let
+          restartConditions' = env ^. restartConditions
+
+        atomically . writeTVar restartConditions' $ RestartConditions True True True
+        threadDelay 200000
+
+        scheduled <- readTVarIO $ env ^. scheduledJobs
+        let testJob = M.lookup "test" scheduled
+
+        testJob ^? _Just . _1 `shouldBe` Just "0 6 * * *"
+        testJob ^? _Just . _2 `shouldBe` Just (Daemon.Start (LuaScript "test"))
 
   where
     findMatchingSerialized :: (Eq a) => a -> [(Int, a)] -> [a]
     findMatchingSerialized serialized res =
       snd <$> filter (\(_id, serialized') -> serialized' == serialized) res
+
+    encodeStrict = SBS.concat . LBS.toChunks . encode
 
 schedulerSpecs :: Spec
 schedulerSpecs = do
