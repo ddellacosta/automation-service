@@ -214,7 +214,7 @@ run' threadMapTV = do
     loadPriorRunningAutomations :: (MonadIO m) => FilePath -> m [Daemon.Message]
     loadPriorRunningAutomations dbPath' = liftIO $ do
       allRunning <- StateStore.allRunning dbPath'
-      pure $ catMaybes $ allRunning <&> \(_, autoNameStr) ->
+      pure . catMaybes $ allRunning <&> \(_, autoNameStr) ->
         Daemon.Start <$> parseAutomationNameText autoNameStr
 
     loadPriorScheduledAutomations :: (MonadIO m) => FilePath -> m [Daemon.Message]
@@ -375,8 +375,8 @@ run' threadMapTV = do
       :: (MonadIO m, MonadReader Env m) => AutomationName -> ClientMsg -> m ()
     sendClientMsg automationName msg = do
       automationBroadcast' <- view automationBroadcast
-      let msg' = Client automationName $ msg
-      atomically $ writeTChan automationBroadcast' msg'
+      atomically . writeTChan automationBroadcast' $
+        Client automationName msg
 
     runScheduledMessage
       :: (Logger m, MonadIO m, MonadReader Env m)
