@@ -15,7 +15,8 @@ import qualified Data.Text as T
 import Data.Time.Clock (UTCTime)
 import Network.MQTT.Client (Topic)
 import Service.App (Logger(..), MonadMQTT(..), findDeviceM)
-import Service.Automation as Automation
+import qualified Service.Automation as Automation
+import Service.Automation (Automation(..))
 import Service.AutomationName (AutomationName(..))
 import Service.Device (DeviceId, topicSet)
 import Service.Group (GroupId)
@@ -122,7 +123,7 @@ runAutomation broadcastChan = do
       maybeMsg <- atomically $ tryReadTChan broadcastChan'
       debug $ "Gold got msg? " <> T.pack (show maybeMsg)
       case maybeMsg of
-        Just (Client Gold msg') ->
+        Just (Automation.Client Gold (Automation.ValueMsg msg')) ->
           debug
             ( T.pack $
                 "Gold received msg. Mood is " <>

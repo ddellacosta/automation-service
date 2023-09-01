@@ -12,7 +12,9 @@ import Control.Lens (Lens', (&), (<&>), (^.), (.~), view)
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
 import qualified Data.Aeson as Aeson
-import Data.Aeson (Value, decode, object)
+import Data.Aeson (Value, decode, encode, object)
+import qualified Data.ByteString.Char8 as SBS
+import qualified Data.ByteString.Lazy as LBS
 import Data.Foldable (foldl', foldMap', for_)
 import Data.Hashable (Hashable)
 import qualified Data.HashMap.Strict as M
@@ -27,7 +29,7 @@ import qualified Data.Vector as V
 import GHC.Conc (ThreadStatus(..), threadStatus)
 import Network.MQTT.Topic (Topic)
 import qualified Service.Automation as Automation
-import Service.Automation (Automation(_name), Message(..))
+import Service.Automation (Automation(_name), ClientMsg(..), Message(..))
 import Service.AutomationName
   ( AutomationName(..)
   , parseAutomationNameText
@@ -140,13 +142,13 @@ run' threadMapTV = do
       case msg of
         Daemon.Start automationName -> do
           initializeAndRunAutomation threadMapTV automationName
-          signalStateUpdate threadMapTV
+          signalRunningStateUpdate threadMapTV
           publishUpdatedStatus threadMapTV
           go
 
         Daemon.Stop automationName -> do
           stopAutomation threadMapTV automationName
-          signalStateUpdate threadMapTV
+          signalRunningStateUpdate threadMapTV
           publishUpdatedStatus threadMapTV
           go
 
@@ -265,11 +267,10 @@ run' threadMapTV = do
       -> m ()
     initializeAndRunAutomation
       threadMapTV' automationName = do
-        automationBroadcast' <- view automationBroadcast
-        clientChan <- atomically $ dupTChan automationBroadcast'
-
         startTime <- liftIO getCurrentTime
         let automation = findAutomation automationName $ startTime
+
+        automationBroadcast' <- view automationBroadcast
 
         --
         -- > The more subtle difference is that this function will use
@@ -282,7 +283,10 @@ run' threadMapTV = do
         -- https://hackage.haskell.org/package/unliftio-0.2.24.0/docs/UnliftIO-Exception.html#v:bracket
         --
         clientAsync <- async $
-          bracket (pure clientChan) (Automation._cleanup automation) (Automation._run automation)
+          bracket
+            (atomically $ dupTChan automationBroadcast')
+            (Automation._cleanup automation)
+            (Automation._run automation)
 
         mPriorAutomationAsync <- atomically $
           insertAutomation threadMapTV' automationName (automation, clientAsync)
@@ -343,10 +347,10 @@ run' threadMapTV = do
           traverse
             (\bc -> writeTChan bc (object [("shutdownMessage", Aeson.Bool True)]))
 
-    signalStateUpdate :: (MonadIO m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
-    signalStateUpdate threadMapTV' = do
+    signalRunningStateUpdate :: (MonadIO m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
+    signalRunningStateUpdate threadMapTV' = do
       runningAutos <- M.keys <$> (atomically . readTVar $ threadMapTV')
-      sendClientMsg StateManager $
+      sendClientMsg StateManager $ ValueMsg $
         Aeson.Array . V.fromList $ Aeson.String . serializeAutomationName <$> runningAutos
 
     publishUpdatedStatus
@@ -365,10 +369,11 @@ run' threadMapTV = do
       publishMQTT automationServiceTopic' statusMsg
 
     sendClientMsg
-      :: (MonadIO m, MonadReader Env m) => AutomationName -> Value -> m ()
+      :: (MonadIO m, MonadReader Env m) => AutomationName -> ClientMsg -> m ()
     sendClientMsg automationName msg = do
       automationBroadcast' <- view automationBroadcast
-      atomically . writeTChan automationBroadcast' . Client automationName $ msg
+      let msg' = Client automationName $ msg
+      atomically $ writeTChan automationBroadcast' msg'
 
     runScheduledMessage
       :: (Logger m, MonadIO m, MonadReader Env m)
@@ -389,10 +394,28 @@ run' threadMapTV = do
 
       case schedulerThreads of
         [threadId] -> do
+          -- pull out any existing jobs matching the jobId
           sjs <- atomically . readTVar $ scheduledJobs'
           let mPriorThreadId = M.lookup jobId sjs
-          atomically $ modifyTVar' scheduledJobs' $
-            M.insert jobId (automationSchedule, automationMessage, threadId)
+
+          updatedScheduledJobs <- atomically $ do
+            sjs' <- readTVar scheduledJobs'
+            let
+              updatedSjs = M.insert jobId (automationSchedule, automationMessage, threadId) sjs'
+            writeTVar scheduledJobs' updatedSjs
+            pure updatedSjs
+
+          -- tell StateManager to update stored jobs so we can ensure
+          -- the previously scheduled jobs are loaded when the system
+          -- (re-)starts
+          sendClientMsg StateManager $ ByteStringMsg $
+            flip M.foldMapWithKey updatedScheduledJobs $ \jobId' (sched, msg, _threadId) ->
+              [SBS.concat . LBS.toChunks . encode $ Daemon.Schedule jobId' sched msg]
+
+          -- if scheduled job already existed, kill the previously running thread
+          -- since the new job is started before the old one is
+          -- killed, this could cause a race condition if there are
+          -- resources both jobs use...hmm
           for_ mPriorThreadId $ \(_, _, priorThreadId) ->
             killThread priorThreadId
 

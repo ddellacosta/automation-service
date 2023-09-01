@@ -7,7 +7,7 @@ module Service.AutomationName
 where
 
 import Control.Monad (guard)
-import Data.Aeson (FromJSON(..), ToJSON(..), defaultOptions, genericToEncoding)
+import Data.Aeson (FromJSON(..), ToJSON(..))
 import qualified Data.Char as Char
 import Data.List (uncons)
 import Data.Hashable (Hashable(..))
@@ -26,7 +26,8 @@ data AutomationName
 instance Hashable AutomationName
 
 instance ToJSON AutomationName where
-    toEncoding = genericToEncoding defaultOptions
+  toJSON (LuaScript fp) = toJSON $ T.pack fp
+  toJSON autoName = toJSON . T.pack . show $ autoName
 
 instance FromJSON AutomationName
 
