@@ -22,7 +22,6 @@ import Network.Wai.Middleware.Static (addBase, staticPolicy)
 
 import qualified Network.Wai.Handler.WebSockets as WaiWs
 import qualified Network.WebSockets as WS
--- import qualified Network.Wai as Wai
 import qualified Network.Wai.Handler.Warp as Warp
 
 httpAutomation
