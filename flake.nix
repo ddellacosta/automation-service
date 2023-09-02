@@ -42,6 +42,7 @@
               returnShellEnv = !(devTools == []);
 
               # https://hydra.nixos.org/build/225575437
+              # https://github.com/ddellacosta/automation-service/issues/8
               overrides = _self: super: {
                 astro = hl.dontCheck (hl.markUnbroken super.astro);
               };
