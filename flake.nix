@@ -113,7 +113,6 @@
           # marked as broken :-(
           # threadscope
           ghc-events
-          (lua5_4.withPackages(ps: with ps; [ cjson ]))
         ]);
       });
 }
