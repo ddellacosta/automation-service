@@ -234,13 +234,9 @@ initialize configFilePath mkLogger mkMQTTClient = do
     <*> (newTVarIO M.empty) -- subscriptions
     <*> (newTVarIO M.empty) -- scheduledJobs
     <*> (newTVarIO $ RestartConditions False False True)
-<<<<<<< HEAD
-    <*> (newTVarIO []) -- startupAutomations
+    <*> (newTVarIO []) -- startupMessages
     <*> (newTVarIO "") -- devicesRawJSON
     <*> (newTVarIO "") -- groupsRawJSON
-=======
-    <*> (newTVarIO []) -- startupMessages
->>>>>>> main
     <*> pure (loggerCleanup >> mcCleanup)
 
   where
