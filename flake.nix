@@ -22,7 +22,7 @@
 
         name = "automation-service";
 
-        project = devTools: # [1]
+        project = devTools:
           let
             addBuildTools = (t.flip hl.addBuildTools) (devTools ++ [
               easy-ps.purs-0_15_10
@@ -42,6 +42,7 @@
               returnShellEnv = !(devTools == []);
 
               # https://hydra.nixos.org/build/225575437
+              # https://github.com/ddellacosta/automation-service/issues/8
               overrides = _self: super: {
                 astro = hl.dontCheck (hl.markUnbroken super.astro);
               };
@@ -112,7 +113,6 @@
           # marked as broken :-(
           # threadscope
           ghc-events
-          (lua5_4.withPackages(ps: with ps; [ cjson ]))
         ]);
       });
 }

@@ -45,7 +45,7 @@ module Service.Env
   , notAlreadyRestarted
   , restartConditions
   , scheduledJobs
-  , startupAutomations
+  , startupMessages
   , statusTopic
   , subscriptions
   , uri
@@ -197,7 +197,7 @@ data Env = Env
   , _subscriptions :: TVar Subscriptions
   , _scheduledJobs :: TVar ScheduledJobs
   , _restartConditions :: TVar RestartConditions
-  , _startupAutomations :: TVar [AutomationName]
+  , _startupMessages :: TVar [Daemon.Message]
   , _devicesRawJSON :: TVar ByteString
   , _groupsRawJSON :: TVar ByteString
   -- do I need to mark this explicitly as being lazy so it's not called immediately?
@@ -234,9 +234,13 @@ initialize configFilePath mkLogger mkMQTTClient = do
     <*> (newTVarIO M.empty) -- subscriptions
     <*> (newTVarIO M.empty) -- scheduledJobs
     <*> (newTVarIO $ RestartConditions False False True)
+<<<<<<< HEAD
     <*> (newTVarIO []) -- startupAutomations
     <*> (newTVarIO "") -- devicesRawJSON
     <*> (newTVarIO "") -- groupsRawJSON
+=======
+    <*> (newTVarIO []) -- startupMessages
+>>>>>>> main
     <*> pure (loggerCleanup >> mcCleanup)
 
   where

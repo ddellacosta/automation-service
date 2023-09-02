@@ -10,6 +10,7 @@ import Control.Lens ((^?), _1, _2, _Just)
 import qualified Data.Aeson as Aeson
 import Data.Aeson (decode, object)
 import Data.Aeson.Lens (key)
+import Service.Automation (ClientMsg(..), _ValueMsg)
 import Service.AutomationName (AutomationName(Gold, LuaScript))
 import Service.MQTT.Messages.Daemon (Message(..), _SendTo)
 import Test.Hspec (Spec, describe, it, shouldBe)
@@ -35,11 +36,11 @@ spec = describe "Automation message parsing" $ do
       `shouldBe`
       Just Gold
 
-    sendToGold ^? _Just . _SendTo . _2 . key "mood"
+    sendToGold ^? _Just . _SendTo . _2 . _ValueMsg . key "mood"
       `shouldBe`
       Just (Aeson.String "frumpy")
 
-    sendToGold ^? _Just . _SendTo . _2 . key "fancy"
+    sendToGold ^? _Just . _SendTo . _2 . _ValueMsg . key "fancy"
       `shouldBe`
       Just (Aeson.Bool True)
 
@@ -49,10 +50,12 @@ spec = describe "Automation message parsing" $ do
     sendToGold `shouldBe`
       Just
       ( SendTo Gold
-        ( object
-          [ ("fancy", Aeson.Bool True)
-          , ("mood", Aeson.String "frumpy")
-          ]
+        ( ValueMsg
+          ( object
+            [ ("fancy", Aeson.Bool True)
+            , ("mood", Aeson.String "frumpy")
+            ]
+          )
         )
       )
 

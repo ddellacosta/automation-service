@@ -21,13 +21,14 @@ where
 
 import Control.Lens (makePrisms)
 import qualified Data.Aeson as Aeson
-import Data.Aeson (FromJSON(..), ToJSON(..), Value, (.:?), withObject)
+import Data.Aeson (FromJSON(..), ToJSON(..), Value, (.=), (.:?), object, withObject)
 import Data.Aeson.Types (Parser)
 import Data.ByteString.Lazy (ByteString)
 import Data.Text (Text)
 import Data.Maybe (fromMaybe)
 import GHC.Generics (Generic)
 import Network.MQTT.Topic (Topic)
+import Service.Automation (ClientMsg)
 import Service.AutomationName (AutomationName, parseAutomationName)
 import Service.Device (Device, DeviceId)
 import Service.Group (Group, GroupId)
@@ -39,7 +40,7 @@ type JobId = Text
 data Message where
   Start :: AutomationName -> Message
   Stop :: AutomationName -> Message
-  SendTo :: AutomationName -> Value -> Message
+  SendTo :: AutomationName -> ClientMsg -> Message
   Schedule :: JobId -> AutomationSchedule -> Message -> Message
   Unschedule :: JobId -> Message
   DeviceUpdate :: [Device] -> ByteString -> Message
@@ -88,14 +89,20 @@ instance Show Message where
     Null -> "Null"
 
 instance ToJSON Message where
-  --
-  -- At the moment I don't care what this produces, because this thing
-  -- doesn't emit Message values as JSON for any reason. Right now I
-  -- can't imagine why it ever would, but at that time I can implement
-  -- something. Now I just want it to work with the TChan Value in
-  -- Subscribe because it keeps the design cleaner.
-  --
-  toJSON _ = Aeson.String "Message"
+  toJSON (Start autoName) = object [ "start" .= autoName ]
+  toJSON (Stop autoName) = object [ "stop" .= autoName ]
+  toJSON (SendTo autoName clientMsg) = object
+    [ "send" .= autoName
+    , "msg" .= clientMsg
+    ]
+  toJSON (Schedule jobId sched jobMsg) = object
+    [ "jobId" .= jobId
+    , "schedule" .= sched
+    , "job" .= jobMsg
+    ]
+  toJSON (Unschedule jobId) = object [ "unschedule" .= jobId ]
+  toJSON Status = object [ "status" .= object [] ]
+  toJSON _ = object []
 
 instance FromJSON Message where
   --
