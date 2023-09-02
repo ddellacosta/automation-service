@@ -26,8 +26,10 @@ module Service.Env
   , dbPath
   , deviceRegistrations
   , devices
+  , devicesRawJSON
   , groupRegistrations
   , groups
+  , groupsRawJSON
   , initialize
   , invertRegistrations
   , loadedDevices
@@ -50,17 +52,17 @@ module Service.Env
   )
 where
 
-import Control.Lens ((<&>), (^.), makeFieldsNoPrefix)
+import Control.Lens (makeFieldsNoPrefix, (<&>), (^.))
 import Control.Lens.Unsound (lensProduct)
 import Data.Aeson (Value, decode)
 import Data.ByteString.Lazy (ByteString)
 import Data.Foldable (foldl', for_)
-import Data.List.NonEmpty (NonEmpty((:|)))
-import qualified Data.HashMap.Strict as M
 import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as M
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
-import Dhall (Decoder, Generic, FromDhall(..), auto, field, inputFile, record, strictText, string)
+import Dhall (Decoder, FromDhall (..), Generic, auto, field, inputFile, record, strictText, string)
 import Network.MQTT.Client (MQTTClient)
 import Network.MQTT.Topic (Topic, unTopic)
 import Network.URI (URI, nullURI, parseURI)
@@ -72,11 +74,10 @@ import Service.Group (Group, GroupId)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.MQTT.Topic (parseTopic)
 import qualified Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
-import System.Log.FastLogger (TimedFastLogger) 
+import System.Log.FastLogger (TimedFastLogger)
 import UnliftIO.Async (Async)
 import UnliftIO.Concurrent (ThreadId)
 import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO, writeTChan)
-
 
 data LogLevel = Debug | Info | Warn | Error
   deriving (Generic, Show, Eq, Ord)
@@ -84,12 +85,12 @@ data LogLevel = Debug | Info | Warn | Error
 instance FromDhall LogLevel
 
 data MQTTConfig = MQTTConfig
-  { _uri :: URI
+  { _uri                    :: URI
   , _automationServiceTopic :: Topic
-  , _statusTopic :: Topic
-  , _caCertPath :: Maybe FilePath
-  , _clientCertPath :: Maybe FilePath
-  , _clientKeyPath :: Maybe FilePath
+  , _statusTopic            :: Topic
+  , _caCertPath             :: Maybe FilePath
+  , _clientCertPath         :: Maybe FilePath
+  , _clientKeyPath          :: Maybe FilePath
   }
   deriving (Generic, Show)
 
@@ -114,11 +115,11 @@ uriDecoder :: Decoder URI
 uriDecoder = string <&> fromMaybe nullURI . parseURI
 
 data Config = Config
-  { _mqttConfig :: MQTTConfig
-  , _logFilePath :: FilePath
-  , _logLevel :: LogLevel
+  { _mqttConfig    :: MQTTConfig
+  , _logFilePath   :: FilePath
+  , _logLevel      :: LogLevel
   , _luaScriptPath :: FilePath
-  , _dbPath :: FilePath
+  , _dbPath        :: FilePath
   }
   deriving (Generic, Show)
 
@@ -129,7 +130,7 @@ configDecoder =
   record
     ( Config
         <$> field "mqttBroker" mqttConfigDecoder
-        <*> field "logFilePath" string 
+        <*> field "logFilePath" string
         <*> field "logLevel" auto
         <*> field "luaScriptPath" string
         <*> field "dbPath" string
@@ -172,8 +173,8 @@ type ScheduledJobs =
 
 data RestartConditions
   = RestartConditions
-  { _loadedDevices :: Bool
-  , _loadedGroups :: Bool
+  { _loadedDevices       :: Bool
+  , _loadedGroups        :: Bool
   , _notAlreadyRestarted :: Bool
   }
   deriving (Show, Eq)
@@ -181,23 +182,25 @@ data RestartConditions
 makeFieldsNoPrefix ''RestartConditions
 
 data Env = Env
-  { _config :: Config
-  , _logger :: LoggerVariant
-  , _mqttClient :: MQTTClientVariant
-  , _mqttDispatch :: TVar MQTTDispatch
-  , _daemonBroadcast :: TChan Daemon.Message
+  { _config              :: Config
+  , _logger              :: LoggerVariant
+  , _mqttClient          :: MQTTClientVariant
+  , _mqttDispatch        :: TVar MQTTDispatch
+  , _daemonBroadcast     :: TChan Daemon.Message
   , _automationBroadcast :: TChan Automation.Message
-  , _messageChan :: TChan Daemon.Message
-  , _devices :: TVar (HashMap DeviceId Device)
+  , _messageChan         :: TChan Daemon.Message
+  , _devices             :: TVar (HashMap DeviceId Device)
   , _deviceRegistrations :: TVar (Registrations DeviceId)
-  , _groups :: TVar (HashMap GroupId Group)
-  , _groupRegistrations :: TVar (Registrations GroupId)
-  , _subscriptions :: TVar Subscriptions
-  , _scheduledJobs :: TVar ScheduledJobs
-  , _restartConditions :: TVar RestartConditions
-  , _startupMessages :: TVar [Daemon.Message]
+  , _groups              :: TVar (HashMap GroupId Group)
+  , _groupRegistrations  :: TVar (Registrations GroupId)
+  , _subscriptions       :: TVar Subscriptions
+  , _scheduledJobs       :: TVar ScheduledJobs
+  , _restartConditions   :: TVar RestartConditions
+  , _startupMessages     :: TVar [Daemon.Message]
+  , _devicesRawJSON      :: TVar ByteString
+  , _groupsRawJSON       :: TVar ByteString
   -- do I need to mark this explicitly as being lazy so it's not called immediately?
-  , _appCleanup :: IO ()
+  , _appCleanup          :: IO ()
   }
 
 makeFieldsNoPrefix ''Env
@@ -230,7 +233,9 @@ initialize configFilePath mkLogger mkMQTTClient = do
     <*> (newTVarIO M.empty) -- subscriptions
     <*> (newTVarIO M.empty) -- scheduledJobs
     <*> (newTVarIO $ RestartConditions False False True)
-    <*> (newTVarIO []) -- startupMessages
+    <*> (newTVarIO [])      -- startupMessages
+    <*> (newTVarIO "")      -- devicesRawJSON
+    <*> (newTVarIO "")      -- groupsRawJSON
     <*> pure (loggerCleanup >> mcCleanup)
 
   where

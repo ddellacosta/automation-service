@@ -19,15 +19,8 @@ module Service.MQTT.Messages.Lighting
   )
 where
 
-import Data.Aeson
-  ( FromJSON(..)
-  , ToJSON(..)
-  , Value(..)
-  , decode
-  , defaultOptions
-  , encode
-  , genericToEncoding
-  )
+import Data.Aeson (FromJSON (..), ToJSON (..), Value (..), decode, defaultOptions, encode,
+                   genericToEncoding)
 import Data.ByteString.Lazy (ByteString)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -51,12 +44,12 @@ data Effect =
 
 effectToJson :: Effect -> Text
 effectToJson = \case
-  Blink -> "blink"
-  Breathe -> "breathe"
-  Okay -> "okay"
+  Blink         -> "blink"
+  Breathe       -> "breathe"
+  Okay          -> "okay"
   ChannelChange -> "channel_change"
-  FinishEffect -> "finish_effect"
-  StopEffect -> "stop_effect"
+  FinishEffect  -> "finish_effect"
+  StopEffect    -> "stop_effect"
 
 data EffectMsg = EffectMsg
   { effect :: Text
@@ -143,7 +136,7 @@ withTransition seconds' msg =
     mergeObjects obj1 obj2 =
       case (obj1, obj2) of
         ((Object obj1'), (Object obj2')) -> Object $ obj1' <> obj2'
-        (_, _) -> Null
+        (_, _)                           -> Null
 
     transitionValue :: Int -> Value
     transitionValue s = fromMaybe Null $ decode $ encode $ Transition s

@@ -12,21 +12,13 @@ import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import Data.X509.CertificateStore (makeCertificateStore, readCertificateStore)
-import Network.Connection (TLSSettings(..))
+import Network.Connection (TLSSettings (..))
 import qualified Network.MQTT.Client as MQTT
-import Network.TLS
-  ( ClientHooks(..)
-  , ClientParams(..)
-  , Credentials(..)
-  , Shared(..)
-  , Supported(..)
-  , Version(..)
-  , credentialLoadX509
-  , defaultParamsClient
-  )
+import Network.TLS (ClientHooks (..), ClientParams (..), Credentials (..), Shared (..),
+                    Supported (..), Version (..), credentialLoadX509, defaultParamsClient)
 import Network.TLS.Extra.Cipher (ciphersuite_default)
 import qualified Service.App as App
-import Service.Env (LogLevel(..), LoggerVariant, MQTTConfig(..), MQTTDispatch)
+import Service.Env (LogLevel (..), LoggerVariant, MQTTConfig (..), MQTTDispatch)
 import UnliftIO.STM (TVar, readTVarIO)
 
 
@@ -40,7 +32,7 @@ initMQTTClient msgCB (MQTTConfig {..}) = do
 
   let mqttConfig' = mkMQTTConfig $ mkClientParams eCreds mCertStore
 
-  MQTT.connectURI mqttConfig' _uri 
+  MQTT.connectURI mqttConfig' _uri
 
   where
     clientParams' = defaultParamsClient "mosquitto" ""

@@ -18,35 +18,24 @@ where
 import Prelude hiding (id)
 
 import Control.Lens (makeFieldsNoPrefix)
-import Data.Aeson
-  ( FromJSON(..)
-  , ToJSON(..)
-  , Value
-  , (.:)
-  , (.:?)
-  , decode
-  , defaultOptions
-  , encode
-  , fieldLabelModifier
-  , genericToEncoding
-  , withObject
-  )
+import Data.Aeson (FromJSON (..), ToJSON (..), Value, decode, defaultOptions, encode,
+                   fieldLabelModifier, genericToEncoding, withObject, (.:), (.:?))
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Network.MQTT.Topic (Topic(..))
+import Network.MQTT.Topic (Topic (..))
 import Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
 
 type DeviceId = Text
 
 data Device = Device
-  { _id :: DeviceId
-  , _name :: Text
-  , _category :: Text
+  { _id           :: DeviceId
+  , _name         :: Text
+  , _category     :: Text
   , _manufacturer :: Maybe Text
-  , _model :: Maybe Text
-  , _topic :: Topic
-  , _topicGet :: Topic
-  , _topicSet :: Topic
+  , _model        :: Maybe Text
+  , _topic        :: Topic
+  , _topicGet     :: Topic
+  , _topicSet     :: Topic
   }
   deriving (Generic, Show, Eq)
 

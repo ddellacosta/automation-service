@@ -6,7 +6,7 @@ module Test.Integration.Service.DaemonTestHelpers
   )
   where
 
-import Control.Lens ((&), (%~), (^.), view)
+import Control.Lens (view, (%~), (&), (^.))
 import qualified Data.HashMap.Strict as M
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
@@ -14,17 +14,8 @@ import qualified Service.App as App
 import qualified Service.Daemon as Daemon
 import qualified Service.Device as Device
 import qualified Service.Env as Env
-import Service.Env
-  ( Env
-  , LoggerVariant(QLogger)
-  , MQTTClientVariant(..)
-  , appCleanup
-  , config
-  , daemonBroadcast
-  , dbPath
-  , devices
-  , groups
-  )
+import Service.Env (Env, LoggerVariant (QLogger), MQTTClientVariant (..), appCleanup, config,
+                    daemonBroadcast, dbPath, devices, groups)
 import qualified Service.Group as Group
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import Test.Helpers (loadTestDevices, loadTestGroups)

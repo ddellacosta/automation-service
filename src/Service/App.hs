@@ -14,42 +14,23 @@ module Service.App
 
 import Prelude hiding (log)
 
-import Control.Lens ((^.), view)
+import Control.Lens (view, (^.))
 import Control.Monad (void, when)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
-import Control.Monad.Reader (MonadIO, MonadReader(..), ReaderT, liftIO, runReaderT)
+import Control.Monad.Reader (MonadIO, MonadReader (..), ReaderT, liftIO, runReaderT)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.HashMap.Strict as M
-import qualified Data.Text as T
 import Data.Text (Text)
-import qualified Network.MQTT.Client as MQTT
+import qualified Data.Text as T
 import Network.MQTT.Client (Topic, subOptions)
+import qualified Network.MQTT.Client as MQTT
 import Network.MQTT.Topic (toFilter)
 import Service.Device (Device, DeviceId)
-import Service.Env
-  ( Config
-  , Env
-  , LogLevel(..)
-  , LoggerVariant(..)
-  , MQTTClientVariant(..)
-  , config
-  , devices
-  , logFilePath
-  , logger
-  , logLevel
-  , mqttClient
-  )
-import System.Log.FastLogger
-  ( FileLogSpec(..)
-  , FormattedTime
-  , LogType
-  , LogType'(..)
-  , TimedFastLogger
-  , ToLogStr(..)
-  , defaultBufSize
-  , newTimeCache
-  , simpleTimeFormat
-  )
+import Service.Env (Config, Env, LogLevel (..), LoggerVariant (..), MQTTClientVariant (..), config,
+                    devices, logFilePath, logLevel, logger, mqttClient)
+import System.Log.FastLogger (FileLogSpec (..), FormattedTime, LogType, LogType' (..),
+                              TimedFastLogger, ToLogStr (..), defaultBufSize, newTimeCache,
+                              simpleTimeFormat)
 import UnliftIO.STM (atomically, modifyTVar', readTVar)
 
 newtype AutomationService a = AutomationService (ReaderT Env IO a)
@@ -105,12 +86,12 @@ log logger' level logStr = logger' $ \time ->
   Given a Env.Config, returns an IO-wrapped (IO FormattedTime,
   LogType), used in the creation of a TimedFastLogger. TODO:
   FileLogSpec details
--} 
+-}
 loggerConfig :: Config -> IO (IO FormattedTime, LogType)
 loggerConfig config' = do
   fmtTime <- newTimeCache simpleTimeFormat
 
-  let logFilePath' = config' ^. logFilePath 
+  let logFilePath' = config' ^. logFilePath
       -- TODO make these config options or constants or something
       logType = LogFile (FileLogSpec logFilePath' 1048576 50) defaultBufSize
 
@@ -140,7 +121,7 @@ publish topic msg mqttClient' =
 subscribe :: Topic -> MQTTClientVariant -> IO ()
 subscribe topic mqttClient' =
   case mqttClient' of
-    MCClient mc -> void $ MQTT.subscribe mc [(toFilter topic, subOptions)] []
+    MCClient mc        -> void $ MQTT.subscribe mc [(toFilter topic, subOptions)] []
     TVClient _tvClient -> pure ()
 
 -- not sure where to put this, but eventually I want to just get rid

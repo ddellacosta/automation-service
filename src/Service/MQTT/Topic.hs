@@ -5,15 +5,11 @@ module Service.MQTT.Topic
   )
   where
 
-import Data.Aeson
-  ( FromJSON(..)
-  , ToJSON(..)
-  , withText
-  )
-import Data.Hashable (Hashable(..))
+import Data.Aeson (FromJSON (..), ToJSON (..), withText)
+import Data.Hashable (Hashable (..))
 import Data.Maybe (fromJust)
 import Data.Text (Text)
-import Network.MQTT.Topic (Topic(..), mkTopic, unTopic)
+import Network.MQTT.Topic (Topic (..), mkTopic, unTopic)
 
 -- to allow for use with Data.HashMap.Strict
 instance Hashable Topic where
@@ -32,4 +28,4 @@ parseTopic t =
     -- TODO I guess I should probably throw here or something? I
     -- dunno. I need to at least alert the user that a given topic has
     -- something wrong with it
-    Nothing -> fromJust . mkTopic $ "failedToMakeTopic"
+    Nothing     -> fromJust . mkTopic $ "failedToMakeTopic"

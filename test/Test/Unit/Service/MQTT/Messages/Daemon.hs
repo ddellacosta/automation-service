@@ -6,13 +6,13 @@ module Test.Unit.Service.MQTT.Messages.Daemon
   )
 where
 
-import Control.Lens ((^?), _1, _2, _Just)
-import qualified Data.Aeson as Aeson
+import Control.Lens (_1, _2, _Just, (^?))
 import Data.Aeson (decode, object)
+import qualified Data.Aeson as Aeson
 import Data.Aeson.Lens (key)
-import Service.Automation (ClientMsg(..), _ValueMsg)
-import Service.AutomationName (AutomationName(Gold, LuaScript))
-import Service.MQTT.Messages.Daemon (Message(..), _SendTo)
+import Service.Automation (ClientMsg (..), _ValueMsg)
+import Service.AutomationName (AutomationName (Gold, LuaScript))
+import Service.MQTT.Messages.Daemon (Message (..), _SendTo)
 import Test.Hspec (Spec, describe, it, shouldBe)
 
 

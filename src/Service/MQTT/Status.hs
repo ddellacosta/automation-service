@@ -4,8 +4,8 @@ module Service.MQTT.Status
 where
 
 import Control.Lens ((^.))
-import qualified Data.Aeson as Aeson
 import Data.Aeson (encode, object, toJSON)
+import qualified Data.Aeson as Aeson
 import Data.Aeson.Types (emptyArray)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.HashMap.Strict as M
@@ -15,8 +15,8 @@ import Data.Time.Format.ISO8601 (iso8601Show)
 import qualified Data.Vector as V
 import Service.Automation (startTime)
 import Service.AutomationName (serializeAutomationName)
-import Service.Env (Registrations, ScheduledJobs, ThreadMap, invertRegistrations)
 import Service.Device (DeviceId)
+import Service.Env (Registrations, ScheduledJobs, ThreadMap, invertRegistrations)
 import Service.Group (GroupId)
 
 encodeAutomationStatus

@@ -7,10 +7,10 @@ module Service.StateStore
   where
 
 import Data.ByteString.Char8 (ByteString)
-import Data.Text (Text)
 import Data.Foldable (for_)
-import qualified Database.SQLite.Simple as DB
+import Data.Text (Text)
 import Database.SQLite.Simple (Connection)
+import qualified Database.SQLite.Simple as DB
 
 allRunning :: FilePath -> IO [(Int, Text)]
 allRunning dbPath = do

@@ -7,18 +7,12 @@ import Control.Lens.Unsound (lensProduct)
 import qualified Data.HashMap.Strict as M
 import qualified Network.MQTT.Client as MQTT
 import Network.MQTT.Topic (toFilter)
-import qualified Service.Daemon as Daemon
 import qualified Service.App as App
+import qualified Service.Daemon as Daemon
 import qualified Service.Env as Env
-import Service.Env
-  ( Config
-  , LoggerVariant(TFLogger)
-  , MQTTClientVariant(..)
-  , MQTTDispatch
-  , logLevel
-  , mqttConfig
-  )
-import Service.MQTT.Client (mqttClientCallback, initMQTTClient)
+import Service.Env (Config, LoggerVariant (TFLogger), MQTTClientVariant (..), MQTTDispatch,
+                    logLevel, mqttConfig)
+import Service.MQTT.Client (initMQTTClient, mqttClientCallback)
 import System.Log.FastLogger (newTimedFastLogger)
 import UnliftIO.STM (TVar, readTVarIO)
 

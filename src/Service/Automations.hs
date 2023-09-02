@@ -3,12 +3,12 @@ module Service.Automations
   )
 where
 
-import Control.Monad.Reader (MonadReader)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
+import Control.Monad.Reader (MonadReader)
 import Data.Time.Clock (UTCTime)
 import Service.App (Logger, MonadMQTT)
 import Service.Automation (Automation, nullAutomation)
-import Service.AutomationName (AutomationName(..))
+import Service.AutomationName (AutomationName (..))
 import Service.Automations.Gold (goldAutomation)
 import Service.Automations.HTTP (httpAutomation)
 import Service.Automations.LuaScript (luaAutomation)
@@ -20,8 +20,8 @@ findAutomation
   => AutomationName
   -> (UTCTime -> Automation m)
 findAutomation = \case
-  Null -> nullAutomation
-  Gold -> goldAutomation
-  HTTP -> httpAutomation
+  Null               -> nullAutomation
+  Gold               -> goldAutomation
+  HTTP               -> httpAutomation
   LuaScript filePath -> luaAutomation filePath
-  StateManager -> stateManagerAutomation
+  StateManager       -> stateManagerAutomation

@@ -1,13 +1,13 @@
 module Test.Helpers
   ( loadTestDevices
   , loadTestGroups
-  , 
+  ,
   )
 where
 
 import Data.Aeson (decode)
-import Data.ByteString.Lazy as BL
 import Data.ByteString as BS
+import Data.ByteString.Lazy as BL
 import Data.Maybe (fromMaybe)
 import Service.Device (Device)
 import Service.Group (Group)
