@@ -77,8 +77,15 @@ import qualified Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
 import System.Log.FastLogger (TimedFastLogger) 
 import UnliftIO.Async (Async)
 import UnliftIO.Concurrent (ThreadId)
-import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO, writeTChan)
-
+import UnliftIO.STM
+  ( TChan
+  , TVar
+  , atomically
+  , dupTChan
+  , newBroadcastTChanIO
+  , newTVarIO
+  , writeTChan
+  )
 
 data LogLevel = Debug | Info | Warn | Error
   deriving (Generic, Show, Eq, Ord)
