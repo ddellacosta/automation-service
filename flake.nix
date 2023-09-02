@@ -22,7 +22,7 @@
 
         name = "automation-service";
 
-        project = devTools: # [1]
+        project = devTools:
           let
             addBuildTools = (t.flip hl.addBuildTools) (devTools ++ [
               easy-ps.purs-0_15_10
