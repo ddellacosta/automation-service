@@ -9,15 +9,15 @@ where
 import Prelude hiding (id, init)
 
 import Control.Lens (view)
-import Control.Monad.Reader (MonadReader)
 import Control.Monad.IO.Unlift (MonadUnliftIO, liftIO)
+import Control.Monad.Reader (MonadReader)
 import qualified Data.Aeson as Aeson
 import Data.Time.Clock (UTCTime)
 import qualified Data.Vector as V
-import Service.App (Logger(..), MonadMQTT(..))
+import Service.App (Logger (..), MonadMQTT (..))
 import qualified Service.Automation as Automation
-import Service.Automation (Automation(..))
-import Service.AutomationName (AutomationName(..))
+import Service.Automation (Automation (..))
+import Service.AutomationName (AutomationName (..))
 import Service.Env (Env, config, dbPath)
 import qualified Service.StateStore as StateStore
 import UnliftIO.STM (TChan, atomically, readTChan)

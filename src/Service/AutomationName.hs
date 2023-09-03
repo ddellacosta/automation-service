@@ -7,12 +7,12 @@ module Service.AutomationName
 where
 
 import Control.Monad (guard)
-import Data.Aeson (FromJSON(..), ToJSON(..))
+import Data.Aeson (FromJSON (..), ToJSON (..))
 import qualified Data.Char as Char
+import Data.Hashable (Hashable (..))
 import Data.List (uncons)
-import Data.Hashable (Hashable(..))
-import qualified Data.Text as T
 import Data.Text (Text)
+import qualified Data.Text as T
 import GHC.Generics (Generic)
 
 data AutomationName
@@ -27,14 +27,14 @@ instance Hashable AutomationName
 
 instance ToJSON AutomationName where
   toJSON (LuaScript fp) = toJSON $ T.pack fp
-  toJSON autoName = toJSON . T.pack . show $ autoName
+  toJSON autoName       = toJSON . T.pack . show $ autoName
 
 instance FromJSON AutomationName
 
 serializeAutomationName :: AutomationName -> Text
 serializeAutomationName = \case
   (LuaScript filepath) -> T.pack filepath
-  autoName -> T.pack . show $ autoName
+  autoName             -> T.pack . show $ autoName
 
 parseAutomationName :: String -> Maybe AutomationName
 parseAutomationName = \case

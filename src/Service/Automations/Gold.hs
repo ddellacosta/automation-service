@@ -6,30 +6,23 @@ where
 
 import Prelude hiding (id, init)
 
-import Control.Lens ((^.), (^?), view)
-import Control.Monad.Reader (MonadReader, liftIO)
+import Control.Lens (view, (^.), (^?))
 import Control.Monad.IO.Unlift (MonadUnliftIO)
+import Control.Monad.Reader (MonadReader, liftIO)
 import Data.Aeson.Lens (key)
 import Data.Foldable (for_)
 import qualified Data.Text as T
 import Data.Time.Clock (UTCTime)
 import Network.MQTT.Client (Topic)
-import Service.App (Logger(..), MonadMQTT(..), findDeviceM)
+import Service.App (Logger (..), MonadMQTT (..), findDeviceM)
 import qualified Service.Automation as Automation
-import Service.Automation (Automation(..))
-import Service.AutomationName (AutomationName(..))
+import Service.Automation (Automation (..))
+import Service.AutomationName (AutomationName (..))
 import Service.Device (DeviceId, topicSet)
-import Service.Group (GroupId)
 import Service.Env (Env, daemonBroadcast)
+import Service.Group (GroupId)
 import qualified Service.MQTT.Messages.Daemon as Daemon
-import Service.MQTT.Messages.Lighting
-  ( Effect(..)
-  , effect'
-  , hex'
-  , mkHex
-  , seconds
-  , withTransition'
-  )
+import Service.MQTT.Messages.Lighting (Effect (..), effect', hex', mkHex, seconds, withTransition')
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan, atomically, tryReadTChan, writeTChan)
 

@@ -106,13 +106,14 @@
           cabal-install
           haskell-language-server
           hlint
+          ghc-events
           ghcid
-          watchexec
-          mosquitto
           jq
+          mosquitto
+          stylish-haskell
           # marked as broken :-(
           # threadscope
-          ghc-events
+          watchexec
         ]);
       });
 }

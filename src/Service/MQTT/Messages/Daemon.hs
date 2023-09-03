@@ -20,11 +20,11 @@ module Service.MQTT.Messages.Daemon
 where
 
 import Control.Lens (makePrisms)
+import Data.Aeson (FromJSON (..), ToJSON (..), Value, object, withObject, (.:?), (.=))
 import qualified Data.Aeson as Aeson
-import Data.Aeson (FromJSON(..), ToJSON(..), Value, (.=), (.:?), object, withObject)
 import Data.Aeson.Types (Parser)
-import Data.Text (Text)
 import Data.Maybe (fromMaybe)
+import Data.Text (Text)
 import GHC.Generics (Generic)
 import Network.MQTT.Topic (Topic)
 import Service.Automation (ClientMsg)

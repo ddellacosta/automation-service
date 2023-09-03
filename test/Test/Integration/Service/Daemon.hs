@@ -6,51 +6,34 @@ module Test.Integration.Service.Daemon
   )
 where
 
-import Control.Lens ((^.), (^?), (<&>), _1, _2, _3, _Just, _head, ix, preview)
+import Control.Lens (_1, _2, _3, _Just, _head, ix, preview, (<&>), (^.), (^?))
 import Control.Monad (void)
+import Data.Aeson (Value, decode, encode)
 import qualified Data.Aeson as Aeson
-import Data.Aeson (Value, encode, decode)
 import Data.Aeson.Lens (_Array, key)
 import qualified Data.ByteString.Char8 as SBS
 import qualified Data.ByteString.Lazy as LBS
 import Data.Foldable (for_)
-import Data.List.NonEmpty (NonEmpty((:|)))
 import qualified Data.HashMap.Strict as M
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe (fromJust, fromMaybe)
-import qualified Data.Text as T
 import Data.Text (Text)
-import GHC.Conc (ThreadStatus(..), threadStatus)
+import qualified Data.Text as T
+import GHC.Conc (ThreadStatus (..), threadStatus)
 import Network.MQTT.Topic (mkTopic)
 import Safe (headMay)
 import Service.Automation (name)
-import Service.AutomationName (AutomationName(..), parseAutomationName, serializeAutomationName)
-import Service.Env
-  ( LoggerVariant(..)
-  , MQTTClientVariant(..)
-  , RestartConditions(..)
-  , automationServiceTopic
-  , config
-  , daemonBroadcast
-  , dbPath
-  , deviceRegistrations
-  , groupRegistrations
-  , logger
-  , mqttClient
-  , mqttConfig
-  , mqttDispatch
-  , restartConditions
-  , scheduledJobs
-  )
+import Service.AutomationName (AutomationName (..), parseAutomationName, serializeAutomationName)
+import Service.Env (LoggerVariant (..), MQTTClientVariant (..), RestartConditions (..),
+                    automationServiceTopic, config, daemonBroadcast, dbPath, deviceRegistrations,
+                    groupRegistrations, logger, mqttClient, mqttConfig, mqttDispatch,
+                    restartConditions, scheduledJobs)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
 import System.Environment (setEnv)
 import Test.Hspec (Spec, around, expectationFailure, it, shouldBe, xit)
-import Test.Integration.Service.DaemonTestHelpers
-  ( initAndCleanup
-  , testWithAsyncDaemon
-  , waitUntilEq
-  , waitUntilEqSTM
-  )
+import Test.Integration.Service.DaemonTestHelpers (initAndCleanup, testWithAsyncDaemon, waitUntilEq,
+                                                   waitUntilEqSTM)
 import UnliftIO.Async (asyncThreadId)
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (atomically, readTChan, readTVar, readTVarIO, writeTChan, writeTVar)

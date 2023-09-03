@@ -11,14 +11,10 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import qualified Data.Time.Clock as C
 import qualified Data.Time.Format.ISO8601 as ISO
-import Test.Hspec (Spec, describe, it, shouldBe)
-import Service.TimeHelpers
-  ( addMinutes
-  , getSunriseAndSunset
-  , utcTimeToCronInstant
-  )
+import Service.TimeHelpers (addMinutes, getSunriseAndSunset, utcTimeToCronInstant)
 import qualified System.Cron.Parser as P
 import System.Environment (setEnv)
+import Test.Hspec (Spec, describe, it, shouldBe)
 
 spec :: Spec
 spec = describe "date utility functions" $ do

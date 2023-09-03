@@ -9,14 +9,14 @@ module Service.MQTT.Zigbee2MQTT
   where
 
 import Data.Text (Text)
+import Network.MQTT.Topic (Topic (..))
 import Service.MQTT.Topic (parseTopic)
-import Network.MQTT.Topic (Topic(..))
 
 -- https://www.zigbee2mqtt.io/guide/usage/mqtt_topics_and_messages.html#zigbee2mqtt-bridge-devices
 devicesTopic :: Topic
 devicesTopic = "zigbee2mqtt/bridge/devices"
 
--- https://www.zigbee2mqtt.io/guide/usage/mqtt_topics_and_messages.html#zigbee2mqtt-bridge-groups 
+-- https://www.zigbee2mqtt.io/guide/usage/mqtt_topics_and_messages.html#zigbee2mqtt-bridge-groups
 groupsTopic :: Topic
 groupsTopic = "zigbee2mqtt/bridge/groups"
 
