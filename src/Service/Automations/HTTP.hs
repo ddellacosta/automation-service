@@ -5,24 +5,23 @@ where
 
 import Control.Lens (view)
 import Control.Monad (forever)
-import Control.Monad.IO.Unlift (MonadUnliftIO(..), liftIO)
+import Control.Monad.IO.Unlift (MonadUnliftIO (..), liftIO)
 import Control.Monad.Reader (MonadReader)
 import Data.ByteString.Lazy (ByteString)
-import Data.Time.Clock (UTCTime)
 import Data.Text (Text)
-import Service.App (Logger(..), MonadMQTT(..))
-import Service.Env (Env, devicesRawJSON)
+import Data.Time.Clock (UTCTime)
+import qualified Network.Wai.Handler.Warp as Warp
+import qualified Network.Wai.Handler.WebSockets as WaiWs
+import Network.Wai.Middleware.Static (addBase, staticPolicy)
+import qualified Network.WebSockets as WS
+import Service.App (Logger (..), MonadMQTT (..))
 import qualified Service.Automation as Automation
-import Service.Automation (Automation(..))
+import Service.Automation (Automation (..))
 import qualified Service.AutomationName as AutomationName
+import Service.Env (Env, devicesRawJSON)
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan, readTVarIO)
 import Web.Scotty (file, get, middleware, raw, scottyApp, setHeader)
-import Network.Wai.Middleware.Static (addBase, staticPolicy)
-
-import qualified Network.Wai.Handler.WebSockets as WaiWs
-import qualified Network.WebSockets as WS
-import qualified Network.Wai.Handler.Warp as Warp
 
 httpAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)

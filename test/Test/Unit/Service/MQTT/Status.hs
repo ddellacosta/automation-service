@@ -5,17 +5,17 @@ module Test.Unit.Service.MQTT.Status
 where
 
 import Control.Concurrent (myThreadId)
-import Control.Lens ((^..), _Just, filtered, folded, lengthOf, toListOf)
-import Data.Aeson (Value(..), decode)
+import Control.Lens (_Just, filtered, folded, lengthOf, toListOf, (^..))
+import Data.Aeson (Value (..), decode)
 import Data.Aeson.Lens (_Array, _String, key, nth, values)
-import Data.List.NonEmpty (NonEmpty((:|)))
-import Data.List (sort)
 import qualified Data.HashMap.Strict as M
+import Data.List (sort)
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.Text as T
 import Data.Time.Clock (UTCTime, getCurrentTime)
 import Data.Time.Format.ISO8601 (iso8601Show)
-import Service.Automation (Automation(..))
-import Service.AutomationName (AutomationName(LuaScript))
+import Service.Automation (Automation (..))
+import Service.AutomationName (AutomationName (LuaScript))
 import Service.Env (ThreadMap)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.MQTT.Status (encodeAutomationStatus)

@@ -11,20 +11,9 @@ import qualified Data.Aeson as Aeson
 import Data.Aeson.Lens (_Array, _String, key)
 import Data.Maybe (fromJust)
 import qualified Data.Vector as V
-import Network.MQTT.Topic (Topic(..))
-import Service.Group
-  ( Group(..)
-  , Member(..)
-  , Scene(..)
-  , id
-  , members
-  , name
-  , scenes
-  , toLuaGroup
-  , topic
-  , topicGet
-  , topicSet
-  )
+import Network.MQTT.Topic (Topic (..))
+import Service.Group (Group (..), Member (..), Scene (..), id, members, name, scenes, toLuaGroup,
+                      topic, topicGet, topicSet)
 import Service.MQTT.Topic (parseTopic)
 import Test.Helpers (loadTestGroups)
 import Test.Hspec (Spec, describe, it, shouldBe)

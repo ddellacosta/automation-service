@@ -9,19 +9,9 @@ import Prelude hiding (id, lookup)
 import Control.Lens ((^.), (^?))
 import Data.Aeson.Lens (_String, key)
 import Data.Maybe (fromJust)
-import Network.MQTT.Topic (Topic(..))
-import Service.Device
-  ( Device(..)
-  , category
-  , id
-  , manufacturer
-  , model
-  , name
-  , toLuaDevice
-  , topic
-  , topicGet
-  , topicSet
-  )
+import Network.MQTT.Topic (Topic (..))
+import Service.Device (Device (..), category, id, manufacturer, model, name, toLuaDevice, topic,
+                       topicGet, topicSet)
 import Service.MQTT.Topic (parseTopic)
 import Test.Helpers (loadTestDevices)
 import Test.Hspec (Spec, describe, it, shouldBe)

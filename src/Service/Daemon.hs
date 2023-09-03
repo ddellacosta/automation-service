@@ -8,65 +8,39 @@ where
 
 import Prelude hiding (filter)
 
-import Control.Lens (Lens', (&), (<&>), (^.), (.~), view)
+import Control.Lens (Lens', view, (&), (.~), (<&>), (^.))
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
-import qualified Data.Aeson as Aeson
 import Data.Aeson (Value, decode, encode, object)
+import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Char8 as SBS
 import qualified Data.ByteString.Lazy as LBS
-import Data.Foldable (foldl', foldMap', for_)
+import Data.Foldable (foldMap', foldl', for_)
 import Data.Hashable (Hashable)
-import qualified Data.HashMap.Strict as M
 import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as M
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
-import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (catMaybes, fromMaybe)
 import qualified Data.Text as T
 import Data.Time.Clock (getCurrentTime)
 import Data.Traversable (for)
 import qualified Data.Vector as V
-import GHC.Conc (ThreadStatus(..), threadStatus)
+import GHC.Conc (ThreadStatus (..), threadStatus)
 import Network.MQTT.Topic (Topic)
+import Service.App (Logger (..), MonadMQTT (..))
 import qualified Service.Automation as Automation
-import Service.Automation (Automation(_name), ClientMsg(..), Message(..))
-import Service.AutomationName
-  ( AutomationName(..)
-  , parseAutomationNameText
-  , serializeAutomationName
-  )
+import Service.Automation (Automation (_name), ClientMsg (..), Message (..))
+import Service.AutomationName (AutomationName (..), parseAutomationNameText,
+                               serializeAutomationName)
 import Service.Automations (findAutomation)
-import Service.App (Logger(..), MonadMQTT(..))
 import qualified Service.Device as Device
-import Service.Env
-  ( AutomationEntry
-  , Env
-  , Registrations
-  , RestartConditions(..)
-  , ThreadMap
-  , appCleanup
-  , automationBroadcast
-  , automationServiceTopic
-  , config
-  , daemonBroadcast
-  , dbPath
-  , deviceRegistrations
-  , devices
-  , devicesRawJSON
-  , groupRegistrations
-  , groups
-  , groupsRawJSON
-  , loadedDevices
-  , loadedGroups
-  , messageChan
-  , mqttConfig
-  , mqttDispatch
-  , notAlreadyRestarted
-  , restartConditions
-  , scheduledJobs
-  , startupMessages
-  , subscriptions
-  )
+import Service.Env (AutomationEntry, Env, Registrations, RestartConditions (..), ThreadMap,
+                    appCleanup, automationBroadcast, automationServiceTopic, config,
+                    daemonBroadcast, dbPath, deviceRegistrations, devices, devicesRawJSON,
+                    groupRegistrations, groups, groupsRawJSON, loadedDevices, loadedGroups,
+                    messageChan, mqttConfig, mqttDispatch, notAlreadyRestarted, restartConditions,
+                    scheduledJobs, startupMessages, subscriptions)
 import qualified Service.Group as Group
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.MQTT.Messages.Daemon (AutomationSchedule)
@@ -76,19 +50,8 @@ import System.Cron (addJob, execSchedule)
 import UnliftIO.Async (Async, async, asyncThreadId, cancel)
 import UnliftIO.Concurrent (killThread)
 import UnliftIO.Exception (bracket, finally)
-import UnliftIO.STM
-  ( STM
-  , TChan
-  , TVar
-  , atomically
-  , dupTChan
-  , modifyTVar'
-  , newTVarIO
-  , readTChan
-  , readTVar
-  , writeTChan
-  , writeTVar
-  )
+import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, modifyTVar', newTVarIO, readTChan,
+                     readTVar, writeTChan, writeTVar)
 
 run
   :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m)
@@ -248,8 +211,8 @@ run' threadMapTV = do
             autoStatus <- liftIO . threadStatus . asyncThreadId $ autoAsync
             case autoStatus of
               ThreadFinished -> pure [_name auto]
-              ThreadDied -> pure [_name auto]
-              _ -> pure []
+              ThreadDied     -> pure [_name auto]
+              _              -> pure []
         )
         threadMap
       let cleanedTM = foldl' (flip M.delete) threadMap cleanupAutoNames
@@ -476,7 +439,7 @@ run' threadMapTV = do
             (\idx autos newRegs ->
                 case NE.nonEmpty . NE.filter (/= automationName) $ autos of
                   Just autos' -> M.insert idx autos' newRegs
-                  Nothing -> newRegs
+                  Nothing     -> newRegs
             )
             M.empty
             regs'

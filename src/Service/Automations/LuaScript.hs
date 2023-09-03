@@ -5,58 +5,41 @@ where
 
 import Prelude hiding (id, init)
 
-import Control.Lens ((^.), _Just, preview, view)
-import Control.Monad.IO.Unlift (MonadUnliftIO(..), liftIO)
+import Control.Lens (_Just, preview, view, (^.))
+import Control.Monad.IO.Unlift (MonadUnliftIO (..), liftIO)
 import Control.Monad.Reader (MonadReader)
-import Data.Aeson (Value(String), decode, encode)
+import Data.Aeson (Value (String), decode, encode)
 import Data.Aeson.Types (emptyObject, object)
-import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Char8 as BS
+import Data.ByteString.Lazy (ByteString)
 import Data.Fixed (Pico)
 import Data.Foldable (for_, traverse_)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (fromMaybe)
-import qualified Data.Text as T
 import Data.Text (Text)
-import qualified Data.Time.Clock as C
+import qualified Data.Text as T
 import Data.Time.Clock (UTCTime)
+import qualified Data.Time.Clock as C
 import qualified Data.Time.Format.ISO8601 as ISO
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 import qualified HsLua.Aeson as LA
 import qualified HsLua.Core as Lua
 import qualified HsLua.Marshalling as LM
-import HsLua.Packaging.Function
-  ( DocumentedFunction
-  , (<#>), (###), (=#>)
-  , defun
-  , functionResult
-  , parameter
-  , pushDocumentedFunction
-  )
+import HsLua.Packaging.Function (DocumentedFunction, defun, functionResult, parameter,
+                                 pushDocumentedFunction, (###), (<#>), (=#>))
 import Network.HTTP.Client (httpLbs, newManager, parseRequest, responseBody, responseStatus)
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Network.MQTT.Topic (mkTopic, unTopic)
 import qualified Service.App as App
-import Service.App (Logger(..), MonadMQTT(..))
+import Service.App (Logger (..), MonadMQTT (..))
 import qualified Service.Automation as Automation
-import Service.Automation (Automation(..))
+import Service.Automation (Automation (..))
 import qualified Service.AutomationName as AutomationName
 import Service.Device (Device, DeviceId, toLuaDevice, topicSet)
-import Service.Env
-  ( Env
-  , LogLevel(Debug)
-  , LoggerVariant(..)
-  , MQTTClientVariant(..)
-  , config
-  , daemonBroadcast
-  , devices
-  , groups
-  , logger
-  , luaScriptPath
-  , mqttClient
-  )
+import Service.Env (Env, LogLevel (Debug), LoggerVariant (..), MQTTClientVariant (..), config,
+                    daemonBroadcast, devices, groups, logger, luaScriptPath, mqttClient)
 import Service.Group (Group, GroupId, memberId, members, toLuaGroup)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.MQTT.Messages.Lighting (mkRGB)
@@ -64,17 +47,8 @@ import qualified Service.TimeHelpers as TH
 import System.Random (initStdGen, uniformR)
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.Exception (handle, throwIO)
-import UnliftIO.STM
-  ( TChan
-  , TVar
-  , atomically
-  , dupTChan
-  , newBroadcastTChan
-  , readTChan
-  , readTVar
-  , readTVarIO
-  , writeTChan
-  )
+import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChan, readTChan, readTVar,
+                     readTVarIO, writeTChan)
 
 luaAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
@@ -193,7 +167,7 @@ callWhenExists fnName = do
   setupFn <- Lua.getglobal fnName
   case setupFn of
     Lua.TypeFunction -> Just <$> Lua.callTrace 0 0
-    _ -> pure Nothing
+    _                -> pure Nothing
 
 loadDSL
   :: FilePath
@@ -241,7 +215,7 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
                   updatedDate = case initialDate of
                     Just initialDate' -> TH.addMinutes minutes' initialDate'
                     -- I am not sure how to handle failure here
-                    Nothing -> TH.addMinutes minutes' utcNow
+                    Nothing           -> TH.addMinutes minutes' utcNow
 
                 pure $ ISO.iso8601Show updatedDate
           )

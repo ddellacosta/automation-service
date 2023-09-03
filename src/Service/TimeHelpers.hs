@@ -23,11 +23,11 @@ import qualified Data.Astro.Sun as AstroSun
 import qualified Data.Astro.Time.Conv as AstroConv
 import qualified Data.Astro.Types as AstroTypes
 import Data.Fixed (Pico)
-import qualified Data.Time.Clock as C
 import Data.Time.Clock (NominalDiffTime, UTCTime)
+import qualified Data.Time.Clock as C
 import qualified Data.Time.Format as F
-import qualified Data.Time.LocalTime as LT
 import Data.Time.LocalTime (TimeZone, ZonedTime)
+import qualified Data.Time.LocalTime as LT
 import qualified Data.Time.Zones as Z
 import System.Environment (getEnv)
 

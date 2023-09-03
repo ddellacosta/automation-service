@@ -23,21 +23,11 @@ module Service.Group
 import Prelude hiding (id)
 
 import Control.Lens (makeFieldsNoPrefix)
-import Data.Aeson
-  ( FromJSON(..)
-  , ToJSON(..)
-  , Value
-  , (.:)
-  , decode
-  , defaultOptions
-  , encode
-  , fieldLabelModifier
-  , genericToEncoding
-  , withObject
-  )
+import Data.Aeson (FromJSON (..), ToJSON (..), Value, decode, defaultOptions, encode,
+                   fieldLabelModifier, genericToEncoding, withObject, (.:))
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Network.MQTT.Topic (Topic(..))
+import Network.MQTT.Topic (Topic (..))
 import Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
 
 type GroupId = Int
@@ -60,7 +50,7 @@ instance FromJSON Member where
     Member <$> g .: "ieee_address" <*> g .: "endpoint"
 
 data Scene = Scene
-  { _sceneId :: Int
+  { _sceneId   :: Int
   , _sceneName :: Text
   }
   deriving (Show, Generic, Eq)
@@ -77,11 +67,11 @@ instance FromJSON Scene where
     Scene <$> g .: "id" <*> g .: "name"
 
 data Group = Group
-  { _id :: GroupId
-  , _name :: Text
-  , _members :: [Member]
-  , _scenes :: [Scene]
-  , _topic :: Topic
+  { _id       :: GroupId
+  , _name     :: Text
+  , _members  :: [Member]
+  , _scenes   :: [Scene]
+  , _topic    :: Topic
   , _topicGet :: Topic
   , _topicSet :: Topic
   }

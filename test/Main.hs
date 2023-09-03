@@ -5,13 +5,13 @@ module Main
   )
 where
 
-import Test.Tasty (TestTree, defaultMain, localOption, mkTimeout, testGroup)
-import Test.Tasty.Hspec (TreatPendingAs(..), testSpec)
 import qualified Test.Integration.Service.Daemon as Daemon
+import Test.Tasty (TestTree, defaultMain, localOption, mkTimeout, testGroup)
+import Test.Tasty.Hspec (TreatPendingAs (..), testSpec)
 import qualified Test.Unit.Service.Device as Devices
 import qualified Test.Unit.Service.Group as Groups
-import qualified Test.Unit.Service.MQTT.Status as MQTTStatus
 import qualified Test.Unit.Service.MQTT.Messages.Daemon as Daemon.Messages
+import qualified Test.Unit.Service.MQTT.Status as MQTTStatus
 import qualified Test.Unit.Service.TimeHelpers as TimeHelpers
 
 timeout :: Integer
