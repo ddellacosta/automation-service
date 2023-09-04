@@ -579,6 +579,29 @@ stateStoreSpecs = do
 
       flip testWithAsyncDaemon preEnv $ \env _threadMapTV _daemonSnooper -> do
         let
+          daemonBroadcast' = env ^. daemonBroadcast
+          restartConditions' = env ^. restartConditions
+
+        atomically . writeTVar restartConditions' $ RestartConditions True True True
+        threadDelay 200000
+
+        atomically $ writeTChan daemonBroadcast' (Daemon.Unschedule "test")
+        threadDelay 200000
+
+        res <- StateStore.allScheduled $ env ^. config . dbPath
+
+        length res `shouldBe` 0
+
+  around initAndCleanup $ do
+    it "starts previously scheduled automations when starting" $ \preEnv -> do
+      let
+        scheduleMsg =
+          Daemon.Schedule "test" "0 6 * * *" $ Daemon.Start (LuaScript "test")
+
+      StateStore.updateScheduled (preEnv ^. config . dbPath) $ [encodeStrict scheduleMsg]
+
+      flip testWithAsyncDaemon preEnv $ \env _threadMapTV _daemonSnooper -> do
+        let
           restartConditions' = env ^. restartConditions
 
         atomically . writeTVar restartConditions' $ RestartConditions True True True
