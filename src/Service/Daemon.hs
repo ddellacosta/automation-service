@@ -51,7 +51,7 @@ import UnliftIO.Async (Async, async, asyncThreadId, cancel)
 import UnliftIO.Concurrent (killThread)
 import UnliftIO.Exception (bracket, finally)
 import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, modifyTVar', newTVarIO, readTChan,
-                     readTVar, writeTChan, writeTVar)
+                     readTVar, readTVarIO, writeTChan, writeTVar)
 
 run
   :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m)
@@ -125,11 +125,13 @@ run' threadMapTV = do
 
         Daemon.Schedule jobId automationSchedule automationMessage -> do
           runScheduledMessage jobId automationMessage automationSchedule
+          signalScheduledStateUpdate
           publishUpdatedStatus threadMapTV
           go
 
         Daemon.Unschedule jobId -> do
           unscheduleJob jobId
+          signalScheduledStateUpdate
           publishUpdatedStatus threadMapTV
           go
 
@@ -366,19 +368,11 @@ run' threadMapTV = do
           sjs <- atomically . readTVar $ scheduledJobs'
           let mPriorThreadId = M.lookup jobId sjs
 
-          updatedScheduledJobs <- atomically $ do
+          atomically $ do
             sjs' <- readTVar scheduledJobs'
             let
               updatedSjs = M.insert jobId (automationSchedule, automationMessage, threadId) sjs'
             writeTVar scheduledJobs' updatedSjs
-            pure updatedSjs
-
-          -- tell StateManager to update stored jobs so we can ensure
-          -- the previously scheduled jobs are loaded when the system
-          -- (re-)starts
-          sendClientMsg StateManager $ ByteStringMsg $
-            flip M.foldMapWithKey updatedScheduledJobs $ \jobId' (sched, msg, _threadId) ->
-              [SBS.concat . LBS.toChunks . encode $ Daemon.Schedule jobId' sched msg]
 
           -- if scheduled job already existed, kill the previously running thread
           -- since the new job is started before the old one is
@@ -395,6 +389,13 @@ run' threadMapTV = do
           mapM_ killThread ids
           warn
             "Received multiple ThreadIds back when running execSchedule, all have been cancelled."
+
+    signalScheduledStateUpdate :: (MonadIO m, MonadReader Env m) => m ()
+    signalScheduledStateUpdate = do
+      scheduledJobs' <- readTVarIO =<< view scheduledJobs
+      sendClientMsg StateManager $ ByteStringMsg $
+        flip M.foldMapWithKey scheduledJobs' $ \jobId' (sched, msg, _threadId) ->
+          [SBS.concat . LBS.toChunks . encode $ Daemon.Schedule jobId' sched msg]
 
     unscheduleJob :: (MonadIO m, MonadReader Env m) => Daemon.JobId -> m ()
     unscheduleJob jobId = do

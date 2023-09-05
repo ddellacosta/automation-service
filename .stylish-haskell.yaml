@@ -27,35 +27,61 @@ columns: 100
 newline: native
 
 language_extensions:
+  # GHC2021
   - BangPatterns
+  - BinaryLiterals
+  - ConstrainedClassMethods
   - ConstraintKinds
-  - DataKinds
-  - DefaultSignatures
-  - DeriveAnyClass
   - DeriveDataTypeable
+  - DeriveFoldable
+  - DeriveFunctor
   - DeriveGeneric
-  - DerivingStrategies
-  - DerivingVia
-  - ExplicitNamespaces
+  - DeriveLift
+  - DeriveTraversable
+  - DoAndIfThenElse
+  - EmptyCase
+  - EmptyDataDecls
+  - EmptyDataDeriving
+  - ExistentialQuantification
+  - ExplicitForAll
+  - FieldSelectors
   - FlexibleContexts
   - FlexibleInstances
-  - FunctionalDependencies
-  - GADTs
-  - GeneralizedNewtypeDeriving
+  - ForeignFunctionInterface
+  - GADTSyntax
+  - GeneralisedNewtypeDeriving
+  - HexFloatLiterals
+  - ImplicitPrelude
+  - ImportQualifiedPost
   - InstanceSigs
   - KindSignatures
-  - LambdaCase
+  - MonomorphismRestriction
   - MultiParamTypeClasses
-  - MultiWayIf
   - NamedFieldPuns
-  - NoImplicitPrelude
-  - OverloadedStrings
-  - QuasiQuotes
-  - RecordWildCards
+  - NamedWildCards
+  - NumericUnderscores
+  - PatternGuards
+  - PolyKinds
+  - PostfixOperators
+  - RankNTypes
+  - RelaxedPolyRec
   - ScopedTypeVariables
   - StandaloneDeriving
-  - TemplateHaskell
+  - StandaloneKindSignatures
+  - StarIsType
+  - TraditionalRecordSyntax
   - TupleSections
   - TypeApplications
-  - TypeFamilies
-  - ViewPatterns
+  - TypeOperators
+  - TypeSynonymInstances
+  # specified in default-extensions in cabal, above and beyond GHC2021
+  - DeriveGeneric
+  - FunctionalDependencies
+  - LambdaCase
+  - OverloadedStrings
+  - StrictData
+  - TupleSections
+  # referenced via LANGUAGE pragma in code
+  - TemplateHaskell
+  - RecordWildCards
+  - DeriveAnyClass

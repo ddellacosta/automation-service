@@ -110,6 +110,8 @@ Currently the automation-service docker image is built on every push to master, 
 
 ## Development
 
+This project uses format via stylish-haskell. Credit to https://raw.githubusercontent.com/kowainik/org/main/.stylish-haskell.yaml for the base.
+
 ### Building locally
 
 This requires [nix](https://nixos.org/download.html).
