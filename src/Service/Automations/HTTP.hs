@@ -10,6 +10,7 @@ import Control.Monad.Reader (MonadReader)
 import Data.ByteString.Lazy (ByteString)
 import Data.Text (Text)
 import Data.Time.Clock (UTCTime)
+import qualified Network.Wai as Wai
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Handler.WebSockets as WaiWs
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
@@ -20,7 +21,7 @@ import Service.Automation (Automation (..))
 import qualified Service.AutomationName as AutomationName
 import Service.Env (Env, devicesRawJSON)
 import UnliftIO.Concurrent (threadDelay)
-import UnliftIO.STM (TChan, readTVarIO)
+import UnliftIO.STM (TChan, TVar, readTVarIO)
 import Web.Scotty (file, get, middleware, raw, scottyApp, setHeader)
 
 httpAutomation
@@ -52,29 +53,29 @@ mkRunAutomation = \_broadcastChan -> do
     port = 8080
     settings = Warp.setPort port Warp.defaultSettings
 
-  devicesJSON <- view devicesRawJSON
-  devicesJSON' <- readTVarIO devicesJSON
-  web' <- liftIO $ web devicesJSON'
+  devices <- view devicesRawJSON
+  web' <- liftIO $ web devices
 
   liftIO $
     Warp.runSettings settings $
-      WaiWs.websocketsOr WS.defaultConnectionOptions (ws devicesJSON') web'
+      WaiWs.websocketsOr WS.defaultConnectionOptions (ws devices) web'
 
   where
-    web devicesJSON = scottyApp $ do
+    web :: TVar (ByteString) -> IO Wai.Application
+    web devices = scottyApp $ do
       middleware $ staticPolicy $ addBase "ui"
       get "/" $ file "ui/index.html"
       get "/devices" $ do
         setHeader "Content-Type" "application/json; charset=utf-8"
-        raw devicesJSON
+        raw =<< readTVarIO devices
 
-    ws :: ByteString -> WS.ServerApp
-    ws devicesJSON pending = do
+    ws :: TVar (ByteString) -> WS.ServerApp
+    ws devices pending = do
       putStrLn "ws connected"
       conn <- WS.acceptRequest pending
       WS.withPingThread conn 30 (pure ()) $ do
         (msg :: Text) <- WS.receiveData conn
         putStrLn $ show msg
-        WS.sendTextData conn devicesJSON
+        WS.sendTextData conn =<< readTVarIO devices
         forever $ do
           threadDelay $ 1 * 1000000

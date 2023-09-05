@@ -3,10 +3,11 @@ module Main where
 import Prelude
 
 import Data.Argonaut (Json, JsonDecodeError, decodeJson, parseJson, toArray, toNumber, toString)
-import Data.Array (filter, sortBy, snoc)
-import Data.Foldable (foldl, for_)
+import Data.Argonaut.Decode.Combinators ((.:), (.:?))
+import Data.Array (filter, length, singleton, sortBy, snoc)
+import Data.Foldable (foldMap, for_)
 import Data.Bifunctor (rmap)
-import Data.Either (Either(..), either, fromRight)
+import Data.Either (Either(..), either, fromRight, isRight)
 import Data.Map (Map)
 import Data.Maybe (Maybe(..), fromMaybe, isJust)
 import Data.Nullable (Nullable)
@@ -15,20 +16,16 @@ import Effect (Effect)
 import Effect.Aff (delay)
 import Effect.Class (liftEffect)
 import Effect.Console (log)
-import Elmish (Transition, Dispatch, ReactElement, (<|), forks, forkVoid, transition)
+import Elmish (Transition, Dispatch, ReactElement, forks, forkVoid)
 import Elmish.Boot (defaultMain)
-import Elmish.Foreign (readForeign, readForeign')
-import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
-import Foreign (Foreign, unsafeFromForeign, unsafeToForeign)
-import Foreign.Object (Object)
+import Foreign (unsafeFromForeign)
 import Web.Event.EventTarget (addEventListener, eventListener)
 import Web.Socket.Event.EventTypes (onMessage)
 import Web.Socket.Event.MessageEvent (data_, fromEvent)
 import Web.Socket.WebSocket (create, sendString, toEventTarget)
 
 
--- Nothing happens in our UI so far, so there are no messages
 data Message
   = LoadDevices (Array Device)
   | LoadDevicesFailed String
@@ -43,20 +40,19 @@ type Device =
   , model :: Maybe String
   }
 
--- The UI is just static text, so there is no initial state
+decodeDevice :: Json -> Either JsonDecodeError Device
+decodeDevice json = do
+  obj <- decodeJson json
+  id <- obj .: "ieee_address"
+  name <- obj .: "friendly_name"
+  category <- obj .: "type"
+  manufacturer <- obj .:? "manufacturer"
+  model <- obj .:? "model_id"
+  pure $ { id, name, category, manufacturer, model }
+
 type State =
   { devices :: Array Device
   }
-
-type RawDevice =
-  { ieeeAddress :: Maybe String
-  , friendlyName :: Maybe String
-  , type :: String
-  , manufacturer :: Maybe String
-  , modelId :: Maybe String
-  }
-
-type RawDevices = Array String
 
 init :: Transition Message State
 init = do
@@ -69,29 +65,23 @@ init = do
     el <- liftEffect $ eventListener $ \evt -> do
       for_ (fromEvent evt) \msgEvt -> do
         let
-          (json :: Either JsonDecodeError (Array RawDevice)) = do
-            jsonRaw <- parseJson $ unsafeFromForeign $ data_ msgEvt
-            decodeJson jsonRaw
-        msgSink $ case json of
-          Right json' -> LoadDevices $
-            foldl
-              (\rds rd -> case rd.friendlyName of
-                  Just name ->
-                    snoc rds
-                      { id: rd.ieeeAddress
-                      , name
-                      , category: rd.type
-                      , manufacturer: rd.manufacturer
-                      , model: rd.modelId
-                      }
-                  Nothing  -> rds
-              )
-              [] json'
-          Left msg -> LoadDevicesFailed $ show msg
+          -- is there a way to do this with Elmish.Foreign that I'm
+          -- missing?
+          jsonStr = unsafeFromForeign $ data_ msgEvt
+        msgSink $
+          either (LoadDevicesFailed <<< show) LoadDevices (decode jsonStr)
 
     liftEffect $ addEventListener onMessage el false (toEventTarget ws)
 
   pure { devices: [] }
+
+  where
+    decode :: String -> Either JsonDecodeError (Array Device)
+    decode jsonStr = do
+      devicesBlob <- parseJson jsonStr
+      let
+        devicesJson = fromMaybe [] (toArray devicesBlob)
+      pure $ foldMap (either (const []) singleton) $ decodeDevice <$> devicesJson
 
 
 update :: State -> Message -> Transition Message State
