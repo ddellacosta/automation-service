@@ -2,20 +2,18 @@ module Main where
 
 import Prelude
 
-import Data.Argonaut (Json, JsonDecodeError, decodeJson, parseJson, toArray, toNumber, toString)
+import Data.Argonaut (Json, JsonDecodeError, decodeJson, parseJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
-import Data.Array (filter, length, singleton, sortBy, snoc)
-import Data.Foldable (foldMap, for_)
-import Data.Bifunctor (rmap)
-import Data.Either (Either(..), either, fromRight, isRight)
-import Data.Map (Map)
-import Data.Maybe (Maybe(..), fromMaybe, isJust)
-import Data.Nullable (Nullable)
+import Data.Array (sortBy)
+import Data.Foldable (for_)
+import Data.Either (Either, either)
+import Data.Maybe (Maybe, fromMaybe)
 import Data.Time.Duration (Milliseconds(..))
+import Data.Traversable (traverse)
 import Effect (Effect)
 import Effect.Aff (delay)
 import Effect.Class (liftEffect)
-import Effect.Console (log)
+import Effect.Console (info, warn)
 import Elmish (Transition, Dispatch, ReactElement, forks, forkVoid)
 import Elmish.Boot (defaultMain)
 import Elmish.HTML.Styled as H
@@ -60,7 +58,6 @@ init = do
     ws <- liftEffect $ create "ws://localhost:8080" []
     delay (Milliseconds 500.0)
     liftEffect $ sendString ws "woah"
-    liftEffect $ log "hey"
 
     el <- liftEffect $ eventListener $ \evt -> do
       for_ (fromEvent evt) \msgEvt -> do
@@ -79,19 +76,17 @@ init = do
     decode :: String -> Either JsonDecodeError (Array Device)
     decode jsonStr = do
       devicesBlob <- parseJson jsonStr
-      let
-        devicesJson = fromMaybe [] (toArray devicesBlob)
-      pure $ foldMap (either (const []) singleton) $ decodeDevice <$> devicesJson
+      traverse decodeDevice $ fromMaybe [] $ toArray devicesBlob
 
 
 update :: State -> Message -> Transition Message State
 update s = case _ of
   LoadDevices newDevices -> do
-    forkVoid $ liftEffect $ log $ "loaded devices: " <> show newDevices
+    forkVoid $ liftEffect $ info $ "loaded devices: " <> show newDevices
     pure $ s { devices = newDevices }
 
   LoadDevicesFailed msg ->
-    (forkVoid $ liftEffect $ log $ "Failed with msg: " <> msg) *> pure s
+    (forkVoid $ liftEffect $ warn $ "Failed with msg: " <> msg) *> pure s
 
 view :: State -> Dispatch Message -> ReactElement
 view { devices } _ =
