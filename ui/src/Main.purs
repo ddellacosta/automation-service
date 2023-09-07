@@ -109,14 +109,14 @@ view { devices, selectedDeviceId } dispatch =
           , H.li "" $ "category: " <> category
           , maybeHtml model $ \model' -> H.li "" $ "model: " <> model'
           , maybeHtml manufacturer $ \m -> H.li "" $ "manufacturer: " <> m
-          , maybeHtml capabilities listCapabilities
+          , maybeHtml capabilities $ H.li "" <<< listCapabilities
           ]
         ]
       ]
 
     listCapabilities :: Capabilities -> ReactElement
     listCapabilities cs =
-      H.li "" $ H.div "" $
+      H.div "" $
       [ H.span "display-block" "capabilities: " ]
       <>
       (cs <#> \cap ->
