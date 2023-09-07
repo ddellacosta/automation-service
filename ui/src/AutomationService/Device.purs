@@ -14,16 +14,12 @@ where
 
 import Prelude
 
-import Control.Alternative (guard)
 import Data.Argonaut (Json, JsonDecodeError, decodeJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
-import Data.Array (catMaybes)
 import Data.Either (Either(..))
-import Data.Generic.Rep (class Generic)
 import Data.Int.Bits ((.&.))
 import Data.Map (Map)
 import Data.Maybe (Maybe(..), maybe)
-import Data.Show.Generic (genericShow)
 import Data.Traversable (for, traverse)
 
 type DeviceId = String
