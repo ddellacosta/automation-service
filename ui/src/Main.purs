@@ -32,10 +32,12 @@ data Message
   | LoadDevicesFailed String
   | DeviceSelected DeviceId
 
+
 type State =
   { devices :: Devices
   , selectedDeviceId :: Maybe DeviceId
   }
+
 
 init :: Transition Message State
 init = do
@@ -78,6 +80,7 @@ update s = case _ of
     forkVoid $ liftEffect $ info $ "device: " <> deviceId
     pure $ s { selectedDeviceId = Just deviceId }
 
+
 view :: State -> Dispatch Message -> ReactElement
 view { devices, selectedDeviceId } dispatch =
   H.div "container mx-auto mt-5 d-flex flex-column justify-content-between"
@@ -94,8 +97,19 @@ view { devices, selectedDeviceId } dispatch =
   ]
 
   where
-    listDevice d@{ id, name, category, model, manufacturer } =
-      H.div "" d.name
+    listDevice { id, name, category, model, manufacturer } =
+      H.div "card"
+      [ H.div "card-body"
+        [ H.h4 "" name
+        , H.ul ""
+          [ H.li "" $ "id: " <> id
+          , H.li "" $ "category: " <> category
+          , maybe H.empty (H.li "" <<< ((<>) "model: ")) model
+          , maybe H.empty (H.li "" <<< ((<>) "manufacturer: ")) manufacturer
+          ]
+        ]
+      ]
+
 
 main :: Effect Unit
 main = defaultMain
