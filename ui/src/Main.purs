@@ -2,11 +2,14 @@ module Main where
 
 import Prelude
 
-import AutomationService.Device (Device, DeviceId, Devices, decodeDevice)
+import AutomationService.Device (Device, DeviceId, Devices, canGet, canSet, decodeDevice,
+                                 isPublished)
+import AutomationService.Helpers (maybeHtml)
+import Control.Alternative (guard)
 import Data.Argonaut (JsonDecodeError, parseJson, toArray)
-import Data.Array (sortBy)
+import Data.Array (catMaybes, sortBy)
 import Data.Either (Either, either)
-import Data.Foldable (foldMap, for_)
+import Data.Foldable (foldMap, for_, intercalate)
 import Data.List as L
 import Data.Map as M
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
@@ -97,17 +100,35 @@ view { devices, selectedDeviceId } dispatch =
   ]
 
   where
-    listDevice { id, name, category, model, manufacturer } =
-      H.div "card"
+    listDevice { id, name, category, model, manufacturer, capabilities } =
+      H.div "card mt-2"
       [ H.div "card-body"
         [ H.h4 "" name
         , H.ul ""
           [ H.li "" $ "id: " <> id
           , H.li "" $ "category: " <> category
-          , maybe H.empty (H.li "" <<< ((<>) "model: ")) model
-          , maybe H.empty (H.li "" <<< ((<>) "manufacturer: ")) manufacturer
+          , maybeHtml model $ \model' -> H.li "" $ "model: " <> model'
+          , maybeHtml manufacturer $ \m -> H.li "" $ "manufacturer: " <> m
+          , maybeHtml capabilities $ \cs ->
+              H.li "" $ H.div "" $
+              [ H.span "display-block" "capabilities: " ]
+              <>
+              (cs <#> \cap ->
+                H.div "" $
+                     "name: " <> cap.name
+                  <> ", type: " <> cap.fType
+                  <> ", access: " <> (listAccess cap.access)
+              )
           ]
         ]
+      ]
+
+    listAccess :: Int -> String
+    listAccess a = intercalate ", " $
+      catMaybes
+      [ guard (isPublished a) *> Just "published"
+      , guard (canSet a) *> Just "set"
+      , guard (canGet a) *> Just "get"
       ]
 
 
