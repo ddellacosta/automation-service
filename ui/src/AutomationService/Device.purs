@@ -1,12 +1,14 @@
 
 module AutomationService.Device
-  ( Access
-  , Device
+  ( Device
   , DeviceId
   , Devices
   , Exposes
   , Feature
+  , canGet
+  , canSet
   , decodeDevice
+  , isPublished
   )
 where
 
@@ -26,23 +28,19 @@ import Data.Traversable (for, traverse)
 
 type DeviceId = String
 
-type Access =
-  { published :: Boolean
-  , get :: Boolean
-  , set :: Boolean
-  }
+isPublished :: Int -> Boolean
+isPublished a = 1 .&. a > 0
 
-decodeAccess :: Int -> Access
-decodeAccess accessInt =
-  { published: 1 .&. accessInt > 0
-  , get:       2 .&. accessInt > 0
-  , set:       4 .&. accessInt > 0
-  }
+canGet :: Int -> Boolean
+canGet a = 2 .&. a > 0
+
+canSet :: Int -> Boolean
+canSet a = 4 .&. a > 0
 
 type Feature =
   { fType :: String
   , name :: String
-  , access :: Access
+  , access :: Int
   }
 
 type Exposes = Array Feature
@@ -56,8 +54,7 @@ decodeExposes = traverse \exposed -> do
   obj <- decodeJson exposed
   fType <- obj .: "type"
   name <- obj .: "name"
-  accessInt <- obj .: "access"
-  access <- Right $ decodeAccess accessInt
+  access <- obj .: "access"
   pure { fType, name, access }
 
 type Device =
