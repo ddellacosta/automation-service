@@ -2,8 +2,8 @@ module Main where
 
 import Prelude
 
-import AutomationService.Device (Device, DeviceId, Devices, canGet, canSet, decodeDevice,
-                                 isPublished)
+import AutomationService.Device (Capabilities, Device, DeviceId, Devices, canGet, canSet,
+                                 decodeDevice, isPublished)
 import AutomationService.Helpers (maybeHtml)
 import Control.Alternative (guard)
 import Data.Argonaut (JsonDecodeError, parseJson, toArray)
@@ -109,19 +109,22 @@ view { devices, selectedDeviceId } dispatch =
           , H.li "" $ "category: " <> category
           , maybeHtml model $ \model' -> H.li "" $ "model: " <> model'
           , maybeHtml manufacturer $ \m -> H.li "" $ "manufacturer: " <> m
-          , maybeHtml capabilities $ \cs ->
-              H.li "" $ H.div "" $
-              [ H.span "display-block" "capabilities: " ]
-              <>
-              (cs <#> \cap ->
-                H.div "" $
-                     "name: " <> cap.name
-                  <> ", type: " <> cap.fType
-                  <> ", access: " <> (listAccess cap.access)
-              )
+          , maybeHtml capabilities listCapabilities
           ]
         ]
       ]
+
+    listCapabilities :: Capabilities -> ReactElement
+    listCapabilities cs =
+      H.li "" $ H.div "" $
+      [ H.span "display-block" "capabilities: " ]
+      <>
+      (cs <#> \cap ->
+        H.div "" $
+             "name: " <> cap.name
+          <> ", type: " <> cap.fType
+          <> ", access: " <> (listAccess cap.access)
+      )
 
     listAccess :: Int -> String
     listAccess a = intercalate ", " $
