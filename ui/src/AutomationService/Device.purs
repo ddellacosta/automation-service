@@ -15,13 +15,14 @@ where
 import Prelude
 
 import Data.Argonaut (Json, JsonDecodeError, decodeJson, toArray)
-import Data.Argonaut.Decode.Combinators (getFieldOptional', (.:), (.:?))
+import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Either (Either(..))
 import Data.Foldable (foldMap)
 import Data.Int.Bits ((.&.))
 import Data.Map (Map)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Traversable (for, sequence)
+import Data.Tuple (Tuple(..))
 
 
 --
@@ -38,18 +39,25 @@ canGet :: Int -> Boolean
 canGet a = 4 .&. a > 0
 
 type Capability =
-  { fType :: String
+  { capType :: String
+  , featureType :: Maybe String
   , name :: String
+  , description :: Maybe String
+  , label :: String
+  , property :: String
   , access :: Int
   }
 
 decodeCapability :: Json -> Either JsonDecodeError Capability
 decodeCapability capabilityJson = do
   obj <- decodeJson capabilityJson
-  fType <- obj .: "type"
+  capType <- obj .: "type"
   name <- obj .: "name"
+  description <- obj .:? "description"
+  label <- obj .: "label"
+  property <- obj .: "property"
   access <- obj .: "access"
-  pure { fType, name, access }
+  pure { capType, featureType: Nothing, name, description, label, property, access }
 
 type Capabilities = Array Capability
 
@@ -64,6 +72,14 @@ type Device =
   , capabilities :: Maybe Capabilities
   }
 
+type Devices = Map DeviceId Device
+
+--
+-- TODO: make this store failures on as granular a level as possible,
+-- only failing at the level a decode fails (vs. now where any
+-- failure breaks the entire decoding process), and then report
+-- failures back and log
+--
 decodeDevice :: Json -> Either JsonDecodeError Device
 decodeDevice json = do
   obj <- decodeJson json
@@ -91,10 +107,20 @@ decodeDevice json = do
       -- why https://www.zigbee2mqtt.io/guide/usage/exposes.html
       sequence $ foldMap
         (\e ->
-          case decodeJson e >>= flip getFieldOptional' "features" of
-            Right (Just features') -> decodeCapability <$> features'
+          case decodeFeatures e of
+            Right (Tuple newFeatureType features') ->
+              features' <#>
+                decodeCapability >>> map _ { featureType = Just newFeatureType }
             _ -> [decodeCapability e]
         )
         exposes'
 
-type Devices = Map DeviceId Device
+    -- when we are dealing with a `features` object, we want to
+    -- collect other values to store as we flatten out capabilities
+    -- into a single list (for now at least)
+    decodeFeatures :: Json -> Either JsonDecodeError (Tuple String (Array Json))
+    decodeFeatures exposes = do
+      obj <- decodeJson exposes
+      features <- obj .:? "features"
+      featuresType <- obj .: "type"
+      pure $ Tuple featuresType $ fromMaybe [] $ toArray =<< features

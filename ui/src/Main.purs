@@ -12,7 +12,7 @@ import Data.Either (Either, either)
 import Data.Foldable (foldMap, for_, intercalate)
 import Data.List as L
 import Data.Map as M
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse)
 import Effect (Effect)
@@ -95,7 +95,7 @@ view { devices, selectedDeviceId } dispatch =
       sortBy (\a b -> compare a.name b.name) (L.toUnfoldable $ M.values devices) <#> \d ->
         H.option_ "" { value: d.id } d.name
 
-  , maybe H.empty listDevice $ flip M.lookup devices =<< selectedDeviceId
+  , maybeHtml (flip M.lookup devices =<< selectedDeviceId) listDevice
 
   ]
 
@@ -122,7 +122,11 @@ view { devices, selectedDeviceId } dispatch =
       (cs <#> \cap ->
         H.div "" $
              "name: " <> cap.name
-          <> ", type: " <> cap.fType
+          <> ", description: " <> (fromMaybe "" cap.description)
+          <> ", type: " <> cap.capType
+          <> ", feature type: " <> (fromMaybe "n/a" cap.featureType)
+          <> ", label: " <> cap.label
+          <> ", property: " <> cap.property
           <> ", access: " <> (listAccess cap.access)
       )
 
