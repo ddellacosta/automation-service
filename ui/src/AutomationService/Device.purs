@@ -1,10 +1,14 @@
 
 module AutomationService.Device
-  ( Capability
+  ( BinaryProps
+  , Capability(..)
+  , CapabilityBase
   , Capabilities
   , Device
   , DeviceId
   , Devices
+  , EnumProps
+  , NumericProps
   , canGet
   , canSet
   , decodeDevice
@@ -18,11 +22,14 @@ import Data.Argonaut (Json, JsonDecodeError, decodeJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Either (Either(..))
 import Data.Foldable (foldMap)
+import Data.Generic.Rep (class Generic)
 import Data.Int.Bits ((.&.))
 import Data.Map (Map)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, isJust)
+import Data.Show.Generic (genericShow)
 import Data.Traversable (for, sequence)
 import Data.Tuple (Tuple(..))
+import Record (merge)
 
 
 --
@@ -38,7 +45,7 @@ canSet a = 2 .&. a > 0
 canGet :: Int -> Boolean
 canGet a = 4 .&. a > 0
 
-type Capability =
+type CapabilityBase r =
   { capType :: String
   , featureType :: Maybe String
   , name :: String
@@ -46,10 +53,30 @@ type Capability =
   , label :: String
   , property :: String
   , access :: Int
+  | r
   }
 
-decodeCapability :: Json -> Either JsonDecodeError Capability
-decodeCapability capabilityJson = do
+type BinaryProps =
+  (valueOn :: String, valueOff :: String, valueToggle :: Maybe String)
+
+type EnumProps = (values :: Array String)
+
+type NumericProps =
+  (valueMax :: Maybe Int, valueMin :: Maybe Int, valueStep :: Maybe Int, unit :: Maybe String)
+
+data Capability
+  = GenericCap (CapabilityBase ())
+  | BinaryCap  (CapabilityBase BinaryProps)
+  | EnumCap    (CapabilityBase EnumProps)
+  | NumericCap (CapabilityBase NumericProps)
+
+derive instance Generic Capability _
+
+instance Show Capability where
+  show = genericShow
+
+decodeCapability :: Maybe String -> Json -> Either JsonDecodeError Capability
+decodeCapability featureType capabilityJson = do
   obj <- decodeJson capabilityJson
   capType <- obj .: "type"
   name <- obj .: "name"
@@ -57,7 +84,37 @@ decodeCapability capabilityJson = do
   label <- obj .: "label"
   property <- obj .: "property"
   access <- obj .: "access"
-  pure { capType, featureType: Nothing, name, description, label, property, access }
+  mValues <- obj .:? "values"
+  mValueOn <- obj .:? "value_on"
+  mValueOff <- obj .:? "value_off"
+  valueToggle <- obj .:? "value_toggle"
+  valueMax <- obj .:? "value_max"
+  valueMin <- obj .:? "value_min"
+  valueStep <- obj .:? "value_step"
+  unit <- obj .:? "unit"
+
+  let
+    genericCap =
+      { capType
+      , featureType
+      , name
+      , description
+      , label
+      , property
+      , access
+      }
+    hasNumericProp =
+      isJust valueMax || isJust valueMin || isJust valueStep || isJust unit
+
+  pure $ case capType, mValues, mValueOn, mValueOff, hasNumericProp of
+    "binary", _, Just valueOn, Just valueOff, _ ->
+      BinaryCap $ merge genericCap { valueOn, valueOff, valueToggle }
+    "enum", Just values, _, _, _ ->
+      EnumCap $ merge genericCap { values }
+    "numeric", _, _, _, true ->
+      NumericCap $ merge genericCap { valueMax, valueMin, valueStep, unit }
+    _, _, _, _, _ ->
+      GenericCap genericCap
 
 type Capabilities = Array Capability
 
@@ -109,9 +166,8 @@ decodeDevice json = do
         (\e ->
           case decodeFeatures e of
             Right (Tuple newFeatureType features') ->
-              features' <#>
-                decodeCapability >>> map _ { featureType = Just newFeatureType }
-            _ -> [decodeCapability e]
+              features' <#> decodeCapability (Just newFeatureType)
+            _ -> [decodeCapability Nothing e]
         )
         exposes'
 

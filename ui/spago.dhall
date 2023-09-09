@@ -34,6 +34,9 @@ to generate this file without the comments in this block.
   , "nullable"
   , "ordered-collections"
   , "prelude"
+  , "record"
+  , "tuples"
+  , "typelevel-prelude"
   , "web-events"
   , "web-socket"
   ]

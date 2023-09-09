@@ -2,8 +2,9 @@ module Main where
 
 import Prelude
 
-import AutomationService.Device (Capabilities, Device, DeviceId, Devices, canGet, canSet,
-                                 decodeDevice, isPublished)
+import AutomationService.Device (BinaryProps, Capability(..), CapabilityBase, Capabilities,
+                                 Device, DeviceId, Devices, EnumProps, NumericProps, canGet,
+                                 canSet, decodeDevice, isPublished)
 import AutomationService.Helpers (maybeHtml)
 import Control.Alternative (guard)
 import Data.Argonaut (JsonDecodeError, parseJson, toArray)
@@ -92,6 +93,8 @@ view { devices, selectedDeviceId } dispatch =
   , H.select_
       "device-select"
       { onChange: dispatch <| DeviceSelected <<< E.selectSelectedValue } $
+      -- This is converted to an Array first because there is no
+      -- instance of Elmish.React.ReactChildren (List ReactElement)
       sortBy (\a b -> compare a.name b.name) (L.toUnfoldable $ M.values devices) <#> \d ->
         H.option_ "" { value: d.id } d.name
 
@@ -119,15 +122,11 @@ view { devices, selectedDeviceId } dispatch =
       H.div "" $
       [ H.span "display-block" "capabilities: " ]
       <>
-      (cs <#> \cap ->
-        H.div "" $
-             "name: " <> cap.name
-          <> ", description: " <> (fromMaybe "" cap.description)
-          <> ", type: " <> cap.capType
-          <> ", feature type: " <> (fromMaybe "n/a" cap.featureType)
-          <> ", label: " <> cap.label
-          <> ", property: " <> cap.property
-          <> ", access: " <> (listAccess cap.access)
+      (cs <#> case _ of
+          BinaryCap cap -> binaryCap cap
+          EnumCap cap -> enumCap cap
+          NumericCap cap -> numericCap cap
+          GenericCap cap -> genericCap cap ""
       )
 
     listAccess :: Int -> String
@@ -138,6 +137,37 @@ view { devices, selectedDeviceId } dispatch =
       , guard (canGet a) *> Just "get"
       ]
 
+    binaryCap :: CapabilityBase BinaryProps -> ReactElement
+    binaryCap cap =
+      genericCap cap $
+           ", value_on: " <> cap.valueOn
+        <> ", value_off: " <> cap.valueOff
+        <> ", value_toggle: " <> (show cap.valueToggle)
+
+    enumCap :: CapabilityBase EnumProps -> ReactElement
+    enumCap cap =
+      genericCap cap $ ", values: " <> (show cap.values)
+
+    numericCap :: CapabilityBase NumericProps -> ReactElement
+    numericCap cap =
+      genericCap cap $
+           ", value_max: " <> (show cap.valueMax)
+        <> ", value_min: " <> (show cap.valueMin)
+        <> ", value_step: " <> (show cap.valueStep)
+        <> ", unit: " <> (show cap.unit)
+
+    genericCap :: forall r. CapabilityBase r -> String -> ReactElement
+    genericCap cap capFieldsStr =
+      H.div "" $
+      [ H.text $ "name: " <> cap.name
+        <> ", description: " <> (fromMaybe "" cap.description)
+        <> ", type: " <> cap.capType
+        <> ", feature type: " <> (fromMaybe "n/a" cap.featureType)
+        <> ", label: " <> cap.label
+        <> ", property: " <> cap.property
+        <> ", access: " <> (listAccess cap.access)
+        <> capFieldsStr
+      ]
 
 main :: Effect Unit
 main = defaultMain
