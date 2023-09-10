@@ -140,8 +140,8 @@ view { devices, selectedDeviceId } dispatch =
     binaryCap :: CapabilityBase BinaryProps -> ReactElement
     binaryCap cap =
       genericCap cap $
-           ", value_on: " <> cap.valueOn
-        <> ", value_off: " <> cap.valueOff
+           ", value_on: " <> (show cap.valueOn)
+        <> ", value_off: " <> (show cap.valueOff)
         <> ", value_toggle: " <> (show cap.valueToggle)
 
     enumCap :: CapabilityBase EnumProps -> ReactElement

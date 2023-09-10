@@ -9,6 +9,7 @@ module AutomationService.Device
   , Devices
   , EnumProps
   , NumericProps
+  , ValueOnOff(..)
   , canGet
   , canSet
   , decodeDevice
@@ -16,10 +17,13 @@ module AutomationService.Device
   )
 where
 
-import Prelude
+import Prelude (class Show, bind, pure, ($), (<$>), (<#>), (>), (||))
 
+import Control.Alternative ((<|>))
 import Data.Argonaut (Json, JsonDecodeError, decodeJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
+import Data.Argonaut.Decode.Class (class DecodeJson)
+import Data.Argonaut.Decode.Decoders (decodeBoolean, decodeString)
 import Data.Either (Either(..))
 import Data.Foldable (foldMap)
 import Data.Generic.Rep (class Generic)
@@ -28,7 +32,6 @@ import Data.Map (Map)
 import Data.Maybe (Maybe(..), fromMaybe, isJust)
 import Data.Show.Generic (genericShow)
 import Data.Traversable (for, sequence)
-import Data.Tuple (Tuple(..))
 import Record (merge)
 
 
@@ -56,8 +59,20 @@ type CapabilityBase r =
   | r
   }
 
+data ValueOnOff = ValueOnOffBool Boolean | ValueOnOffString String
+
+derive instance Generic ValueOnOff _
+
+instance DecodeJson ValueOnOff where
+  decodeJson :: Json -> Either JsonDecodeError ValueOnOff
+  decodeJson json =
+    ValueOnOffBool <$> decodeBoolean json <|> ValueOnOffString <$> decodeString json
+
+instance Show ValueOnOff where
+  show = genericShow
+
 type BinaryProps =
-  (valueOn :: String, valueOff :: String, valueToggle :: Maybe String)
+  (valueOn :: ValueOnOff, valueOff :: ValueOnOff, valueToggle :: Maybe String)
 
 type EnumProps = (values :: Array String)
 
@@ -165,8 +180,8 @@ decodeDevice json = do
       sequence $ foldMap
         (\e ->
           case decodeFeatures e of
-            Right (Tuple newFeatureType features') ->
-              features' <#> decodeCapability (Just newFeatureType)
+            Right { featureType, features } ->
+              features <#> decodeCapability (Just featureType)
             _ -> [decodeCapability Nothing e]
         )
         exposes'
@@ -174,9 +189,11 @@ decodeDevice json = do
     -- when we are dealing with a `features` object, we want to
     -- collect other values to store as we flatten out capabilities
     -- into a single list (for now at least)
-    decodeFeatures :: Json -> Either JsonDecodeError (Tuple String (Array Json))
+    decodeFeatures
+      :: Json
+      -> Either JsonDecodeError { featureType :: String, features :: Array Json }
     decodeFeatures exposes = do
       obj <- decodeJson exposes
-      features <- obj .:? "features"
-      featuresType <- obj .: "type"
-      pure $ Tuple featuresType $ fromMaybe [] $ toArray =<< features
+      features <- obj .: "features"
+      featureType <- obj .: "type"
+      pure $ { featureType, features: fromMaybe [] $ toArray features }
