@@ -129,14 +129,6 @@ view { devices, selectedDeviceId } dispatch =
           GenericCap cap -> genericCap cap ""
       )
 
-    listAccess :: Int -> String
-    listAccess a = intercalate ", " $
-      catMaybes
-      [ guard (isPublished a) *> Just "published"
-      , guard (canSet a) *> Just "set"
-      , guard (canGet a) *> Just "get"
-      ]
-
     binaryCap :: CapabilityBase BinaryProps -> ReactElement
     binaryCap cap =
       genericCap cap $
@@ -168,6 +160,15 @@ view { devices, selectedDeviceId } dispatch =
         <> ", access: " <> (listAccess cap.access)
         <> capFieldsStr
       ]
+
+    listAccess :: Int -> String
+    listAccess a = intercalate ", " $
+      catMaybes
+      [ guard (isPublished a) *> Just "published"
+      , guard (canSet a) *> Just "set"
+      , guard (canGet a) *> Just "get"
+      ]
+
 
 main :: Effect Unit
 main = defaultMain

@@ -1,4 +1,3 @@
-
 module AutomationService.Device
   ( BinaryProps
   , Capability(..)
@@ -128,6 +127,9 @@ decodeCapability featureType capabilityJson = do
       EnumCap $ merge genericCap { values }
     "numeric", _, _, _, true ->
       NumericCap $ merge genericCap { valueMax, valueMin, valueStep, unit }
+    -- todo text
+    -- todo composite
+    -- todo list
     _, _, _, _, _ ->
       GenericCap genericCap
 
