@@ -1,148 +1,34 @@
 module AutomationService.Device
-  ( BinaryProps
-  , Capability(..)
-  , CapabilityBase
-  , Capabilities
+  ( Capabilities
   , Device
   , DeviceId
   , Devices
-  , EnumProps
-  , NumericProps
-  , ValueOnOff(..)
-  , canGet
-  , canSet
   , decodeDevice
-  , isPublished
   )
 where
 
-import Prelude (class Show, bind, pure, ($), (<$>), (<#>), (>), (||))
+import Prelude (bind, pure, ($), (<#>))
 
-import Control.Alternative ((<|>))
+import AutomationService.Capability (Capability, decodeCapability)
 import Data.Argonaut (Json, JsonDecodeError, decodeJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
-import Data.Argonaut.Decode.Class (class DecodeJson)
-import Data.Argonaut.Decode.Decoders (decodeBoolean, decodeString)
 import Data.Either (Either(..))
 import Data.Foldable (foldMap)
-import Data.Generic.Rep (class Generic)
-import Data.Int.Bits ((.&.))
 import Data.Map (Map)
-import Data.Maybe (Maybe(..), fromMaybe, isJust)
-import Data.Show.Generic (genericShow)
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Traversable (for, sequence)
-import Record (merge)
 
-
---
--- access https://www.zigbee2mqtt.io/guide/usage/exposes.html#access
---
-isPublished :: Int -> Boolean
-isPublished a = 1 .&. a > 0
-
-canSet :: Int -> Boolean
-canSet a = 2 .&. a > 0
-
--- this implies isPublished
-canGet :: Int -> Boolean
-canGet a = 4 .&. a > 0
-
-type CapabilityBase r =
-  { capType :: String
-  , featureType :: Maybe String
-  , name :: String
-  , description :: Maybe String
-  , label :: String
-  , property :: String
-  , access :: Int
-  | r
-  }
-
-data ValueOnOff = ValueOnOffBool Boolean | ValueOnOffString String
-
-derive instance Generic ValueOnOff _
-
-instance DecodeJson ValueOnOff where
-  decodeJson :: Json -> Either JsonDecodeError ValueOnOff
-  decodeJson json =
-    ValueOnOffBool <$> decodeBoolean json <|> ValueOnOffString <$> decodeString json
-
-instance Show ValueOnOff where
-  show = genericShow
-
-type BinaryProps =
-  (valueOn :: ValueOnOff, valueOff :: ValueOnOff, valueToggle :: Maybe String)
-
-type EnumProps = (values :: Array String)
-
-type NumericProps =
-  (valueMax :: Maybe Int, valueMin :: Maybe Int, valueStep :: Maybe Int, unit :: Maybe String)
-
-data Capability
-  = GenericCap (CapabilityBase ())
-  | BinaryCap  (CapabilityBase BinaryProps)
-  | EnumCap    (CapabilityBase EnumProps)
-  | NumericCap (CapabilityBase NumericProps)
-
-derive instance Generic Capability _
-
-instance Show Capability where
-  show = genericShow
-
-decodeCapability :: Maybe String -> Json -> Either JsonDecodeError Capability
-decodeCapability featureType capabilityJson = do
-  obj <- decodeJson capabilityJson
-  capType <- obj .: "type"
-  name <- obj .: "name"
-  description <- obj .:? "description"
-  label <- obj .: "label"
-  property <- obj .: "property"
-  access <- obj .: "access"
-  mValues <- obj .:? "values"
-  mValueOn <- obj .:? "value_on"
-  mValueOff <- obj .:? "value_off"
-  valueToggle <- obj .:? "value_toggle"
-  valueMax <- obj .:? "value_max"
-  valueMin <- obj .:? "value_min"
-  valueStep <- obj .:? "value_step"
-  unit <- obj .:? "unit"
-
-  let
-    genericCap =
-      { capType
-      , featureType
-      , name
-      , description
-      , label
-      , property
-      , access
-      }
-    hasNumericProp =
-      isJust valueMax || isJust valueMin || isJust valueStep || isJust unit
-
-  pure $ case capType, mValues, mValueOn, mValueOff, hasNumericProp of
-    "binary", _, Just valueOn, Just valueOff, _ ->
-      BinaryCap $ merge genericCap { valueOn, valueOff, valueToggle }
-    "enum", Just values, _, _, _ ->
-      EnumCap $ merge genericCap { values }
-    "numeric", _, _, _, true ->
-      NumericCap $ merge genericCap { valueMax, valueMin, valueStep, unit }
-    -- todo text
-    -- todo composite
-    -- todo list
-    _, _, _, _, _ ->
-      GenericCap genericCap
 
 type Capabilities = Array Capability
 
 type DeviceId = String
 
 type Device =
-  { id :: DeviceId
-  , name :: String
-  , category :: String
+  { id           :: DeviceId
+  , name         :: String
+  , category     :: String
   , manufacturer :: Maybe String
-  , model :: Maybe String
+  , model        :: Maybe String
   , capabilities :: Maybe Capabilities
   }
 

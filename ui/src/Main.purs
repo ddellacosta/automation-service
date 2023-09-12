@@ -2,9 +2,10 @@ module Main where
 
 import Prelude
 
-import AutomationService.Device (BinaryProps, Capability(..), CapabilityBase, Capabilities,
-                                 Device, DeviceId, Devices, EnumProps, NumericProps, canGet,
-                                 canSet, decodeDevice, isPublished)
+import AutomationService.Capability (BinaryProps, Capability(..), CapabilityBase, CompositeProps,
+                                     EnumProps, ListProps, NumericProps, canGet, canSet,
+                                     isPublished)
+import AutomationService.Device (Capabilities, Device, DeviceId, Devices, decodeDevice)
 import AutomationService.Helpers (maybeHtml)
 import Control.Alternative (guard)
 import Data.Argonaut (JsonDecodeError, parseJson, toArray)
@@ -36,9 +37,8 @@ data Message
   | LoadDevicesFailed String
   | DeviceSelected DeviceId
 
-
 type State =
-  { devices :: Devices
+  { devices          :: Devices
   , selectedDeviceId :: Maybe DeviceId
   }
 
@@ -126,6 +126,8 @@ view { devices, selectedDeviceId } dispatch =
           BinaryCap cap -> binaryCap cap
           EnumCap cap -> enumCap cap
           NumericCap cap -> numericCap cap
+          CompositeCap cap -> compositeCap cap
+          ListCap cap -> listCap cap
           GenericCap cap -> genericCap cap ""
       )
 
@@ -148,6 +150,14 @@ view { devices, selectedDeviceId } dispatch =
         <> ", value_step: " <> (show cap.valueStep)
         <> ", unit: " <> (show cap.unit)
 
+    compositeCap :: CapabilityBase CompositeProps -> ReactElement
+    compositeCap cap =
+      genericCap cap $ ", features: " <> (show cap.features)
+
+    listCap :: CapabilityBase ListProps -> ReactElement
+    listCap cap =
+      genericCap cap $ ", item_type: " <> (show cap.itemType)
+
     genericCap :: forall r. CapabilityBase r -> String -> ReactElement
     genericCap cap capFieldsStr =
       H.div "" $
@@ -156,7 +166,7 @@ view { devices, selectedDeviceId } dispatch =
         <> ", type: " <> cap.capType
         <> ", feature type: " <> (fromMaybe "n/a" cap.featureType)
         <> ", label: " <> cap.label
-        <> ", property: " <> cap.property
+        <> ", property: " <> (show cap.property)
         <> ", access: " <> (listAccess cap.access)
         <> capFieldsStr
       ]
