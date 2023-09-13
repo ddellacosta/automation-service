@@ -16,7 +16,7 @@ module AutomationService.Capability
   )
 where
 
-import Prelude (class Show, bind, const, pure, ($), (<$>), (=<<), (>))
+import Prelude (class Show, bind, const, pure, (<<<), ($), (<$>), (=<<), (>))
 
 import Control.Alternative ((<|>))
 import Data.Argonaut (Json, JsonDecodeError, decodeJson, toArray)
@@ -155,7 +155,6 @@ data Capability
   | NumericCap   (CapabilityBase NumericProps)
   -- not sure there is any value in explicitly creating a 'text'
   -- type, since it has the same properties as CapabilityBase
-  -- todo composite
   | CompositeCap (CapabilityBase CompositeProps)
   | ListCap      (CapabilityBase ListProps)
 
@@ -207,19 +206,18 @@ decodeCapability featureType capabilityJson = do
   mFeatures <- obj .:? "features"
   mItemType <- obj .:? "item_type"
 
+  let
+    fromRightCap
+      :: forall r. (r -> Capability) -> Either JsonDecodeError r -> Capability
+    fromRightCap = either (const $ GenericCap baseCap)
+
   case baseCap.capType, mItemType, toArray =<< mFeatures of
-    "binary", _, _ -> pure $ either
-      (const $ GenericCap baseCap)
-      (\binaryFields -> BinaryCap $ merge baseCap binaryFields)
-      (decodeBinary capabilityJson)
-    "enum", _, _ -> pure $ either
-      (const $ GenericCap baseCap)
-      (\enumFields -> EnumCap $ merge baseCap enumFields)
-      (decodeEnum capabilityJson)
-    "numeric", _ , _ -> pure $ either
-      (const $ GenericCap baseCap)
-      (\numericFields -> NumericCap $ merge baseCap numericFields)
-      (decodeNumeric capabilityJson)
+    "binary", _, _ -> pure $
+      fromRightCap (BinaryCap <<< merge baseCap) (decodeBinary capabilityJson)
+    "enum", _, _ -> pure $
+      fromRightCap (EnumCap <<< merge baseCap) (decodeEnum capabilityJson)
+    "numeric", _ , _ -> pure $
+      fromRightCap (NumericCap <<< merge baseCap) (decodeNumeric capabilityJson)
     "composite", _ , Just features' ->
       let
         caps = fromRight [] $ sequence $ decodeCapability Nothing <$> features'
