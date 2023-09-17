@@ -7,8 +7,10 @@ import Control.Lens (view)
 import Control.Monad (forever)
 import Control.Monad.IO.Unlift (MonadUnliftIO (..), liftIO)
 import Control.Monad.Reader (MonadReader)
+import Data.ByteString.Lazy (ByteString)
 import Data.Text (Text)
 import Data.Time.Clock (UTCTime)
+import qualified Network.Wai as Wai
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Handler.WebSockets as WaiWs
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
@@ -17,10 +19,10 @@ import Service.App (Logger (..), MonadMQTT (..))
 import qualified Service.Automation as Automation
 import Service.Automation (Automation (..))
 import qualified Service.AutomationName as AutomationName
-import Service.Env (Env, devices)
+import Service.Env (Env, devicesRawJSON)
 import UnliftIO.Concurrent (threadDelay)
-import UnliftIO.STM (TChan, readTVarIO)
-import Web.Scotty (file, get, json, middleware, scottyApp)
+import UnliftIO.STM (TChan, TVar, readTVarIO)
+import Web.Scotty (file, get, middleware, raw, scottyApp, setHeader)
 
 httpAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
@@ -51,25 +53,29 @@ mkRunAutomation = \_broadcastChan -> do
     port = 8080
     settings = Warp.setPort port Warp.defaultSettings
 
-  devices' <- view devices
-  web' <- liftIO $ web =<< readTVarIO devices'
+  devices <- view devicesRawJSON
+  web' <- liftIO $ web devices
 
   liftIO $
-    Warp.runSettings settings $ WaiWs.websocketsOr WS.defaultConnectionOptions ws web'
+    Warp.runSettings settings $
+      WaiWs.websocketsOr WS.defaultConnectionOptions (ws devices) web'
 
   where
-    web devices' = scottyApp $ do
+    web :: TVar (ByteString) -> IO Wai.Application
+    web devices = scottyApp $ do
       middleware $ staticPolicy $ addBase "ui"
       get "/" $ file "ui/index.html"
-      get "/devices" $ json devices'
+      get "/devices" $ do
+        setHeader "Content-Type" "application/json; charset=utf-8"
+        raw =<< readTVarIO devices
 
-    ws :: WS.ServerApp
-    ws pending = do
+    ws :: TVar (ByteString) -> WS.ServerApp
+    ws devices pending = do
       putStrLn "ws connected"
       conn <- WS.acceptRequest pending
       WS.withPingThread conn 30 (pure ()) $ do
         (msg :: Text) <- WS.receiveData conn
-        WS.sendTextData conn $ ("initial> " :: Text) <> msg
+        putStrLn $ show msg
+        WS.sendTextData conn =<< readTVarIO devices
         forever $ do
-          WS.sendTextData conn $ ("loop data" :: Text)
           threadDelay $ 1 * 1000000

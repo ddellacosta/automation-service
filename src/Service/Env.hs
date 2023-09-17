@@ -257,8 +257,8 @@ initialize configFilePath mkLogger mkMQTTClient = do
                   Just [] -> pure ()
                   Nothing -> pure ()
                   Just devicesJSON -> do
-                    write daemonBroadcast' $ Daemon.DeviceUpdate devicesJSON
-                ) :| []
+                    write daemonBroadcast' $ Daemon.DeviceUpdate devicesJSON msg
+             ) :| []
             )
 
           , (Zigbee2MQTT.groupsTopic,
@@ -267,8 +267,8 @@ initialize configFilePath mkLogger mkMQTTClient = do
                   Just [] -> pure ()
                   Nothing -> pure ()
                   Just groupsJSON -> do
-                    write daemonBroadcast' $ Daemon.GroupUpdate groupsJSON
-                ) :| []
+                    write daemonBroadcast' $ Daemon.GroupUpdate groupsJSON msg
+             ) :| []
             )
 
           , (statusTopic', (const $ write daemonBroadcast' Daemon.Status) :| [])

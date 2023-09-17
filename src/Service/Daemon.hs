@@ -37,10 +37,10 @@ import Service.Automations (findAutomation)
 import qualified Service.Device as Device
 import Service.Env (AutomationEntry, Env, Registrations, RestartConditions (..), ThreadMap,
                     appCleanup, automationBroadcast, automationServiceTopic, config,
-                    daemonBroadcast, dbPath, deviceRegistrations, devices, groupRegistrations,
-                    groups, loadedDevices, loadedGroups, messageChan, mqttConfig, mqttDispatch,
-                    notAlreadyRestarted, restartConditions, scheduledJobs, startupMessages,
-                    subscriptions)
+                    daemonBroadcast, dbPath, deviceRegistrations, devices, devicesRawJSON,
+                    groupRegistrations, groups, groupsRawJSON, loadedDevices, loadedGroups,
+                    messageChan, mqttConfig, mqttDispatch, notAlreadyRestarted, restartConditions,
+                    scheduledJobs, startupMessages, subscriptions)
 import qualified Service.Group as Group
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.MQTT.Messages.Daemon (AutomationSchedule)
@@ -135,15 +135,19 @@ run' threadMapTV = do
           publishUpdatedStatus threadMapTV
           go
 
-        Daemon.DeviceUpdate newDevices -> do
+        Daemon.DeviceUpdate newDevices devicesRawJSON' -> do
           view devices >>= \stored ->
             loadResources Device._id stored newDevices
+          view devicesRawJSON >>= \stored ->
+            atomically $ writeTVar stored devicesRawJSON'
           updateRestartConditionsSet loadedDevices True
           go
 
-        Daemon.GroupUpdate newGroups -> do
+        Daemon.GroupUpdate newGroups groupsRawJSON' -> do
           view groups >>= \stored ->
             loadResources Group._id stored newGroups
+          view groupsRawJSON >>= \stored ->
+            atomically $ writeTVar stored groupsRawJSON'
           updateRestartConditionsSet loadedGroups True
           go
 
@@ -244,11 +248,7 @@ run' threadMapTV = do
 
         --
         -- > The more subtle difference is that this function will use
-        -- > uninterruptible masking for its cleanup handler. This is a
-        -- > subtle distinction, but at a high level, means that resource
-        -- > cleanup has more guarantees to complete. This comes at the cost
-        -- > that an incorrectly written cleanup function cannot be
-        -- > interrupted.
+        -- > uninterruptible masking for its cleanup handler.
         --
         -- https://hackage.haskell.org/package/unliftio-0.2.24.0/docs/UnliftIO-Exception.html#v:bracket
         --
