@@ -30,6 +30,7 @@ module Service.Env
   , groupRegistrations
   , groups
   , groupsRawJSON
+  , httpPort
   , initialize
   , invertRegistrations
   , loadedDevices
@@ -68,7 +69,7 @@ import Network.MQTT.Topic (Topic, unTopic)
 import Network.URI (URI, nullURI, parseURI)
 import qualified Service.Automation as Automation
 import Service.Automation (Automation)
-import Service.AutomationName (AutomationName)
+import Service.AutomationName (AutomationName, Port (..))
 import Service.Device (Device, DeviceId)
 import Service.Group (Group, GroupId)
 import qualified Service.MQTT.Messages.Daemon as Daemon
@@ -120,6 +121,7 @@ data Config = Config
   , _logLevel      :: LogLevel
   , _luaScriptPath :: FilePath
   , _dbPath        :: FilePath
+  , _httpPort      :: Port
   }
   deriving (Generic, Show)
 
@@ -134,6 +136,7 @@ configDecoder =
         <*> field "logLevel" auto
         <*> field "luaScriptPath" string
         <*> field "dbPath" string
+        <*> field "httpPort" (Port <$> auto)
     )
 
 -- this is testing-motivated boilerplate

@@ -6,6 +6,7 @@ module Test.Integration.Service.Daemon
   )
 where
 
+import Control.Exception (SomeException, handle)
 import Control.Lens (_1, _2, _3, _Just, _head, ix, preview, (<&>), (^.), (^?))
 import Control.Monad (void)
 import Data.Aeson (Value, decode, encode)
@@ -19,15 +20,17 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import GHC.Conc (ThreadStatus (..), threadStatus)
 import Network.MQTT.Topic (mkTopic)
+import qualified Network.WebSockets as WS
 import Safe (headMay)
 import Service.Automation (name)
 import Service.AutomationName (AutomationName (..), parseAutomationName, serializeAutomationName)
 import Service.Env (LoggerVariant (..), MQTTClientVariant (..), RestartConditions (..),
                     automationServiceTopic, config, daemonBroadcast, dbPath, deviceRegistrations,
-                    groupRegistrations, logger, mqttClient, mqttConfig, mqttDispatch,
-                    restartConditions, scheduledJobs)
+                    devicesRawJSON, groupRegistrations, httpPort, logger, mqttClient, mqttConfig,
+                    mqttDispatch, restartConditions, scheduledJobs)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
 import System.Environment (setEnv)
@@ -36,7 +39,8 @@ import Test.Integration.Service.DaemonTestHelpers (initAndCleanup, testWithAsync
                                                    waitUntilEqSTM)
 import UnliftIO.Async (asyncThreadId)
 import UnliftIO.Concurrent (threadDelay)
-import UnliftIO.STM (atomically, readTChan, readTVar, readTVarIO, writeTChan, writeTVar)
+import UnliftIO.STM (atomically, modifyTVar', readTChan, readTVar, readTVarIO, writeTChan,
+                     writeTVar)
 
 -- TODO: Haven't yet figured out how to test scheduler
 -- functionality. Would like to be able to do something similar to
@@ -55,6 +59,7 @@ spec = do
   stateStoreSpecs
   schedulerSpecs
   statusMessageSpecs
+  httpSpecs
 
 --
 -- The first two here seem to have a race condition because of
@@ -668,6 +673,7 @@ statusMessageSpecs = do
         threadDelay 50000
 
         topicMap <- readTVarIO topicMapTV
+
         let
           statusMsg = M.lookup automationServiceTopic' topicMap
           statusMsg' = (statusMsg >>= decode :: Maybe Value)
@@ -675,3 +681,73 @@ statusMessageSpecs = do
         (statusMsg' ^? _Just . key "runningAutomations" . _Array . ix 0 . key "name")
           `shouldBe`
           Just (Aeson.String "StateManager")
+
+httpSpecs :: Spec
+httpSpecs = do
+  around initAndCleanup $ do
+    it "sends device data over websockets" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          port = env ^. config . httpPort
+          devices = env ^. devicesRawJSON
+          httpDefaultAutoName = fromMaybe Null $ parseAutomationName "HTTP"
+
+        -- todo: these AutomationName assertions here and above should
+        -- be unit tests for that module at this point
+        parseAutomationName "HTTP" `shouldBe` Just HTTPDefault
+
+        -- also testing this ^ implicitly here and below:
+        atomically $ do
+          modifyTVar' devices $ const "DEVICES"
+          writeTChan daemonBroadcast' (Daemon.Start httpDefaultAutoName)
+
+        -- not sure why "localhost" doesn't work vs. "127.0.0.1",
+        -- probably something basic I'm forgetting
+        devicesReceived <- retry $ WS.runClient "127.0.0.1" (fromIntegral port) "" $
+          \conn -> do
+            WS.sendTextData conn ("I need to make the WS logic not stupid" :: Text)
+            msg <- WS.receiveData conn
+            WS.sendClose conn ("close" :: Text)
+            pure msg
+
+        atomically $ writeTChan daemonBroadcast' (Daemon.Stop httpDefaultAutoName)
+
+        devices' <- readTVarIO devices
+        devicesReceived `shouldBe` devices'
+
+    it "allows a websockets client to publish an MQTT message" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          (QLogger qLogger) = env ^. logger
+          port = 1 + (env ^. config . httpPort)
+          devices = env ^. devicesRawJSON
+
+        atomically $ do
+          modifyTVar' devices $ const "DEVICES"
+          writeTChan daemonBroadcast' (Daemon.Start (HTTP port))
+
+        (devicesReceived :: Text) <- retry $ WS.runClient "127.0.0.1" (fromIntegral port) "" $
+          \conn -> do
+            WS.sendTextData conn ("I need to make the WS logic not stupid" :: Text)
+            msg <- WS.receiveData conn
+            WS.sendClose conn ("close" :: Text)
+            pure msg
+
+        logs <- readTVarIO qLogger
+        print logs
+
+        print devicesReceived
+
+        atomically $ writeTChan daemonBroadcast' (Daemon.Stop (HTTP port))
+
+        expectationFailure "nope"
+
+  where
+    --
+    -- stolen from
+    --   https://github.com/jaspervdj/websockets/blob/72b6a7223220c90e0045930e4ef7e771f010be92/tests/haskell/Network/WebSockets/Server/Tests.hs#L119-L129
+    --
+    retry :: IO a -> IO a
+    retry action = (\(_ :: SomeException) -> (threadDelay 2000000) >> retry action) `handle` action

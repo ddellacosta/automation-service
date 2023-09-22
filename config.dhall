@@ -19,5 +19,6 @@ in    { mqttBroker =
       , logLevel = LogLevel.Debug
       , luaScriptPath = "lua-automations/"
       , dbPath = "automationState.db"
+      , httpPort = 8080
       }
     : ./config/Config.dhall

@@ -11,6 +11,7 @@ import Service.Automation (Automation, nullAutomation)
 import Service.AutomationName (AutomationName (..))
 import Service.Automations.Gold (goldAutomation)
 import Service.Automations.HTTP (httpAutomation)
+import Service.Automations.HTTPDefault (defaultHttpAutomation)
 import Service.Automations.LuaScript (luaAutomation)
 import Service.Automations.StateManager (stateManagerAutomation)
 import Service.Env (Env)
@@ -22,6 +23,7 @@ findAutomation
 findAutomation = \case
   Null               -> nullAutomation
   Gold               -> goldAutomation
-  HTTP               -> httpAutomation
+  HTTPDefault        -> defaultHttpAutomation
+  HTTP port          -> httpAutomation port
   LuaScript filePath -> luaAutomation filePath
   StateManager       -> stateManagerAutomation

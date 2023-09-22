@@ -1,5 +1,8 @@
+{-# LANGUAGE DerivingStrategies #-}
+
 module Service.AutomationName
   ( AutomationName(..)
+  , Port(..)
   , parseAutomationName
   , parseAutomationNameText
   , serializeAutomationName
@@ -10,14 +13,25 @@ import Control.Monad (guard)
 import Data.Aeson (FromJSON (..), ToJSON (..))
 import qualified Data.Char as Char
 import Data.Hashable (Hashable (..))
-import Data.List (uncons)
+import Data.List (uncons, words)
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
+import Numeric.Natural (Natural)
+import Safe (atMay)
+import Text.Read (readMaybe)
+
+newtype Port = Port Natural
+  deriving (Generic, Eq, Ord, Show)
+  deriving newtype (Enum, Integral, Num, Real)
+
+instance Hashable Port
+instance FromJSON Port
 
 data AutomationName
   = Gold
-  | HTTP
+  | HTTP Port
+  | HTTPDefault
   | LuaScript FilePath
   | Null
   | StateManager
@@ -39,14 +53,21 @@ serializeAutomationName = \case
 parseAutomationName :: String -> Maybe AutomationName
 parseAutomationName = \case
   "Gold" -> Just Gold
-  "HTTP" -> Just HTTP
   "Null" -> Just Null
   "StateManager" -> Just StateManager
-  maybeLuaScript -> do
-    let filepath = filter (/= '"') maybeLuaScript
-    (firstChar, _remainder) <- uncons filepath
-    guard (Char.isLower firstChar) *>
-      (pure . LuaScript $ filepath)
+  "HTTP" -> Just HTTPDefault
+  parseableAutoName ->
+    let
+      parseableAutoName' = filter (/= '"') parseableAutoName
+      firstCharIsLower = Char.isLower . fst <$> uncons parseableAutoName'
+      splitParseableAN = words parseableAutoName'
+      httpStr = atMay splitParseableAN 0
+      port :: Maybe Natural = readMaybe =<< (flip atMay 1 $ splitParseableAN)
+    in
+      Just $ case (httpStr, port, firstCharIsLower) of
+        (Just "HTTP", Just port', _) -> HTTP . Port $ port'
+        (_, _, Just True)            -> LuaScript parseableAutoName'
+        (_, _, _)                    -> Null
 
 parseAutomationNameText :: Text -> Maybe AutomationName
 parseAutomationNameText = parseAutomationName . T.unpack

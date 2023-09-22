@@ -15,26 +15,29 @@ import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Handler.WebSockets as WaiWs
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified Network.WebSockets as WS
-import Service.App (Logger (..), MonadMQTT (..))
+import Service.App (Logger (..), MonadMQTT (..), logWithVariant)
 import qualified Service.Automation as Automation
 import Service.Automation (Automation (..))
 import qualified Service.AutomationName as AutomationName
-import Service.Env (Env, devicesRawJSON)
+import Service.AutomationName (Port)
+import Service.Env (Env, LogLevel (..), LoggerVariant, devicesRawJSON, logger)
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan, TVar, readTVarIO)
 import Web.Scotty (file, get, middleware, raw, scottyApp, setHeader)
 
 httpAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
-  => UTCTime
+  => Port
+  -> UTCTime
   -> Automation m
-httpAutomation ts =
+httpAutomation port ts =
   Automation
-    { _name = AutomationName.HTTP
+    { _name = AutomationName.HTTP port
     , _cleanup = mkCleanupAutomation
-    , _run = mkRunAutomation
+    , _run = mkRunAutomation port
     , _startTime = ts
     }
+
 
 mkCleanupAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
@@ -45,20 +48,22 @@ mkCleanupAutomation = \_broadcastChan -> do
 
 mkRunAutomation
   :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
-  => (TChan Automation.Message -> m ())
-mkRunAutomation = \_broadcastChan -> do
+  => Port
+  -> (TChan Automation.Message -> m ())
+mkRunAutomation port = \_broadcastChan -> do
   debug $ "Beginning run of HTTP"
-
-  let
-    port = 8080
-    settings = Warp.setPort port Warp.defaultSettings
 
   devices <- view devicesRawJSON
   web' <- liftIO $ web devices
 
+  logger' <- view logger
+
+  let
+    settings = Warp.setPort (fromIntegral port) Warp.defaultSettings
+
   liftIO $
     Warp.runSettings settings $
-      WaiWs.websocketsOr WS.defaultConnectionOptions (ws devices) web'
+      WaiWs.websocketsOr WS.defaultConnectionOptions (ws logger' devices) web'
 
   where
     web :: TVar (ByteString) -> IO Wai.Application
@@ -69,13 +74,17 @@ mkRunAutomation = \_broadcastChan -> do
         setHeader "Content-Type" "application/json; charset=utf-8"
         raw =<< readTVarIO devices
 
-    ws :: TVar (ByteString) -> WS.ServerApp
-    ws devices pending = do
+    ws :: LoggerVariant -> TVar (ByteString) -> WS.ServerApp
+    ws logger' devices pending = do
       putStrLn "ws connected"
       conn <- WS.acceptRequest pending
       WS.withPingThread conn 30 (pure ()) $ do
         (msg :: Text) <- WS.receiveData conn
-        putStrLn $ show msg
+        logDebugMsg logger' $ "Received: " <> msg
         WS.sendTextData conn =<< readTVarIO devices
         forever $ do
           threadDelay $ 1 * 1000000
+
+logDebugMsg :: LoggerVariant -> Text -> IO ()
+logDebugMsg logger' msg =
+  logWithVariant logger' Debug ("HTTP: " <> msg)

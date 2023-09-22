@@ -89,6 +89,7 @@ library
     , Service.Automations
     , Service.Automations.Gold
     , Service.Automations.HTTP
+    , Service.Automations.HTTPDefault
     , Service.Automations.LuaScript
     , Service.Automations.StateManager
     , Service.App
