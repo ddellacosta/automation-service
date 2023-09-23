@@ -14,6 +14,7 @@ import qualified Data.Aeson as Aeson
 import Data.Aeson.Lens (_Array, key)
 import qualified Data.ByteString.Char8 as SBS
 import qualified Data.ByteString.Lazy as LBS
+import Data.ByteString.Lazy (ByteString)
 import Data.Foldable (for_)
 import qualified Data.HashMap.Strict as M
 import Data.List.NonEmpty (NonEmpty ((:|)))
@@ -706,43 +707,40 @@ httpSpecs = do
         -- probably something basic I'm forgetting
         devicesReceived <- retry $ WS.runClient "127.0.0.1" (fromIntegral port) "" $
           \conn -> do
-            WS.sendTextData conn ("I need to make the WS logic not stupid" :: Text)
             msg <- WS.receiveData conn
             WS.sendClose conn ("close" :: Text)
             pure msg
-
-        atomically $ writeTChan daemonBroadcast' (Daemon.Stop httpDefaultAutoName)
 
         devices' <- readTVarIO devices
         devicesReceived `shouldBe` devices'
 
     it "allows a websockets client to publish an MQTT message" $
-      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+      testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
-          (QLogger qLogger) = env ^. logger
+          -- +1 to make sure we don't try to use the same port when
+          -- these tests run in parallel.
           port = 1 + (env ^. config . httpPort)
-          devices = env ^. devicesRawJSON
 
-        atomically $ do
-          modifyTVar' devices $ const "DEVICES"
-          writeTChan daemonBroadcast' (Daemon.Start (HTTP port))
+        atomically $ writeTChan daemonBroadcast' (Daemon.Start (HTTP port))
 
-        (devicesReceived :: Text) <- retry $ WS.runClient "127.0.0.1" (fromIntegral port) "" $
+        retry $ WS.runClient "127.0.0.1" (fromIntegral port) "" $
           \conn -> do
-            WS.sendTextData conn ("I need to make the WS logic not stupid" :: Text)
-            msg <- WS.receiveData conn
+            WS.sendTextData conn ("{\"start\": \"test\"}" :: ByteString)
             WS.sendClose conn ("close" :: Text)
-            pure msg
 
-        logs <- readTVarIO qLogger
-        print logs
+        --
+        -- I'm not confident about the ordering of the first two, but
+        -- every test I ran had them in this order. Either way the
+        -- first two are going to be one or the other, and the third
+        -- one should always be the `LuaScript "test"` run:
+        --
+        (_startHttp, _startSM, startTest) <- atomically $ (,,)
+          <$> readTChan daemonSnooper
+          <*> readTChan daemonSnooper
+          <*> readTChan daemonSnooper
 
-        print devicesReceived
-
-        atomically $ writeTChan daemonBroadcast' (Daemon.Stop (HTTP port))
-
-        expectationFailure "nope"
+        startTest `shouldBe` (Daemon.Start (LuaScript "test"))
 
   where
     --
@@ -750,4 +748,6 @@ httpSpecs = do
     --   https://github.com/jaspervdj/websockets/blob/72b6a7223220c90e0045930e4ef7e771f010be92/tests/haskell/Network/WebSockets/Server/Tests.hs#L119-L129
     --
     retry :: IO a -> IO a
-    retry action = (\(_ :: SomeException) -> (threadDelay 2000000) >> retry action) `handle` action
+    retry action = handle
+      (\(_ :: SomeException) -> (threadDelay 2000000) >> retry action)
+      action
