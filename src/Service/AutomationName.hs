@@ -9,11 +9,10 @@ module Service.AutomationName
   )
 where
 
-import Control.Monad (guard)
 import Data.Aeson (FromJSON (..), ToJSON (..))
 import qualified Data.Char as Char
 import Data.Hashable (Hashable (..))
-import Data.List (uncons, words)
+import Data.List (uncons)
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)

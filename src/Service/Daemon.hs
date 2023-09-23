@@ -173,6 +173,9 @@ run' threadMapTV = do
             subscribe automationName topic listenerBcastChan
           go
 
+        Daemon.Publish (Daemon.MQTTMsg topic msg') ->
+          publishMQTT topic (encode msg') *> go
+
         Daemon.DeadAutoCleanup -> do
           cleanDeadAutomations threadMapTV
           publishUpdatedStatus threadMapTV

@@ -21,6 +21,7 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import qualified Data.Text.IO as T
 import GHC.Conc (ThreadStatus (..), threadStatus)
 import Network.MQTT.Topic (mkTopic)
@@ -718,6 +719,10 @@ httpSpecs = do
       testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
+          (TVClient mqttMsgs) = env ^. mqttClient
+          topicStr = "/device/lamp/set"
+          Just topic = mkTopic . T.decodeUtf8Lenient . SBS.concat . LBS.toChunks $ topicStr
+
           -- +1 to make sure we don't try to use the same port when
           -- these tests run in parallel.
           port = 1 + (env ^. config . httpPort)
@@ -727,7 +732,15 @@ httpSpecs = do
         retry $ WS.runClient "127.0.0.1" (fromIntegral port) "" $
           \conn -> do
             WS.sendTextData conn ("{\"start\": \"test\"}" :: ByteString)
+            WS.sendTextData conn
+              (  "{\"publish\": {\"state\": \"ON\"}, "
+              <>  "\"topic\": \"" <> topicStr <> "\""
+              <>  "}"
+              :: ByteString
+              )
             WS.sendClose conn ("close" :: Text)
+
+        threadDelay 50000
 
         --
         -- I'm not confident about the ordering of the first two, but
@@ -735,12 +748,16 @@ httpSpecs = do
         -- first two are going to be one or the other, and the third
         -- one should always be the `LuaScript "test"` run:
         --
-        (_startHttp, _startSM, startTest) <- atomically $ (,,)
+        (_startHttp, _startSM, startTest, _publishMsg) <- atomically $ (,,,)
           <$> readTChan daemonSnooper
+          <*> readTChan daemonSnooper
           <*> readTChan daemonSnooper
           <*> readTChan daemonSnooper
 
         startTest `shouldBe` (Daemon.Start (LuaScript "test"))
+
+        receivedMsg <- M.lookup topic <$> readTVarIO mqttMsgs
+        receivedMsg `shouldBe` Just "{\"state\":\"ON\"}"
 
   where
     --
