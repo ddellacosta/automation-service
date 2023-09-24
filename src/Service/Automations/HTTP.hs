@@ -10,8 +10,8 @@ import Control.Monad.Reader (MonadReader)
 import Data.Aeson (decode)
 import Data.ByteString.Lazy (ByteString)
 import Data.Foldable (for_)
-import qualified Data.Text as T
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Time.Clock (UTCTime)
 import qualified Network.Wai as Wai
 import qualified Network.Wai.Handler.Warp as Warp
@@ -23,8 +23,8 @@ import qualified Service.Automation as Automation
 import Service.Automation (Automation (..))
 import qualified Service.AutomationName as AutomationName
 import Service.AutomationName (Port)
-import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.Env (Env, LogLevel (..), LoggerVariant, daemonBroadcast, devicesRawJSON, logger)
+import qualified Service.MQTT.Messages.Daemon as Daemon
 import UnliftIO.Async (race)
 import UnliftIO.STM (TChan, TVar, atomically, readTChan, readTVarIO, writeTChan)
 import Web.Scotty (file, get, middleware, raw, scottyApp, setHeader)

@@ -13,8 +13,8 @@ import Data.Aeson (Value, decode, encode)
 import qualified Data.Aeson as Aeson
 import Data.Aeson.Lens (_Array, key)
 import qualified Data.ByteString.Char8 as SBS
-import qualified Data.ByteString.Lazy as LBS
 import Data.ByteString.Lazy (ByteString)
+import qualified Data.ByteString.Lazy as LBS
 import Data.Foldable (for_)
 import qualified Data.HashMap.Strict as M
 import Data.List.NonEmpty (NonEmpty ((:|)))

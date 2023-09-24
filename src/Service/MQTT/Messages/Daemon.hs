@@ -40,7 +40,7 @@ type JobId = Text
 
 data MQTTMessage = MQTTMsg
   { topic :: Topic
-  , msg :: Value
+  , msg   :: Value
   }
   deriving (Generic, Eq, Show)
 
