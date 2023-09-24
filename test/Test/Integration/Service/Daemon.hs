@@ -693,16 +693,11 @@ httpSpecs = do
           daemonBroadcast' = env ^. daemonBroadcast
           port = env ^. config . httpPort
           devices = env ^. devicesRawJSON
-          httpDefaultAutoName = fromMaybe Null $ parseAutomationName "HTTP"
-
-        -- todo: these AutomationName assertions here and above should
-        -- be unit tests for that module at this point
-        parseAutomationName "HTTP" `shouldBe` Just HTTPDefault
 
         -- also testing this ^ implicitly here and below:
         atomically $ do
           modifyTVar' devices $ const "DEVICES"
-          writeTChan daemonBroadcast' (Daemon.Start httpDefaultAutoName)
+          writeTChan daemonBroadcast' (Daemon.Start HTTPDefault)
 
         -- not sure why "localhost" doesn't work vs. "127.0.0.1",
         -- probably something basic I'm forgetting

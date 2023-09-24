@@ -13,12 +13,11 @@ import Data.Aeson (FromJSON (..), ToJSON (..))
 import qualified Data.Char as Char
 import Data.Hashable (Hashable (..))
 import Data.List (uncons)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Numeric.Natural (Natural)
-import Safe (atMay)
-import Text.Read (readMaybe)
 
 newtype Port = Port Natural
   deriving (Generic, Eq, Ord, Show)
@@ -53,20 +52,14 @@ parseAutomationName :: String -> Maybe AutomationName
 parseAutomationName = \case
   "Gold" -> Just Gold
   "Null" -> Just Null
-  "StateManager" -> Just StateManager
-  "HTTP" -> Just HTTPDefault
   parseableAutoName ->
     let
       parseableAutoName' = filter (/= '"') parseableAutoName
-      firstCharIsLower = Char.isLower . fst <$> uncons parseableAutoName'
-      splitParseableAN = words parseableAutoName'
-      httpStr = atMay splitParseableAN 0
-      port :: Maybe Natural = readMaybe =<< (flip atMay 1 $ splitParseableAN)
+      firstIsLower = fromMaybe False $ Char.isLower . fst <$> uncons parseableAutoName'
     in
-      Just $ case (httpStr, port, firstCharIsLower) of
-        (Just "HTTP", Just port', _) -> HTTP . Port $ port'
-        (_, _, Just True)            -> LuaScript parseableAutoName'
-        (_, _, _)                    -> Null
+      Just $ if firstIsLower
+        then LuaScript parseableAutoName'
+        else Null
 
 parseAutomationNameText :: Text -> Maybe AutomationName
 parseAutomationNameText = parseAutomationName . T.unpack
