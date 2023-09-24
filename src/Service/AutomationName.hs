@@ -9,11 +9,11 @@ module Service.AutomationName
   )
 where
 
+import Control.Monad (guard)
 import Data.Aeson (FromJSON (..), ToJSON (..))
 import qualified Data.Char as Char
 import Data.Hashable (Hashable (..))
 import Data.List (uncons)
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
@@ -52,14 +52,11 @@ parseAutomationName :: String -> Maybe AutomationName
 parseAutomationName = \case
   "Gold" -> Just Gold
   "Null" -> Just Null
-  parseableAutoName ->
-    let
-      parseableAutoName' = filter (/= '"') parseableAutoName
-      firstIsLower = fromMaybe False $ Char.isLower . fst <$> uncons parseableAutoName'
-    in
-      Just $ if firstIsLower
-        then LuaScript parseableAutoName'
-        else Null
+  maybeLuaScript -> do
+    let filepath = filter (/= '"') maybeLuaScript
+    (firstChar, _remainder) <- uncons filepath
+    guard (Char.isLower firstChar) *>
+      (pure . LuaScript $ filepath)
 
 parseAutomationNameText :: Text -> Maybe AutomationName
 parseAutomationNameText = parseAutomationName . T.unpack
