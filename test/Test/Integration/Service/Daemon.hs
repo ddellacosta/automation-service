@@ -320,7 +320,7 @@ luaScriptSpecs = do
         atomically $ writeTChan daemonBroadcast' $
           Daemon.Start (LuaScript "testSendMsg")
 
-        threadDelay 50000
+        threadDelay 60000
 
         let
           getCurrentMsgBatch :: [Daemon.Message] -> STM [Daemon.Message]

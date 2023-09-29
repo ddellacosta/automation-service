@@ -25,7 +25,6 @@ import qualified Service.AutomationName as AutomationName
 import Service.AutomationName (Port)
 import Service.Env (Env, LogLevel (..), LoggerVariant, daemonBroadcast, devicesRawJSON, logger)
 import qualified Service.MQTT.Messages.Daemon as Daemon
-import UnliftIO.Async (race)
 import UnliftIO.STM (TChan, TVar, atomically, readTChan, readTVarIO, writeTChan)
 import Web.Scotty (file, get, middleware, raw, scottyApp, setHeader)
 

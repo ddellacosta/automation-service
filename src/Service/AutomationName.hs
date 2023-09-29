@@ -21,10 +21,7 @@ import Numeric.Natural (Natural)
 
 newtype Port = Port Natural
   deriving (Generic, Eq, Ord, Show)
-  deriving newtype (Enum, Integral, Num, Real)
-
-instance Hashable Port
-instance FromJSON Port
+  deriving newtype (Enum, Integral, Num, Real, Hashable, FromJSON)
 
 data AutomationName
   = Gold
