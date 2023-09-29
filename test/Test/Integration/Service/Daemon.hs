@@ -635,9 +635,6 @@ stateStoreSpecs = do
 
     encodeStrict = toStrictBS . encode
 
-toStrictBS :: LBS.ByteString -> SBS.ByteString
-toStrictBS = SBS.concat . LBS.toChunks
-
 schedulerSpecs :: Spec
 schedulerSpecs = do
   around initAndCleanup $ do
@@ -771,3 +768,6 @@ httpSpecs = do
     retry action = handle
       (\(_ :: SomeException) -> (threadDelay 2000000) >> retry action)
       action
+
+toStrictBS :: LBS.ByteString -> SBS.ByteString
+toStrictBS = SBS.concat . LBS.toChunks
