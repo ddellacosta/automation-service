@@ -93,14 +93,11 @@ mkRunAutomation port broadcastChan = do
       logDebugMsg logger' "(TODO) Sending Group data to client"
       -- WS.sendTextData conn =<< readTVarIO groups
 
-      -- set up process loop
-      WS.withPingThread conn 30 (pure ()) $ forever $
-        race (WS.receiveData conn) (send conn logger') >>= \case
-          Left received -> do
-            logDebugMsg logger' $ "Received " <> (T.pack $ show received)
-            for_ (decode received) $ atomically . writeTChan daemonBC
-
-          Right _sent -> pure ()
+      -- set up process loop. For now just waits to receive msg
+      WS.withPingThread conn 30 (pure ()) $ forever $ do
+        received <- WS.receiveData conn
+        logDebugMsg logger' $ "Received " <> (T.pack $ show received)
+        for_ (decode received) $ atomically . writeTChan daemonBC
 
     send _conn _logger' = atomically . readTChan $ broadcastChan
 

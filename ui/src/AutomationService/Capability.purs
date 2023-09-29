@@ -142,7 +142,6 @@ toListFromCapability = case _ of
   ListCap cap ->
     ListGenericCap $ delete (Proxy :: Proxy "itemType") cap
 
--- I need to be able to generate everything else before I try this
 type ListProps = (itemType :: ListCapability)
 
 

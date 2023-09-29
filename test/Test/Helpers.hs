@@ -1,5 +1,7 @@
 module Test.Helpers
-  ( loadTestDevices
+  ( devicesRawJSON
+  , groupsRawJSON
+  , loadTestDevices
   , loadTestGroups
   ,
   )
@@ -12,12 +14,14 @@ import Data.Maybe (fromMaybe)
 import Service.Device (Device)
 import Service.Group (Group)
 
+devicesRawJSON :: IO BL.ByteString
+devicesRawJSON = BL.fromStrict <$> BS.readFile "test/fixtures/devices.json"
+
 loadTestDevices :: IO [Device]
-loadTestDevices = do
-  devicesRawJSON <- BL.fromStrict <$> BS.readFile "test/fixtures/devices.json"
-  pure $ fromMaybe [] $ decode devicesRawJSON
+loadTestDevices = pure . fromMaybe [] . decode =<< devicesRawJSON
+
+groupsRawJSON :: IO BL.ByteString
+groupsRawJSON = BL.fromStrict <$> BS.readFile "test/fixtures/groups.json"
 
 loadTestGroups :: IO [Group]
-loadTestGroups = do
-  groupsRawJSON <- BL.fromStrict <$> BS.readFile "test/fixtures/groups.json"
-  pure $ fromMaybe [] $ decode groupsRawJSON
+loadTestGroups = pure . fromMaybe [] . decode =<< groupsRawJSON

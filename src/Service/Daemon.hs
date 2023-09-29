@@ -94,8 +94,9 @@ run' threadMapTV = do
     -- are met and previously running Automations get loaded. See
     -- tryRestoreRunningAutomations.
     --
-    view daemonBroadcast >>= \db ->
-      atomically . writeTChan db $ Daemon.Start StateManager
+    view daemonBroadcast >>= \db -> atomically $ do
+      writeTChan db $ Daemon.Start StateManager
+      writeTChan db $ Daemon.Start HTTPDefault
     go
 
   where
