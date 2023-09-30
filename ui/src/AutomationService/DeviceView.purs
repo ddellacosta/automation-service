@@ -58,10 +58,8 @@ init msgSink = do
         -- missing?
         jsonStr = unsafeFromForeign $ data_ msgEvt
       debug jsonStr
-      msgSink $ either
-        (LoadDevicesFailed <<< show)
-        LoadDevices
-        (decode jsonStr)
+      msgSink $
+        either (LoadDevicesFailed <<< show) LoadDevices (decode jsonStr)
 
   liftEffect $ addEventListener onMessage el false (toEventTarget ws)
 
