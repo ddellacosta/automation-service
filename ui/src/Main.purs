@@ -3,6 +3,7 @@ module Main where
 import Prelude
 
 import AutomationService.DeviceView as Devices
+import AutomationService.Helpers (allElements)
 import Data.Bifunctor (bimap)
 import Data.Generic.Rep (class Generic)
 import Data.Map as M
@@ -68,7 +69,7 @@ view :: State -> Dispatch Message -> ReactElement
 view state@{ currentPage } dispatch =
   H.div "container mx-auto mt-5 d-flex flex-column justify-content-between"
   [ H.h2 "" $ pageName currentPage
-  , H.ul "" $ H.fragment $ [ Home, Devices, PublishMQTT ] <#> link
+  , H.ul "" $ H.fragment $ allElements <#> link
   , page currentPage state dispatch
   ]
 
