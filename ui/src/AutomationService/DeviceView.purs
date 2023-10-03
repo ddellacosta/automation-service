@@ -34,7 +34,7 @@ import Foreign (unsafeFromForeign)
 import Web.Event.EventTarget (addEventListener, eventListener)
 import Web.Socket.Event.EventTypes (onMessage)
 import Web.Socket.Event.MessageEvent (data_, fromEvent)
-import Web.Socket.WebSocket (create, toEventTarget)
+import Web.Socket.WebSocket (WebSocket, toEventTarget)
 
 
 data Message
@@ -47,10 +47,8 @@ type State =
   , selectedDeviceId :: Maybe DeviceId
   }
 
-init :: Command Aff Message
-init msgSink = do
-  ws <- liftEffect $ create "ws://localhost:8080" []
-
+init :: WebSocket -> Command Aff Message
+init ws msgSink = do
   el <- liftEffect $ eventListener $ \evt -> do
     for_ (fromEvent evt) \msgEvt -> do
       let
