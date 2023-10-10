@@ -85,7 +85,7 @@ update s = case _ of
 view :: State -> Dispatch Message -> ReactElement
 view { devices, selectedDeviceId } dispatch =
   H.div "container mx-auto mt-5 d-flex flex-column justify-content-between"
-  [ H.h2 "" "Devices"
+  [ H.h3 "" "Devices"
 
   , H.select_
       "device-select"

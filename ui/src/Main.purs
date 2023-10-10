@@ -9,12 +9,15 @@ import Data.Generic.Rep (class Generic)
 import Data.Map as M
 import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
+import Data.String.Common as S
+import Data.String.Pattern (Pattern(..), Replacement(..))
 import Effect (Effect)
 import Effect.Class (liftEffect)
 import Effect.Console (debug, info, warn)
 import Elmish (Transition, Dispatch, ReactElement, forks, forkVoid, (<|))
-import Elmish.HTML.Events as E
 import Elmish.Boot (defaultMain)
+import Elmish.HTML (_data)
+import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
 import Web.Socket.WebSocket (WebSocket, create)
 
@@ -31,6 +34,13 @@ pageName = case _ of
   Devices -> "Devices"
   Home -> "Home"
   PublishMQTT -> "Publish MQTT"
+
+pageNameClass :: Page -> String
+pageNameClass =
+      pageName
+  >>> S.toLower
+  >>> S.trim
+  >>> S.replaceAll (Pattern " ") (Replacement "-")
 
 data Message
   = SetPage Page
@@ -99,14 +109,18 @@ publishMQTT _s dispatch =
 view :: State -> Dispatch Message -> ReactElement
 view state@{ currentPage } dispatch =
   H.div "container mx-auto mt-5 d-flex flex-column justify-content-between"
-  [ H.h2 "" $ pageName currentPage
+  [ H.h2_ ("main-title " <> "main-title-" <> (pageNameClass currentPage))
+    { _data: _data { "test-id": "main-title" }}
+    $ pageName currentPage
   , H.ul "" $ H.fragment $ allElements <#> link
   , page currentPage state dispatch
   ]
 
   where
     link :: Page -> ReactElement
-    link pg = H.li "" $
+    link pg = H.li_ (pageNameClass pg <> " navlink")
+      { _data: _data { "test-id": "nav-" <> (pageNameClass pg) }
+      } $
       H.a_ "" { href: "#", onClick: dispatch <| SetPage pg } $ pageName pg
 
     page :: Page -> State -> Dispatch Message -> ReactElement
