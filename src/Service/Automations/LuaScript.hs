@@ -33,14 +33,15 @@ import Network.HTTP.Client (httpLbs, newManager, parseRequest, responseBody, res
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Network.MQTT.Topic (mkTopic, unTopic)
 import qualified Service.App as App
-import Service.App (Logger (..), MonadMQTT (..))
+import Service.App (Logger (..), debug)
 import qualified Service.Automation as Automation
 import Service.Automation (Automation (..))
 import qualified Service.AutomationName as AutomationName
 import Service.Device (Device, DeviceId, toLuaDevice, topicSet)
-import Service.Env (Env, LogLevel (Debug), LoggerVariant (..), MQTTClientVariant (..), config,
-                    daemonBroadcast, devices, groups, logger, luaScriptPath, mqttClient)
+import Service.Env (Env, LogLevel (Debug), config, daemonBroadcast, devices, groups, logger,
+                    luaScriptPath, mqttClient)
 import Service.Group (Group, GroupId, memberId, members, toLuaGroup)
+import Service.MQTT.Class (MQTTClient (..))
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.MQTT.Messages.Lighting (mkRGB)
 import qualified Service.TimeHelpers as TH
@@ -51,7 +52,7 @@ import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChan, readT
                      readTVarIO, writeTChan)
 
 luaAutomation
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => FilePath
   -> UTCTime
   -> Automation m
@@ -64,7 +65,7 @@ luaAutomation filepath ts =
     }
 
 mkCleanupAutomation
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => FilePath
   -> (TChan Automation.Message -> m ())
 mkCleanupAutomation filepath = \_broadcastChan -> do
@@ -81,7 +82,7 @@ mkCleanupAutomation filepath = \_broadcastChan -> do
 
   luaStatusString <- liftIO . Lua.unsafeRunWith luaState $ do
     Lua.openlibs -- load the default Lua packages
-    loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups'
+    loadAPI filepath logger' mqttClient' daemonBroadcast' devices' groups'
     loadScript luaScriptPath' filepath *> Lua.callTrace 0 0
     callWhenExists "cleanup"
 
@@ -105,7 +106,7 @@ mkCleanupAutomation filepath = \_broadcastChan -> do
 type StatusMsg = String
 
 mkRunAutomation
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => FilePath
   -> (TChan Automation.Message -> m ())
 mkRunAutomation filepath = \_broadcastChan -> do
@@ -129,7 +130,7 @@ mkRunAutomation filepath = \_broadcastChan -> do
   luaStatusString <- handle (\e -> pure . show $ (e :: Lua.Exception)) $
     liftIO . Lua.unsafeRunWith luaState $ do
       Lua.openlibs -- load the default Lua packages
-      loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups'
+      loadAPI filepath logger' mqttClient' daemonBroadcast' devices' groups'
       -- TODO this needs error handling
       loadScript luaScriptPath' filepath *> Lua.callTrace 0 0
 
@@ -169,15 +170,16 @@ callWhenExists fnName = do
     Lua.TypeFunction -> Just <$> Lua.callTrace 0 0
     _                -> pure Nothing
 
-loadDSL
-  :: FilePath
-  -> LoggerVariant
-  -> MQTTClientVariant
+loadAPI
+  :: (Logger logger, MQTTClient mqttClient)
+  => FilePath
+  -> logger
+  -> mqttClient
   -> TChan Daemon.Message
   -> TVar (HashMap DeviceId Device)
   -> TVar (HashMap GroupId Group)
   -> Lua.LuaE Lua.Exception ()
-loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
+loadAPI filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
   for_ functions $ \(fn, fnName) ->
     pushDocumentedFunction fn *> Lua.setglobal fnName
 
@@ -271,7 +273,7 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
 
     publishImpl :: Text -> ByteString -> Lua.LuaE Lua.Exception ()
     publishImpl topic msg = liftIO $
-      App.publish (fromMaybe "" $ mkTopic topic) msg mqttClient'
+      publishMQTT mqttClient' (fromMaybe "" $ mkTopic topic) msg
 
     publish :: DocumentedFunction Lua.Exception
     publish =
@@ -413,6 +415,6 @@ loadDSL filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
 
 -- this is here because it's useful for throwing into other
 -- Lua-Monad functions during debugging
-logDebugMsg' :: FilePath -> LoggerVariant -> Text -> IO ()
+logDebugMsg' :: (Logger logger) => FilePath -> logger -> Text -> IO ()
 logDebugMsg' filepath logger' msg =
-  App.logWithVariant logger' Debug (T.pack filepath <> ": " <> msg)
+  App.log logger' Debug (T.pack filepath <> ": " <> msg)

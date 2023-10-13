@@ -84,26 +84,29 @@ library
   import:           shared
   hs-source-dirs:   src
   exposed-modules:
-      Service.Automation
+      Service.App
+    , Service.App.Logger
+    , Service.Automation
     , Service.AutomationName
     , Service.Automations
     , Service.Automations.Gold
     , Service.Automations.HTTP
     , Service.Automations.LuaScript
     , Service.Automations.StateManager
-    , Service.App
     , Service.Daemon
-    , Service.TimeHelpers
     , Service.Device
-    , Service.Group
     , Service.Env
+    , Service.Env.Config
+    , Service.Group
+    , Service.MQTT.Class
+    , Service.MQTT.Client
     , Service.MQTT.Messages.Daemon
     , Service.MQTT.Messages.Lighting
-    , Service.MQTT.Client
     , Service.MQTT.Status
     , Service.MQTT.Topic
     , Service.MQTT.Zigbee2MQTT
     , Service.StateStore
+    , Service.TimeHelpers
 
 executable automation-service
   import:           shared
@@ -130,11 +133,11 @@ test-suite automation-service-tests
       Test.Helpers
     , Test.Integration.Service.Daemon
     , Test.Integration.Service.DaemonTestHelpers
-    , Test.Unit.Service.TimeHelpers
     , Test.Unit.Service.Device
     , Test.Unit.Service.Group
     , Test.Unit.Service.MQTT.Messages.Daemon
     , Test.Unit.Service.MQTT.Status
+    , Test.Unit.Service.TimeHelpers
   build-depends:
       automation-service
     , hspec ^>= 2.9.7

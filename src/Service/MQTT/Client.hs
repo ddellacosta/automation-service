@@ -18,7 +18,8 @@ import Network.TLS (ClientHooks (..), ClientParams (..), Credentials (..), Share
                     Supported (..), Version (..), credentialLoadX509, defaultParamsClient)
 import Network.TLS.Extra.Cipher (ciphersuite_default)
 import qualified Service.App as App
-import Service.Env (LogLevel (..), LoggerVariant, MQTTConfig (..), MQTTDispatch)
+import Service.App (Logger)
+import Service.Env (LogLevel (..), MQTTConfig (..), MQTTDispatch)
 import UnliftIO.STM (TVar, readTVarIO)
 
 
@@ -101,21 +102,22 @@ initMQTTClient msgCB (MQTTConfig {..}) = do
 -- MQTTClient -> Topic -> ByteString -> [Property] -> IO ()
 --
 mqttClientCallback
-  :: LogLevel
-  -> LoggerVariant
+  :: (Logger logger)
+  => LogLevel
+  -> logger
   -> TVar MQTTDispatch
   -> MQTT.MessageCallback
 mqttClientCallback logLevelSet logger mqttDispatch =
   MQTT.SimpleCallback $ \_mc topic msg _props -> do
     when (Debug >= logLevelSet) $
-      App.logWithVariant logger Debug $
+      App.log logger Debug $
         "Received message " <> T.pack (show msg) <> " to " <> T.pack (show topic)
     mqttDispatch' <- readTVarIO mqttDispatch
     case M.lookup topic mqttDispatch' of
       Just msgAction -> mapM_ ($ msg) msgAction
       Nothing -> do
         when (Warn >= logLevelSet) $
-          App.logWithVariant logger Warn $
+          App.log logger Warn $
             "Received message " <>
             T.pack (show msg) <>
             " to unhandled topic " <>

@@ -15,17 +15,18 @@ import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Handler.WebSockets as WaiWs
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified Network.WebSockets as WS
-import Service.App (Logger (..), MonadMQTT (..))
+import Service.App (Logger (..), debug)
 import qualified Service.Automation as Automation
 import Service.Automation (Automation (..))
 import qualified Service.AutomationName as AutomationName
 import Service.Env (Env, devicesRawJSON)
+import Service.MQTT.Class (MQTTClient)
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (TChan, TVar, readTVarIO)
 import Web.Scotty (file, get, middleware, raw, scottyApp, setHeader)
 
 httpAutomation
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => UTCTime
   -> Automation m
 httpAutomation ts =
@@ -37,14 +38,14 @@ httpAutomation ts =
     }
 
 mkCleanupAutomation
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => (TChan Automation.Message -> m ())
 mkCleanupAutomation = \_broadcastChan -> do
   debug $ "Starting Cleanup: HTTP"
 
 
 mkRunAutomation
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => (TChan Automation.Message -> m ())
 mkRunAutomation = \_broadcastChan -> do
   debug $ "Beginning run of HTTP"
