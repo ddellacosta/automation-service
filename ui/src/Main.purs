@@ -97,10 +97,12 @@ publishMQTT _s dispatch =
   H.div "input-group"
   [ H.input_ "form-control publish-mqtt"
     { type: "text"
+    , _data: _data { "test-id": "publish-mqtt-input" }
     , onChange: dispatch <| PublishMsgChanged <<< E.inputText
     }
   , H.button_ "btn btn-outline-secondary"
     { type: "button"
+    , _data: _data { "test-id": "publish-mqtt-btn" }
     , onClick: dispatch <| Publish
     }
     "Publish"
