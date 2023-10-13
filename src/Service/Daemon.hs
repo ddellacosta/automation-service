@@ -29,15 +29,15 @@ import qualified Data.Vector as V
 import GHC.Conc (ThreadStatus (..), threadStatus)
 import Network.MQTT.Topic (Topic)
 import qualified Service.App as App
-import Service.App (Logger (..))
+import Service.App (Logger (..), debug, info, warn)
 import qualified Service.Automation as Automation
 import Service.Automation (Automation (_name), ClientMsg (..), Message (..))
 import Service.AutomationName (AutomationName (..), parseAutomationNameText,
                                serializeAutomationName)
 import Service.Automations (findAutomation)
 import qualified Service.Device as Device
-import Service.Env (AutomationEntry, Env, Registrations, RestartConditions (..),
-                    ThreadMap, appCleanup, automationBroadcast, automationServiceTopic, config,
+import Service.Env (AutomationEntry, Env, Registrations, RestartConditions (..), ThreadMap,
+                    appCleanup, automationBroadcast, automationServiceTopic, config,
                     daemonBroadcast, dbPath, deviceRegistrations, devices, devicesRawJSON,
                     groupRegistrations, groups, groupsRawJSON, loadedDevices, loadedGroups,
                     messageChan, mqttConfig, mqttDispatch, notAlreadyRestarted, restartConditions,
@@ -56,7 +56,7 @@ import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, modifyTVar', newTVa
                      readTVar, readTVarIO, writeTChan, writeTVar)
 
 run
-  :: (Logger m, MQTTClient mc, MonadReader (Env mc) m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => m ()
 run = do
   threadMapTV <- newTVarIO M.empty
@@ -70,7 +70,7 @@ run = do
 -- module anyways, so it's probably for the best regardless.
 --
 run'
-  :: (Logger m, MQTTClient mc, MonadReader (Env mc) m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => TVar (ThreadMap m)
   -> m ()
 run' threadMapTV = do
@@ -195,7 +195,7 @@ run' threadMapTV = do
       fromMaybe [] . sequence . fmap (decode . LBS.fromStrict . snd)
 
     cleanupAutomations
-      :: (Logger m, MonadIO m, MQTTClient mc, MonadReader (Env mc) m, MonadUnliftIO m)
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
       => IO ()
       -> TVar (ThreadMap m)
       -> m ()
@@ -207,7 +207,7 @@ run' threadMapTV = do
       liftIO appCleanup'
 
     cleanDeadAutomations
-      :: (MonadIO m, MQTTClient mc, MonadReader (Env mc) m) => TVar (ThreadMap m) -> m ()
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => TVar (ThreadMap m) -> m ()
     cleanDeadAutomations threadMapTV' = do
       threadMap <- atomically $ readTVar threadMapTV'
       cleanupAutoNames <- liftIO $ foldMap'
@@ -222,7 +222,7 @@ run' threadMapTV = do
       let cleanedTM = foldl' (flip M.delete) threadMap cleanupAutoNames
       atomically $ writeTVar threadMapTV' cleanedTM
 
-    tryRestoreRunningAutomations :: (MonadIO m, MQTTClient mc, MonadReader (Env mc) m) => m ()
+    tryRestoreRunningAutomations :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => m ()
     tryRestoreRunningAutomations = do
       rc <- view restartConditions
       rc' <- atomically . readTVar $ rc
@@ -237,7 +237,7 @@ run' threadMapTV = do
         _ -> pure ()
 
     initializeAndRunAutomation
-      :: (Logger m, MQTTClient mc, MonadReader (Env mc) m, MonadUnliftIO m)
+      :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
       => TVar (ThreadMap m)
       -> AutomationName
       -> m ()
@@ -281,7 +281,7 @@ run' threadMapTV = do
           pure $ snd <$> mPriorAutomation
 
     stopAutomation
-      :: (Logger m, MQTTClient mc, MonadReader (Env mc) m, MonadUnliftIO m)
+      :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
       => TVar (ThreadMap m)
       -> AutomationName
       -> m ()
@@ -319,14 +319,14 @@ run' threadMapTV = do
           traverse
             (\bc -> writeTChan bc (object [("shutdownMessage", Aeson.Bool True)]))
 
-    signalRunningStateUpdate :: (MonadIO m, MQTTClient mc, MonadReader (Env mc) m) => TVar (ThreadMap m) -> m ()
+    signalRunningStateUpdate :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => TVar (ThreadMap m) -> m ()
     signalRunningStateUpdate threadMapTV' = do
       runningAutos <- M.keys <$> (atomically . readTVar $ threadMapTV')
       sendClientMsg StateManager $ ValueMsg $
         Aeson.Array . V.fromList $ Aeson.String . serializeAutomationName <$> runningAutos
 
     publishUpdatedStatus
-      :: (MonadIO m, MQTTClient mc, MonadReader (Env mc) m) => TVar (ThreadMap m) -> m ()
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => TVar (ThreadMap m) -> m ()
     publishUpdatedStatus threadMapTV' = do
       automationServiceTopic' <- view $ config . mqttConfig . automationServiceTopic
       deviceRegs <- view deviceRegistrations
@@ -341,14 +341,14 @@ run' threadMapTV = do
       App.publish automationServiceTopic' statusMsg
 
     sendClientMsg
-      :: (MonadIO m, MQTTClient mc, MonadReader (Env mc) m) => AutomationName -> ClientMsg -> m ()
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => AutomationName -> ClientMsg -> m ()
     sendClientMsg automationName msg = do
       automationBroadcast' <- view automationBroadcast
       atomically . writeTChan automationBroadcast' $
         Client automationName msg
 
     runScheduledMessage
-      :: (Logger m, MonadIO m, MQTTClient mc, MonadReader (Env mc) m)
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m)
       => Daemon.JobId
       -> Daemon.Message
       -> AutomationSchedule
@@ -392,14 +392,14 @@ run' threadMapTV = do
           warn
             "Received multiple ThreadIds back when running execSchedule, all have been cancelled."
 
-    signalScheduledStateUpdate :: (MonadIO m, MQTTClient mc, MonadReader (Env mc) m) => m ()
+    signalScheduledStateUpdate :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => m ()
     signalScheduledStateUpdate = do
       scheduledJobs' <- readTVarIO =<< view scheduledJobs
       sendClientMsg StateManager $ ByteStringMsg $
         flip M.foldMapWithKey scheduledJobs' $ \jobId' (sched, msg, _threadId) ->
           [SBS.concat . LBS.toChunks . encode $ Daemon.Schedule jobId' sched msg]
 
-    unscheduleJob :: (MonadIO m, MQTTClient mc, MonadReader (Env mc) m) => Daemon.JobId -> m ()
+    unscheduleJob :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => Daemon.JobId -> m ()
     unscheduleJob jobId = do
       scheduledJobs' <- view scheduledJobs
       mPriorThreadId <- atomically $ do
@@ -410,13 +410,13 @@ run' threadMapTV = do
       for_ mPriorThreadId killThread
 
     updateRestartConditionsSet
-      :: (MonadIO m, MQTTClient mc, MonadReader (Env mc) m) => Lens' RestartConditions Bool -> Bool -> m ()
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => Lens' RestartConditions Bool -> Bool -> m ()
     updateRestartConditionsSet field conditionState = do
       restartConditions' <- view restartConditions
       atomically $ modifyTVar' restartConditions' $ field .~ conditionState
 
     addRegisteredResource
-      :: (MQTTClient mc, MonadReader (Env mc) m, MonadUnliftIO m, Hashable k)
+      :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m, Hashable k)
       => k
       -> AutomationName
       -> TVar (HashMap k (NonEmpty AutomationName))
@@ -426,7 +426,7 @@ run' threadMapTV = do
         M.insertWith (<>) resourceId $ newAutoName :| []
 
     deregisterDevicesAndGroups
-      :: (Logger m, MonadIO m, MQTTClient mc, MonadReader (Env mc) m) => AutomationName -> m ()
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => AutomationName -> m ()
     deregisterDevicesAndGroups automationName = do
       deviceRegs <- view deviceRegistrations
       groupRegs <- view groupRegistrations
@@ -448,7 +448,7 @@ run' threadMapTV = do
             regs'
 
     subscribe
-      :: (MonadIO m, MQTTClient mc, MonadReader (Env mc) m)
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m)
       => AutomationName
       -> Topic
       -> TChan Value

@@ -33,13 +33,13 @@ import Network.HTTP.Client (httpLbs, newManager, parseRequest, responseBody, res
 import Network.HTTP.Client.TLS (tlsManagerSettings)
 import Network.MQTT.Topic (mkTopic, unTopic)
 import qualified Service.App as App
-import Service.App (Logger (..))
+import Service.App (Logger (..), debug)
 import qualified Service.Automation as Automation
 import Service.Automation (Automation (..))
 import qualified Service.AutomationName as AutomationName
 import Service.Device (Device, DeviceId, toLuaDevice, topicSet)
-import Service.Env (Env, LogLevel (Debug), LoggerVariant (..), config,
-                    daemonBroadcast, devices, groups, logger, luaScriptPath, mqttClient)
+import Service.Env (Env, LogLevel (Debug), config, daemonBroadcast, devices, groups, logger,
+                    luaScriptPath, mqttClient)
 import Service.Group (Group, GroupId, memberId, members, toLuaGroup)
 import Service.MQTT.Class (MQTTClient (..))
 import qualified Service.MQTT.Messages.Daemon as Daemon
@@ -52,7 +52,7 @@ import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChan, readT
                      readTVarIO, writeTChan)
 
 luaAutomation
-  :: (Logger m, MQTTClient mc, MonadReader (Env mc) m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => FilePath
   -> UTCTime
   -> Automation m
@@ -65,7 +65,7 @@ luaAutomation filepath ts =
     }
 
 mkCleanupAutomation
-  :: (Logger m, MQTTClient mc, MonadReader (Env mc) m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => FilePath
   -> (TChan Automation.Message -> m ())
 mkCleanupAutomation filepath = \_broadcastChan -> do
@@ -106,7 +106,7 @@ mkCleanupAutomation filepath = \_broadcastChan -> do
 type StatusMsg = String
 
 mkRunAutomation
-  :: (Logger m, MQTTClient mc, MonadReader (Env mc) m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => FilePath
   -> (TChan Automation.Message -> m ())
 mkRunAutomation filepath = \_broadcastChan -> do
@@ -171,9 +171,9 @@ callWhenExists fnName = do
     _                -> pure Nothing
 
 loadAPI
-  :: (MQTTClient mqttClient)
+  :: (Logger logger, MQTTClient mqttClient)
   => FilePath
-  -> LoggerVariant
+  -> logger
   -> mqttClient
   -> TChan Daemon.Message
   -> TVar (HashMap DeviceId Device)
@@ -415,6 +415,6 @@ loadAPI filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
 
 -- this is here because it's useful for throwing into other
 -- Lua-Monad functions during debugging
-logDebugMsg' :: FilePath -> LoggerVariant -> Text -> IO ()
+logDebugMsg' :: (Logger logger) => FilePath -> logger -> Text -> IO ()
 logDebugMsg' filepath logger' msg =
-  App.logWithVariant logger' Debug (T.pack filepath <> ": " <> msg)
+  App.log logger' Debug (T.pack filepath <> ": " <> msg)

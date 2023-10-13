@@ -8,11 +8,12 @@ import qualified Data.HashMap.Strict as M
 import qualified Network.MQTT.Client as MQTT
 import Network.MQTT.Topic (toFilter)
 import qualified Service.App as App
+import Service.App (Logger)
 import qualified Service.Daemon as Daemon
 import qualified Service.Env as Env
-import Service.Env (Config, LoggerVariant (TFLogger), MQTTDispatch, logLevel, mqttConfig)
+import Service.Env (Config, MQTTDispatch, logLevel, mqttConfig)
 import Service.MQTT.Client (initMQTTClient, mqttClientCallback)
-import System.Log.FastLogger (newTimedFastLogger)
+import System.Log.FastLogger (TimedFastLogger, newTimedFastLogger)
 import UnliftIO.STM (TVar, readTVarIO)
 
 
@@ -25,16 +26,17 @@ import UnliftIO.STM (TVar, readTVarIO)
 configFilePath :: FilePath
 configFilePath = "config.dhall"
 
-mkLogger :: Config -> IO (LoggerVariant, IO ())
+mkLogger :: Config -> IO (TimedFastLogger, IO ())
 mkLogger config' = do
   (fmtTime, logType) <- App.loggerConfig config'
   -- TODO handle failure to open/write to file properly
   (tfLogger, cleanup) <- newTimedFastLogger fmtTime logType
-  pure (TFLogger tfLogger, cleanup)
+  pure (tfLogger, cleanup)
 
 mkMQTTClient
-  :: Config
-  -> LoggerVariant
+  :: (Logger logger)
+  => Config
+  -> logger
   -> TVar MQTTDispatch
   -> IO (MQTT.MQTTClient, IO ())
 mkMQTTClient config logger mqttDispatch = do

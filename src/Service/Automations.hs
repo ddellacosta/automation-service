@@ -17,7 +17,7 @@ import Service.Env (Env)
 import Service.MQTT.Class (MQTTClient)
 
 findAutomation
-  :: (Logger m, MQTTClient mc, MonadReader (Env mc) m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => AutomationName
   -> (UTCTime -> Automation m)
 findAutomation = \case

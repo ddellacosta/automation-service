@@ -4,7 +4,6 @@ module Service.Env
   ( module Service.Env.Config
   , AutomationEntry
   , Env(..)
-  , LoggerVariant(..)
   , MQTTDispatch
   , Registrations
   , RestartConditions(..)
@@ -45,30 +44,24 @@ import Data.Foldable (foldl', for_)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as M
 import Data.List.NonEmpty (NonEmpty ((:|)))
-import Data.Text (Text)
 import Dhall (inputFile)
 import Network.MQTT.Topic (Topic, unTopic)
+import Service.App.Logger (Logger (..))
 import qualified Service.Automation as Automation
 import Service.Automation (Automation)
 import Service.AutomationName (AutomationName)
 import Service.Device (Device, DeviceId)
 import Service.Env.Config (Config, LogLevel (..), MQTTConfig (..), automationServiceTopic,
-                           configDecoder, dbPath, logFilePath, logLevel, luaScriptPath,
-                           mqttConfig, statusTopic)
-import Service.MQTT.Class (MQTTClient (..))
+                           configDecoder, dbPath, logFilePath, logLevel, luaScriptPath, mqttConfig,
+                           statusTopic)
 import Service.Group (Group, GroupId)
+import Service.MQTT.Class (MQTTClient (..))
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.MQTT.Topic (parseTopic)
 import qualified Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
-import System.Log.FastLogger (TimedFastLogger)
 import UnliftIO.Async (Async)
 import UnliftIO.Concurrent (ThreadId)
 import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO, writeTChan)
-
-
-data LoggerVariant
-  = TFLogger TimedFastLogger
-  | QLogger (TVar [Text])
 
 
 -- in here to avoid a circular reference between Service.Daemon and
@@ -106,9 +99,9 @@ data RestartConditions
 
 makeFieldsNoPrefix ''RestartConditions
 
-data Env mqttClient = Env
+data Env logger mqttClient = Env
   { _config              :: Config
-  , _logger              :: LoggerVariant
+  , _logger              :: logger
   , _mqttClient          :: mqttClient
   , _mqttDispatch        :: TVar MQTTDispatch
   , _daemonBroadcast     :: TChan Daemon.Message
@@ -132,11 +125,11 @@ makeFieldsNoPrefix ''Env
 
 -- TODO this needs way better error handling
 initialize
-  :: (MQTTClient mqttClient)
+  :: (Logger logger, MQTTClient mqttClient)
   => FilePath
-  -> (Config -> IO (LoggerVariant, IO ()))
-  -> (Config -> LoggerVariant -> TVar MQTTDispatch -> IO (mqttClient, IO ()))
-  -> IO (Env mqttClient)
+  -> (Config -> IO (logger, IO ()))
+  -> (Config -> logger -> TVar MQTTDispatch -> IO (mqttClient, IO ()))
+  -> IO (Env logger mqttClient)
 initialize configFilePath mkLogger mkMQTTClient = do
   -- need to handle a configuration error? Dhall provides a lot of error output
   config' <- inputFile configDecoder configFilePath

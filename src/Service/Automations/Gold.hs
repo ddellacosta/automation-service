@@ -14,7 +14,7 @@ import Data.Foldable (for_)
 import qualified Data.Text as T
 import Data.Time.Clock (UTCTime)
 import Network.MQTT.Client (Topic)
-import Service.App (Logger (..), findDeviceM, publish)
+import Service.App (Logger (..), debug, findDeviceM, info, publish)
 import qualified Service.Automation as Automation
 import Service.Automation (Automation (..))
 import Service.AutomationName (AutomationName (..))
@@ -34,7 +34,7 @@ basementStandingLampGroupId :: GroupId
 basementStandingLampGroupId = 1
 
 goldAutomation
-  :: (Logger m, MQTTClient mc, MonadReader (Env mc) m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => UTCTime
   -> Automation m
 goldAutomation ts =
@@ -46,7 +46,7 @@ goldAutomation ts =
     }
 
 cleanupAutomation
-  :: (Logger m, MQTTClient mc, MonadReader (Env mc) m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => TChan Automation.Message
   -> m ()
 cleanupAutomation _broadcastChan = do
@@ -61,7 +61,7 @@ cleanupAutomation _broadcastChan = do
     publish lightStripTopic "{\"state\": \"OFF\"}"
 
 runAutomation
-  :: (Logger m, MQTTClient mc, MonadReader (Env mc) m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => TChan Automation.Message
   -> m ()
 runAutomation broadcastChan = do
@@ -100,7 +100,7 @@ runAutomation broadcastChan = do
 
   where
     go
-      :: (Logger m, MonadReader (Env mc) m, MQTTClient mc, MonadUnliftIO m)
+      :: (Logger l, MonadReader (Env l mc) m, MQTTClient mc, MonadUnliftIO m)
       => Topic
       -> TChan Automation.Message
       -> m ()

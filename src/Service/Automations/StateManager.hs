@@ -14,7 +14,7 @@ import Control.Monad.Reader (MonadReader)
 import qualified Data.Aeson as Aeson
 import Data.Time.Clock (UTCTime)
 import qualified Data.Vector as V
-import Service.App (Logger (..))
+import Service.App (Logger (..), info)
 import qualified Service.Automation as Automation
 import Service.Automation (Automation (..))
 import Service.AutomationName (AutomationName (..))
@@ -24,7 +24,7 @@ import qualified Service.StateStore as StateStore
 import UnliftIO.STM (TChan, atomically, readTChan)
 
 stateManagerAutomation
-  :: (Logger m, MQTTClient mc, MonadReader (Env mc) m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => UTCTime
   -> Automation m
 stateManagerAutomation ts =
@@ -36,14 +36,14 @@ stateManagerAutomation ts =
     }
 
 cleanupAutomation
-  :: (Logger m, MQTTClient mc, MonadReader (Env mc) m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => TChan Automation.Message
   -> m ()
 cleanupAutomation _broadcastChan = do
   info "Shutting down StateManager"
 
 runAutomation
-  :: (Logger m, MQTTClient mc, MonadReader (Env mc) m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => TChan Automation.Message
   -> m ()
 runAutomation broadcastChan = do
@@ -53,7 +53,7 @@ runAutomation broadcastChan = do
 
   where
     go
-      :: (Logger m, MonadReader (Env mc) m, MQTTClient mc, MonadUnliftIO m)
+      :: (Logger l, MonadReader (Env l mc) m, MQTTClient mc, MonadUnliftIO m)
       => FilePath
       -> m ()
     go dbPath' = do

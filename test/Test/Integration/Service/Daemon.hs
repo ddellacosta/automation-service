@@ -25,17 +25,17 @@ import Network.MQTT.Topic (mkTopic)
 import Safe (headMay)
 import Service.Automation (name)
 import Service.AutomationName (AutomationName (..), parseAutomationName, serializeAutomationName)
-import Service.Env (LoggerVariant (..), RestartConditions (..),
-                    automationServiceTopic, config, daemonBroadcast, dbPath, deviceRegistrations,
-                    groupRegistrations, logger, mqttClient, mqttConfig, mqttDispatch,
-                    restartConditions, scheduledJobs)
+import Service.Env (RestartConditions (..), automationServiceTopic, config, daemonBroadcast, dbPath,
+                    deviceRegistrations, groupRegistrations, logger, mqttClient, mqttConfig,
+                    mqttDispatch, restartConditions, scheduledJobs)
 import Service.MQTT.Class (MQTTClient)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
 import System.Environment (setEnv)
 import Test.Hspec (Spec, around, expectationFailure, it, shouldBe, xit)
-import Test.Integration.Service.DaemonTestHelpers (TestMQTTClient (..), initAndCleanup,
-                                                   testWithAsyncDaemon, waitUntilEq, waitUntilEqSTM)
+import Test.Integration.Service.DaemonTestHelpers (TestLogger (..), TestMQTTClient (..),
+                                                   initAndCleanup, testWithAsyncDaemon, waitUntilEq,
+                                                   waitUntilEqSTM)
 import UnliftIO.Async (asyncThreadId)
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.STM (atomically, readTChan, readTVar, readTVarIO, writeTChan, writeTVar)
@@ -125,7 +125,7 @@ luaScriptSpecs = do
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
-          (QLogger qLogger) = env ^. logger
+          (TestLogger qLogger) = env ^. logger
           expectedLogEntry = "Debug: LuaScript testBroken finished with status '\"Lua exception: attempt to call a string value\\nstack traceback:\"'."
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testBroken")
@@ -187,7 +187,7 @@ luaScriptSpecs = do
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
-          (QLogger qLogger) = env ^. logger
+          (TestLogger qLogger) = env ^. logger
           mqttDispatch' = env ^. mqttDispatch
           Just topic = mkTopic "testTopic"
           expectedLogEntry = "Debug: testSubscribe: Msg: hey"
@@ -287,7 +287,7 @@ luaScriptSpecs = do
 
         let
           daemonBroadcast' = env ^. daemonBroadcast
-          (QLogger qLogger) = env ^. logger
+          (TestLogger qLogger) = env ^. logger
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testSunEvents")
 
