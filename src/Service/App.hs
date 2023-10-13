@@ -1,7 +1,6 @@
 module Service.App
   ( AutomationService
   , Logger(..)
-  , MonadMQTT(..)
   , findDeviceM
   , log
   , logDefault
@@ -9,41 +8,41 @@ module Service.App
   , loggerConfig
   , publish
   , runAutomationService
+  , subscribe
   )
   where
 
 import Prelude hiding (log)
 
 import Control.Lens (view, (^.))
-import Control.Monad (void, when)
+import Control.Monad (when)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Control.Monad.Reader (MonadIO, MonadReader (..), ReaderT, liftIO, runReaderT)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.HashMap.Strict as M
 import Data.Text (Text)
 import qualified Data.Text as T
-import Network.MQTT.Client (Topic, subOptions)
-import qualified Network.MQTT.Client as MQTT
-import Network.MQTT.Topic (toFilter)
+import Network.MQTT.Client (Topic)
 import Service.Device (Device, DeviceId)
-import Service.Env (Config, Env, LogLevel (..), LoggerVariant (..), MQTTClientVariant (..), config,
+import Service.Env (Config, Env, LogLevel (..), LoggerVariant (..), config,
                     devices, logFilePath, logLevel, logger, mqttClient)
+import Service.MQTT.Class (MQTTClient (..))
 import System.Log.FastLogger (FileLogSpec (..), FormattedTime, LogType, LogType' (..),
                               TimedFastLogger, ToLogStr (..), defaultBufSize, newTimeCache,
                               simpleTimeFormat)
 import UnliftIO.STM (atomically, modifyTVar', readTVar)
 
-newtype AutomationService a = AutomationService (ReaderT Env IO a)
+newtype AutomationService mqttClient a = AutomationService (ReaderT (Env mqttClient) IO a)
   deriving
     ( Functor
     , Applicative
     , Monad
     , MonadIO
-    , MonadReader Env
+    , MonadReader (Env mqttClient)
     , MonadUnliftIO
     )
 
-runAutomationService :: Env -> AutomationService a -> IO a
+runAutomationService :: Env mqttClient -> AutomationService mqttClient a -> IO a
 runAutomationService env (AutomationService x) = runReaderT x env
 
 -- Logger
@@ -54,13 +53,13 @@ class (Monad m) => Logger m where
   warn :: Text -> m ()
   error :: Text -> m ()
 
-instance Logger AutomationService where
+instance Logger (AutomationService mqttClient) where
   debug = logDefault Debug
   info = logDefault Info
   warn = logDefault Warn
   error = logDefault Error
 
-logDefault :: (MonadIO m, MonadReader Env m) => LogLevel -> Text -> m ()
+logDefault :: (MonadIO m, MonadReader (Env mqttClient) m) => LogLevel -> Text -> m ()
 logDefault level logStr = do
   setLevel <- view (config . logLevel)
   when (level >= setLevel) $ do
@@ -98,36 +97,23 @@ loggerConfig config' = do
   pure (fmtTime, logType)
 
 
--- MonadMQTT
+-- MQTTClient helpers
 
-class (Monad m) => MonadMQTT m where
-  publishMQTT :: Topic -> ByteString -> m ()
-  subscribeMQTT :: Topic -> m ()
+publish
+  :: (MQTTClient mc, MonadReader (Env mc) m, MonadIO m) => Topic -> ByteString -> m ()
+publish topic msg =
+  view mqttClient >>= \mc -> liftIO $ publishMQTT mc topic msg
 
-instance MonadMQTT AutomationService where
-  publishMQTT topic msg =
-    liftIO . publish topic msg =<< view mqttClient
-  subscribeMQTT topic =
-    liftIO . subscribe topic =<< view mqttClient
+subscribe
+  :: (MQTTClient mc, MonadReader (Env mc) m, MonadIO m) => Topic -> m ()
+subscribe topic =
+  view mqttClient >>= \mc -> liftIO $ subscribeMQTT mc topic
 
-publish :: Topic -> ByteString -> MQTTClientVariant -> IO ()
-publish topic msg mqttClient' =
-  -- MQTTClientVariant and related boilerplate is motivated by testing
-  case mqttClient' of
-    MCClient mc -> MQTT.publish mc topic msg False
-    TVClient tvClient -> atomically $ modifyTVar' tvClient $ \mqttMsgs ->
-      M.insert topic msg mqttMsgs
-
-subscribe :: Topic -> MQTTClientVariant -> IO ()
-subscribe topic mqttClient' =
-  case mqttClient' of
-    MCClient mc        -> void $ MQTT.subscribe mc [(toFilter topic, subOptions)] []
-    TVClient _tvClient -> pure ()
 
 -- not sure where to put this, but eventually I want to just get rid
 -- of it
 findDeviceM
-  :: (MonadIO m, MonadReader Env m)
+  :: (MonadIO m, MonadReader (Env mqttClient) m)
   => DeviceId
   -> m (Maybe Device)
 findDeviceM deviceId = do

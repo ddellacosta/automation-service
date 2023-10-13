@@ -10,8 +10,7 @@ import Network.MQTT.Topic (toFilter)
 import qualified Service.App as App
 import qualified Service.Daemon as Daemon
 import qualified Service.Env as Env
-import Service.Env (Config, LoggerVariant (TFLogger), MQTTClientVariant (..), MQTTDispatch,
-                    logLevel, mqttConfig)
+import Service.Env (Config, LoggerVariant (TFLogger), MQTTDispatch, logLevel, mqttConfig)
 import Service.MQTT.Client (initMQTTClient, mqttClientCallback)
 import System.Log.FastLogger (newTimedFastLogger)
 import UnliftIO.STM (TVar, readTVarIO)
@@ -34,7 +33,10 @@ mkLogger config' = do
   pure (TFLogger tfLogger, cleanup)
 
 mkMQTTClient
-  :: Config -> LoggerVariant -> TVar MQTTDispatch -> IO (MQTTClientVariant, IO ())
+  :: Config
+  -> LoggerVariant
+  -> TVar MQTTDispatch
+  -> IO (MQTT.MQTTClient, IO ())
 mkMQTTClient config logger mqttDispatch = do
   mqttDispatch' <- readTVarIO mqttDispatch
 
@@ -47,7 +49,7 @@ mkMQTTClient config logger mqttDispatch = do
   mc <- initMQTTClient (mqttClientCallback logLevelSet logger mqttDispatch) mqttConfig'
   (_eithers, _props) <- MQTT.subscribe mc mqttSubs []
 
-  pure (MCClient $ mc, MQTT.normalDisconnect mc)
+  pure (mc, MQTT.normalDisconnect mc)
 
 
 main :: IO ()
