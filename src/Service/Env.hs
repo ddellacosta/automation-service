@@ -1,13 +1,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Service.Env
-  ( AutomationEntry
-  , Config(..)
+  ( module Service.Env.Config
+  , AutomationEntry
   , Env(..)
-  , LogLevel(..)
-  , LoggerVariant(..)
-  , MQTTClientVariant(..)
-  , MQTTConfig(..)
   , MQTTDispatch
   , Registrations
   , RestartConditions(..)
@@ -16,14 +12,8 @@ module Service.Env
   , ThreadMap
   , appCleanup
   , automationBroadcast
-  , automationServiceTopic
-  , caCertPath
-  , clientCertPath
-  , clientKeyPath
   , config
-  , configDecoder
   , daemonBroadcast
-  , dbPath
   , deviceRegistrations
   , devices
   , devicesRawJSON
@@ -35,25 +25,19 @@ module Service.Env
   , invertRegistrations
   , loadedDevices
   , loadedGroups
-  , logFilePath
-  , logLevel
   , logger
-  , luaScriptPath
   , messageChan
   , mqttClient
-  , mqttConfig
   , mqttDispatch
   , notAlreadyRestarted
   , restartConditions
   , scheduledJobs
   , startupMessages
-  , statusTopic
   , subscriptions
-  , uri
   )
 where
 
-import Control.Lens (makeFieldsNoPrefix, (<&>), (^.))
+import Control.Lens (makeFieldsNoPrefix, (^.))
 import Control.Lens.Unsound (lensProduct)
 import Data.Aeson (Value, decode)
 import Data.ByteString.Lazy (ByteString)
@@ -61,93 +45,24 @@ import Data.Foldable (foldl', for_)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as M
 import Data.List.NonEmpty (NonEmpty ((:|)))
-import Data.Maybe (fromMaybe)
-import Data.Text (Text)
-import Dhall (Decoder, FromDhall (..), Generic, auto, field, inputFile, record, strictText, string)
-import Network.MQTT.Client (MQTTClient)
+import Dhall (inputFile)
 import Network.MQTT.Topic (Topic, unTopic)
-import Network.URI (URI, nullURI, parseURI)
+import Service.App.Logger (Logger (..))
 import qualified Service.Automation as Automation
 import Service.Automation (Automation)
 import Service.AutomationName (AutomationName, Port (..))
 import Service.Device (Device, DeviceId)
+import Service.Env.Config (Config, LogLevel (..), MQTTConfig (..), automationServiceTopic,
+                           configDecoder, dbPath, logFilePath, logLevel, luaScriptPath, mqttConfig,
+                           statusTopic)
 import Service.Group (Group, GroupId)
+import Service.MQTT.Class (MQTTClient (..))
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.MQTT.Topic (parseTopic)
 import qualified Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
-import System.Log.FastLogger (TimedFastLogger)
 import UnliftIO.Async (Async)
 import UnliftIO.Concurrent (ThreadId)
 import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO, writeTChan)
-
-data LogLevel = Debug | Info | Warn | Error
-  deriving (Generic, Show, Eq, Ord)
-
-instance FromDhall LogLevel
-
-data MQTTConfig = MQTTConfig
-  { _uri                    :: URI
-  , _automationServiceTopic :: Topic
-  , _statusTopic            :: Topic
-  , _caCertPath             :: Maybe FilePath
-  , _clientCertPath         :: Maybe FilePath
-  , _clientKeyPath          :: Maybe FilePath
-  }
-  deriving (Generic, Show)
-
-makeFieldsNoPrefix ''MQTTConfig
-
-mqttConfigDecoder :: Decoder MQTTConfig
-mqttConfigDecoder =
-  record
-    ( MQTTConfig
-        <$> field "uri" uriDecoder
-        <*> field "automationServiceTopic" (strictText <&> parseTopic)
-        <*> field "statusTopic" (strictText <&> parseTopic)
-        <*> field "caCertPath" auto
-        <*> field "clientCertPath" auto
-        <*> field "clientKeyPath" auto
-    )
-
--- TODO maybe should at least notify the user somehow if this happens?
--- Although I guess it should probably be an initialization check
--- vs. doing that here
-uriDecoder :: Decoder URI
-uriDecoder = string <&> fromMaybe nullURI . parseURI
-
-data Config = Config
-  { _mqttConfig    :: MQTTConfig
-  , _logFilePath   :: FilePath
-  , _logLevel      :: LogLevel
-  , _luaScriptPath :: FilePath
-  , _dbPath        :: FilePath
-  , _httpPort      :: Port
-  }
-  deriving (Generic, Show)
-
-makeFieldsNoPrefix ''Config
-
-configDecoder :: Decoder Config
-configDecoder =
-  record
-    ( Config
-        <$> field "mqttBroker" mqttConfigDecoder
-        <*> field "logFilePath" string
-        <*> field "logLevel" auto
-        <*> field "luaScriptPath" string
-        <*> field "dbPath" string
-        <*> field "httpPort" (Port <$> auto)
-    )
-
--- this is testing-motivated boilerplate
-data LoggerVariant
-  = TFLogger TimedFastLogger
-  | QLogger (TVar [Text])
-
--- this is testing-motivated boilerplate
-data MQTTClientVariant
-  = MCClient MQTTClient
-  | TVClient (TVar (HashMap Topic ByteString))
 
 -- in here to avoid a circular reference between Service.Daemon and
 -- Service.MQTT.Status, otherwise I'd leave it in Service.Daemon
@@ -184,10 +99,10 @@ data RestartConditions
 
 makeFieldsNoPrefix ''RestartConditions
 
-data Env = Env
+data Env logger mqttClient = Env
   { _config              :: Config
-  , _logger              :: LoggerVariant
-  , _mqttClient          :: MQTTClientVariant
+  , _logger              :: logger
+  , _mqttClient          :: mqttClient
   , _mqttDispatch        :: TVar MQTTDispatch
   , _daemonBroadcast     :: TChan Daemon.Message
   , _automationBroadcast :: TChan Automation.Message
@@ -210,10 +125,11 @@ makeFieldsNoPrefix ''Env
 
 -- TODO this needs way better error handling
 initialize
-  :: FilePath
-  -> (Config -> IO (LoggerVariant, IO ()))
-  -> (Config -> LoggerVariant -> TVar MQTTDispatch -> IO (MQTTClientVariant, IO ()))
-  -> IO Env
+  :: (Logger logger, MQTTClient mqttClient)
+  => FilePath
+  -> (Config -> IO (logger, IO ()))
+  -> (Config -> logger -> TVar MQTTDispatch -> IO (mqttClient, IO ()))
+  -> IO (Env logger mqttClient)
 initialize configFilePath mkLogger mkMQTTClient = do
   -- need to handle a configuration error? Dhall provides a lot of error output
   config' <- inputFile configDecoder configFilePath

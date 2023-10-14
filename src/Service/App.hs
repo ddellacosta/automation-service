@@ -1,86 +1,73 @@
 module Service.App
-  ( AutomationService
-  , Logger(..)
-  , MonadMQTT(..)
+  ( module Service.App.Logger
+  , AutomationService
+  , debug
+  , error
   , findDeviceM
-  , log
+  , info
   , logDefault
-  , logWithVariant
   , loggerConfig
   , publish
   , runAutomationService
+  , subscribe
+  , warn
   )
   where
 
-import Prelude hiding (log)
+import Prelude hiding (error, log)
 
 import Control.Lens (view, (^.))
-import Control.Monad (void, when)
+import Control.Monad (when)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 import Control.Monad.Reader (MonadIO, MonadReader (..), ReaderT, liftIO, runReaderT)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.HashMap.Strict as M
 import Data.Text (Text)
-import qualified Data.Text as T
-import Network.MQTT.Client (Topic, subOptions)
-import qualified Network.MQTT.Client as MQTT
-import Network.MQTT.Topic (toFilter)
+import Network.MQTT.Client (Topic)
+import Service.App.Logger (Logger (..))
 import Service.Device (Device, DeviceId)
-import Service.Env (Config, Env, LogLevel (..), LoggerVariant (..), MQTTClientVariant (..), config,
-                    devices, logFilePath, logLevel, logger, mqttClient)
+import Service.Env (Config, Env, LogLevel (..), config, devices, logFilePath, logLevel, logger,
+                    mqttClient)
+import Service.MQTT.Class (MQTTClient (..))
 import System.Log.FastLogger (FileLogSpec (..), FormattedTime, LogType, LogType' (..),
-                              TimedFastLogger, ToLogStr (..), defaultBufSize, newTimeCache,
-                              simpleTimeFormat)
-import UnliftIO.STM (atomically, modifyTVar', readTVar)
+                              defaultBufSize, newTimeCache, simpleTimeFormat)
+import UnliftIO.STM (atomically, readTVar)
 
-newtype AutomationService a = AutomationService (ReaderT Env IO a)
+newtype AutomationService logger mqttClient a
+  = AutomationService (ReaderT (Env logger mqttClient) IO a)
   deriving
     ( Functor
     , Applicative
     , Monad
     , MonadIO
-    , MonadReader Env
+    , MonadReader (Env logger mqttClient)
     , MonadUnliftIO
     )
 
-runAutomationService :: Env -> AutomationService a -> IO a
+runAutomationService :: Env logger mqttClient -> AutomationService logger mqttClient a -> IO a
 runAutomationService env (AutomationService x) = runReaderT x env
 
 -- Logger
 
-class (Monad m) => Logger m where
-  debug :: Text -> m ()
-  info :: Text -> m ()
-  warn :: Text -> m ()
-  error :: Text -> m ()
+debug, info, warn, error
+  :: (Logger logger, MonadIO m, MonadReader (Env logger mqttClient) m)
+  => Text
+  -> m ()
+debug = logDefault Debug
+info = logDefault Info
+warn = logDefault Warn
+error = logDefault Error
 
-instance Logger AutomationService where
-  debug = logDefault Debug
-  info = logDefault Info
-  warn = logDefault Warn
-  error = logDefault Error
-
-logDefault :: (MonadIO m, MonadReader Env m) => LogLevel -> Text -> m ()
+logDefault
+  :: (Logger logger, MonadIO m, MonadReader (Env logger mqttClient) m)
+  => LogLevel
+  -> Text
+  -> m ()
 logDefault level logStr = do
   setLevel <- view (config . logLevel)
   when (level >= setLevel) $ do
     logger' <- view logger
-    liftIO $ logWithVariant logger' level logStr
-
-logWithVariant :: LoggerVariant -> LogLevel -> Text -> IO ()
-logWithVariant logger' level logStr =
-  -- LoggerVariant and related boilerplate is all for testing
-  -- purposes, mostly because spinning up multiple TimedFastLogger
-  -- instances at the same time seems to scramble tests ONLY when
-  -- building with nix (╯°□°）╯︵ ┻━┻
-  case logger' of
-    TFLogger tfLogger -> log tfLogger level $ logStr
-    QLogger qLogger -> atomically . modifyTVar' qLogger $ \msgs ->
-      msgs <> [ T.pack (show level) <> ": " <> logStr ]
-
-log :: (ToLogStr s) => TimedFastLogger -> LogLevel -> s -> IO ()
-log logger' level logStr = logger' $ \time ->
-  toLogStr (show level) <> " - " <> toLogStr time <> " - " <> toLogStr logStr <> "\n"
+    liftIO $ log logger' level logStr
 
 {-|
   Given a Env.Config, returns an IO-wrapped (IO FormattedTime,
@@ -98,36 +85,28 @@ loggerConfig config' = do
   pure (fmtTime, logType)
 
 
--- MonadMQTT
+-- MQTTClient helpers
 
-class (Monad m) => MonadMQTT m where
-  publishMQTT :: Topic -> ByteString -> m ()
-  subscribeMQTT :: Topic -> m ()
+publish
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadIO m)
+  => Topic
+  -> ByteString
+  -> m ()
+publish topic msg =
+  view mqttClient >>= \mc -> liftIO $ publishMQTT mc topic msg
 
-instance MonadMQTT AutomationService where
-  publishMQTT topic msg =
-    liftIO . publish topic msg =<< view mqttClient
-  subscribeMQTT topic =
-    liftIO . subscribe topic =<< view mqttClient
+subscribe
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadIO m)
+  => Topic
+  -> m ()
+subscribe topic =
+  view mqttClient >>= \mc -> liftIO $ subscribeMQTT mc topic
 
-publish :: Topic -> ByteString -> MQTTClientVariant -> IO ()
-publish topic msg mqttClient' =
-  -- MQTTClientVariant and related boilerplate is motivated by testing
-  case mqttClient' of
-    MCClient mc -> MQTT.publish mc topic msg False
-    TVClient tvClient -> atomically $ modifyTVar' tvClient $ \mqttMsgs ->
-      M.insert topic msg mqttMsgs
-
-subscribe :: Topic -> MQTTClientVariant -> IO ()
-subscribe topic mqttClient' =
-  case mqttClient' of
-    MCClient mc        -> void $ MQTT.subscribe mc [(toFilter topic, subOptions)] []
-    TVClient _tvClient -> pure ()
 
 -- not sure where to put this, but eventually I want to just get rid
 -- of it
 findDeviceM
-  :: (MonadIO m, MonadReader Env m)
+  :: (MonadIO m, MonadReader (Env logger mqttClient) m)
   => DeviceId
   -> m (Maybe Device)
 findDeviceM deviceId = do

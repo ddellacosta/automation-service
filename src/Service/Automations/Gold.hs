@@ -14,13 +14,14 @@ import Data.Foldable (for_)
 import qualified Data.Text as T
 import Data.Time.Clock (UTCTime)
 import Network.MQTT.Client (Topic)
-import Service.App (Logger (..), MonadMQTT (..), findDeviceM)
+import Service.App (Logger (..), debug, findDeviceM, info, publish)
 import qualified Service.Automation as Automation
 import Service.Automation (Automation (..))
 import Service.AutomationName (AutomationName (..))
 import Service.Device (DeviceId, topicSet)
 import Service.Env (Env, daemonBroadcast)
 import Service.Group (GroupId)
+import Service.MQTT.Class (MQTTClient (..))
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.MQTT.Messages.Lighting (Effect (..), effect', hex', mkHex, seconds, withTransition')
 import UnliftIO.Concurrent (threadDelay)
@@ -33,7 +34,7 @@ basementStandingLampGroupId :: GroupId
 basementStandingLampGroupId = 1
 
 goldAutomation
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => UTCTime
   -> Automation m
 goldAutomation ts =
@@ -45,7 +46,7 @@ goldAutomation ts =
     }
 
 cleanupAutomation
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => TChan Automation.Message
   -> m ()
 cleanupAutomation _broadcastChan = do
@@ -57,10 +58,10 @@ cleanupAutomation _broadcastChan = do
     let lightStripTopic = lightStrip' ^. topicSet
 
     info "turning led strip off"
-    publishMQTT lightStripTopic "{\"state\": \"OFF\"}"
+    publish lightStripTopic "{\"state\": \"OFF\"}"
 
 runAutomation
-  :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => TChan Automation.Message
   -> m ()
 runAutomation broadcastChan = do
@@ -84,29 +85,29 @@ runAutomation broadcastChan = do
     let lightStripTopic = lightStrip' ^. topicSet
 
     debug "turning on"
-    publishMQTT lightStripTopic "{\"state\": \"ON\"}"
+    publish lightStripTopic "{\"state\": \"ON\"}"
 
     debug "setting color to orange"
-    publishMQTT lightStripTopic (hex' "be9fc1")
+    publish lightStripTopic (hex' "be9fc1")
 
     liftIO $ threadDelay (seconds 2)
 
     debug "setting color to pink with 3 second transition"
-    publishMQTT lightStripTopic (withTransition' 3 $ mkHex "F97C00")
+    publish lightStripTopic (withTransition' 3 $ mkHex "F97C00")
 
     debug "starting breathe loop"
     go lightStripTopic broadcastChan
 
   where
     go
-      :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m)
+      :: (Logger l, MonadReader (Env l mc) m, MQTTClient mc, MonadUnliftIO m)
       => Topic
       -> TChan Automation.Message
       -> m ()
     go lightStripTopic broadcastChan' = do
       liftIO $ threadDelay $ seconds 60
       debug "Gold: breathe"
-      publishMQTT lightStripTopic $ effect' Breathe
+      publish lightStripTopic $ effect' Breathe
       --
       -- For now, this and GoldMsg below are just here to remind me
       -- how to create and use per-Automation message types...actually,

@@ -1,5 +1,7 @@
 module Test.Integration.Service.DaemonTestHelpers
-  ( initAndCleanup
+  ( TestLogger(..)
+  , TestMQTTClient(..)
+  , initAndCleanup
   , testWithAsyncDaemon
   , waitUntilEq
   , waitUntilEqSTM
@@ -7,23 +9,46 @@ module Test.Integration.Service.DaemonTestHelpers
   where
 
 import Control.Lens (view, (%~), (&), (^.))
+import Data.ByteString.Lazy (ByteString)
+import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as M
+import Data.Text (Text)
+import qualified Data.Text as T
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
+import Network.MQTT.Client (Topic)
 import qualified Service.App as App
+import Service.App (Logger (..))
 import qualified Service.Daemon as Daemon
 import qualified Service.Device as Device
 import qualified Service.Env as Env
-import Service.Env (Env, LoggerVariant (QLogger), MQTTClientVariant (..), appCleanup, config,
+import Service.Env (Env, appCleanup, config,
                     daemonBroadcast, devicesRawJSON, dbPath, devices, groups, groupsRawJSON)
 import qualified Service.Group as Group
+import Service.MQTT.Class (MQTTClient (..))
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Test.Helpers as Helpers
 import Test.Helpers (loadTestDevices, loadTestGroups)
 import Test.Hspec (Expectation, shouldBe)
 import UnliftIO.Async (withAsync)
 import UnliftIO.Exception (bracket)
-import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, newTVarIO, writeTVar)
+import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, modifyTVar', newTVarIO, writeTVar)
+
+newtype TestMQTTClient = TestMQTTClient (TVar (HashMap Topic ByteString))
+
+newtype TestLogger = TestLogger (TVar [Text])
+
+instance MQTTClient TestMQTTClient where
+  publishMQTT (TestMQTTClient mc) topic msg =
+    atomically $ modifyTVar' mc $ \mqttMsgs ->
+      M.insert topic msg mqttMsgs
+  subscribeMQTT (TestMQTTClient _mc) _topic = pure ()
+
+instance Logger TestLogger where
+  log :: TestLogger -> LogLevel -> Text -> IO ()
+  log (TestLogger l) level logStr =
+    atomically . modifyTVar' l $ \msgs ->
+      msgs <> [ T.pack (show level) <> ": " <> logStr ]
 
 testConfigFilePath :: FilePath
 testConfigFilePath = "test/config.dhall"
@@ -36,7 +61,7 @@ testConfigFilePath = "test/config.dhall"
 -- initialization exclusively through configuration alone, insofar as
 -- it even needs to be distinct.
 --
-initAndCleanup :: (Env -> IO ()) -> IO ()
+initAndCleanup :: ((Env TestLogger TestMQTTClient) -> IO ()) -> IO ()
 initAndCleanup runTests = bracket
   (do
       env <- Env.initialize testConfigFilePath mkLogger mkMQTTClient
@@ -69,12 +94,12 @@ initAndCleanup runTests = bracket
 
   where
     mkLogger _config = do
-      qLogger <- newTVarIO []
-      pure (QLogger qLogger, pure ())
+      logger <- newTVarIO []
+      pure (TestLogger logger, pure ())
 
     mkMQTTClient _config _loggerVariant _mqttDispatch = do
       fauxMQTTClient <- newTVarIO M.empty
-      pure (TVClient fauxMQTTClient, pure ())
+      pure (TestMQTTClient fauxMQTTClient, pure ())
 
 -- |
 -- | Takes a function accepting a bunch of state and returning an
@@ -102,13 +127,14 @@ initAndCleanup runTests = bracket
 -- @
 --
 testWithAsyncDaemon
-  ::
-    (  Env
-    -> TVar (Daemon.ThreadMap App.AutomationService)
+  :: (Logger l, MQTTClient mc)
+  =>
+    (  (Env l mc)
+    -> TVar (Daemon.ThreadMap (App.AutomationService l mc))
     -> TChan Daemon.Message
     -> Expectation
     )
-  -> Env
+  -> (Env l mc)
   -> Expectation
 testWithAsyncDaemon test env = do
   let daemonBroadcast' = env ^. daemonBroadcast

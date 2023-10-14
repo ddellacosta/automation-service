@@ -28,7 +28,8 @@ import Data.Traversable (for)
 import qualified Data.Vector as V
 import GHC.Conc (ThreadStatus (..), threadStatus)
 import Network.MQTT.Topic (Topic)
-import Service.App (Logger (..), MonadMQTT (..))
+import qualified Service.App as App
+import Service.App (Logger (..), debug, info, warn)
 import qualified Service.Automation as Automation
 import Service.Automation (Automation (_name), ClientMsg (..), Message (..))
 import Service.AutomationName (AutomationName (..), parseAutomationNameText,
@@ -42,6 +43,7 @@ import Service.Env (AutomationEntry, Env, Registrations, RestartConditions (..),
                     messageChan, mqttConfig, mqttDispatch, notAlreadyRestarted, restartConditions,
                     scheduledJobs, startupMessages, subscriptions)
 import qualified Service.Group as Group
+import Service.MQTT.Class (MQTTClient)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.MQTT.Messages.Daemon (AutomationSchedule)
 import Service.MQTT.Status (encodeAutomationStatus)
@@ -54,7 +56,7 @@ import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, modifyTVar', newTVa
                      readTVar, readTVarIO, writeTChan, writeTVar)
 
 run
-  :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => m ()
 run = do
   threadMapTV <- newTVarIO M.empty
@@ -68,7 +70,7 @@ run = do
 -- module anyways, so it's probably for the best regardless.
 --
 run'
-  :: (Logger m, MonadReader Env m, MonadMQTT m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => TVar (ThreadMap m)
   -> m ()
 run' threadMapTV = do
@@ -197,7 +199,7 @@ run' threadMapTV = do
       fromMaybe [] . sequence . fmap (decode . LBS.fromStrict . snd)
 
     cleanupAutomations
-      :: (Logger m, MonadIO m, MonadReader Env m, MonadUnliftIO m)
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
       => IO ()
       -> TVar (ThreadMap m)
       -> m ()
@@ -209,7 +211,7 @@ run' threadMapTV = do
       liftIO appCleanup'
 
     cleanDeadAutomations
-      :: (MonadIO m, MonadMQTT m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => TVar (ThreadMap m) -> m ()
     cleanDeadAutomations threadMapTV' = do
       threadMap <- atomically $ readTVar threadMapTV'
       cleanupAutoNames <- liftIO $ foldMap'
@@ -224,7 +226,7 @@ run' threadMapTV = do
       let cleanedTM = foldl' (flip M.delete) threadMap cleanupAutoNames
       atomically $ writeTVar threadMapTV' cleanedTM
 
-    tryRestoreRunningAutomations :: (MonadIO m, MonadReader Env m) => m ()
+    tryRestoreRunningAutomations :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => m ()
     tryRestoreRunningAutomations = do
       rc <- view restartConditions
       rc' <- atomically . readTVar $ rc
@@ -239,7 +241,7 @@ run' threadMapTV = do
         _ -> pure ()
 
     initializeAndRunAutomation
-      :: (Logger m, MonadMQTT m, MonadReader Env m, MonadUnliftIO m)
+      :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
       => TVar (ThreadMap m)
       -> AutomationName
       -> m ()
@@ -283,7 +285,7 @@ run' threadMapTV = do
           pure $ snd <$> mPriorAutomation
 
     stopAutomation
-      :: (Logger m, MonadReader Env m, MonadUnliftIO m)
+      :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
       => TVar (ThreadMap m)
       -> AutomationName
       -> m ()
@@ -321,14 +323,14 @@ run' threadMapTV = do
           traverse
             (\bc -> writeTChan bc (object [("shutdownMessage", Aeson.Bool True)]))
 
-    signalRunningStateUpdate :: (MonadIO m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
+    signalRunningStateUpdate :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => TVar (ThreadMap m) -> m ()
     signalRunningStateUpdate threadMapTV' = do
       runningAutos <- M.keys <$> (atomically . readTVar $ threadMapTV')
       sendClientMsg StateManager $ ValueMsg $
         Aeson.Array . V.fromList $ Aeson.String . serializeAutomationName <$> runningAutos
 
     publishUpdatedStatus
-      :: (MonadIO m, MonadMQTT m, MonadReader Env m) => TVar (ThreadMap m) -> m ()
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => TVar (ThreadMap m) -> m ()
     publishUpdatedStatus threadMapTV' = do
       automationServiceTopic' <- view $ config . mqttConfig . automationServiceTopic
       deviceRegs <- view deviceRegistrations
@@ -340,17 +342,17 @@ run' threadMapTV = do
         deviceRegs' <- readTVar deviceRegs
         groupRegs' <- readTVar groupRegs
         pure $ encodeAutomationStatus running scheduled' deviceRegs' groupRegs'
-      publishMQTT automationServiceTopic' statusMsg
+      App.publish automationServiceTopic' statusMsg
 
     sendClientMsg
-      :: (MonadIO m, MonadReader Env m) => AutomationName -> ClientMsg -> m ()
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => AutomationName -> ClientMsg -> m ()
     sendClientMsg automationName msg = do
       automationBroadcast' <- view automationBroadcast
       atomically . writeTChan automationBroadcast' $
         Client automationName msg
 
     runScheduledMessage
-      :: (Logger m, MonadIO m, MonadReader Env m)
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m)
       => Daemon.JobId
       -> Daemon.Message
       -> AutomationSchedule
@@ -394,14 +396,14 @@ run' threadMapTV = do
           warn
             "Received multiple ThreadIds back when running execSchedule, all have been cancelled."
 
-    signalScheduledStateUpdate :: (MonadIO m, MonadReader Env m) => m ()
+    signalScheduledStateUpdate :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => m ()
     signalScheduledStateUpdate = do
       scheduledJobs' <- readTVarIO =<< view scheduledJobs
       sendClientMsg StateManager $ ByteStringMsg $
         flip M.foldMapWithKey scheduledJobs' $ \jobId' (sched, msg, _threadId) ->
           [SBS.concat . LBS.toChunks . encode $ Daemon.Schedule jobId' sched msg]
 
-    unscheduleJob :: (MonadIO m, MonadReader Env m) => Daemon.JobId -> m ()
+    unscheduleJob :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => Daemon.JobId -> m ()
     unscheduleJob jobId = do
       scheduledJobs' <- view scheduledJobs
       mPriorThreadId <- atomically $ do
@@ -412,13 +414,13 @@ run' threadMapTV = do
       for_ mPriorThreadId killThread
 
     updateRestartConditionsSet
-      :: (MonadIO m, MonadReader Env m) => Lens' RestartConditions Bool -> Bool -> m ()
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => Lens' RestartConditions Bool -> Bool -> m ()
     updateRestartConditionsSet field conditionState = do
       restartConditions' <- view restartConditions
       atomically $ modifyTVar' restartConditions' $ field .~ conditionState
 
     addRegisteredResource
-      :: (MonadReader Env m, MonadUnliftIO m, Hashable k)
+      :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m, Hashable k)
       => k
       -> AutomationName
       -> TVar (HashMap k (NonEmpty AutomationName))
@@ -428,7 +430,7 @@ run' threadMapTV = do
         M.insertWith (<>) resourceId $ newAutoName :| []
 
     deregisterDevicesAndGroups
-      :: (Logger m, MonadIO m, MonadReader Env m) => AutomationName -> m ()
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => AutomationName -> m ()
     deregisterDevicesAndGroups automationName = do
       deviceRegs <- view deviceRegistrations
       groupRegs <- view groupRegistrations
@@ -450,7 +452,7 @@ run' threadMapTV = do
             regs'
 
     subscribe
-      :: (MonadIO m, MonadMQTT m, MonadReader Env m)
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m)
       => AutomationName
       -> Topic
       -> TChan Value
@@ -463,7 +465,7 @@ run' threadMapTV = do
           M.insertWith (<>) topic $ mkDefaultTopicMsgAction :| []
         modifyTVar' subscriptions' $
           M.insertWith (<>) automationName $ listenerBcastChan :| []
-      subscribeMQTT topic
+      App.subscribe topic
 
       where
         mkDefaultTopicMsgAction = \topicMsg ->
