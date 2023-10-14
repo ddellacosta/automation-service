@@ -18,20 +18,20 @@ import qualified Network.Wai.Handler.Warp as Warp
 import qualified Network.Wai.Handler.WebSockets as WaiWs
 import Network.Wai.Middleware.Static (addBase, staticPolicy)
 import qualified Network.WebSockets as WS
-
-import Service.App (Logger (..), logWithVariant)
+import Service.App (Logger (..), debug)
+import qualified Service.App.Logger as Logger
 import qualified Service.Automation as Automation
 import Service.Automation (Automation (..))
 import qualified Service.AutomationName as AutomationName
 import Service.AutomationName (Port)
 import Service.Env (Env, LogLevel (..), daemonBroadcast, devicesRawJSON, logger)
-import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.MQTT.Class (MQTTClient (..))
+import qualified Service.MQTT.Messages.Daemon as Daemon
 import UnliftIO.STM (TChan, TVar, atomically, readTChan, readTVarIO, writeTChan)
 import Web.Scotty (file, get, middleware, raw, scottyApp, setHeader)
 
 httpAutomation
-  :: (Logger l, MQTTClient mc, MonadReader (Env mc l) m, MonadUnliftIO m)
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => Port
   -> UTCTime
   -> Automation m
@@ -83,7 +83,7 @@ mkRunAutomation port broadcastChan = do
         setHeader "Content-Type" "application/json; charset=utf-8"
         raw =<< readTVarIO devices
 
-    ws :: LoggerVariant -> TVar (ByteString) -> TChan Daemon.Message -> WS.ServerApp
+    ws :: (Logger logger) => logger -> TVar (ByteString) -> TChan Daemon.Message -> WS.ServerApp
     ws logger' devices daemonBC pending  = do
       logDebugMsg logger' "WebSockets connected"
       conn <- WS.acceptRequest pending
@@ -102,6 +102,6 @@ mkRunAutomation port broadcastChan = do
 
     send _conn _logger' = atomically . readTChan $ broadcastChan
 
-    logDebugMsg :: LoggerVariant -> Text -> IO ()
+    logDebugMsg :: (Logger logger) => logger -> Text -> IO ()
     logDebugMsg logger' msg =
-      logWithVariant logger' Debug ("HTTP: " <> msg)
+      Logger.log logger' Debug ("HTTP: " <> msg)

@@ -7,7 +7,7 @@ module Test.Integration.Service.Daemon
 where
 
 import Control.Exception (SomeException, handle)
-import Control.Lens (_1, _2, _3, _Just, _head, folded, ix, preview, (<&>), (^.), (^?), (^..))
+import Control.Lens (_1, _2, _3, _Just, _head, folded, ix, preview, (<&>), (^.), (^..), (^?))
 import Control.Monad (void)
 import Data.Aeson (Value, decode, encode)
 import qualified Data.Aeson as Aeson
@@ -19,7 +19,6 @@ import Data.Foldable (for_)
 import qualified Data.HashMap.Strict as M
 import Data.List (null)
 import Data.List.NonEmpty (NonEmpty ((:|)))
-import Data.List (null)
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -32,10 +31,9 @@ import qualified Network.WebSockets as WS
 import Safe (headMay)
 import Service.Automation (name)
 import Service.AutomationName (AutomationName (..), parseAutomationName, serializeAutomationName)
-import Service.Env (RestartConditions (..),
-                    automationServiceTopic, config, daemonBroadcast, dbPath, deviceRegistrations,
-                    devicesRawJSON, groupRegistrations, httpPort, logger, mqttClient, mqttConfig,
-                    mqttDispatch, restartConditions, scheduledJobs)
+import Service.Env (RestartConditions (..), automationServiceTopic, config, daemonBroadcast, dbPath,
+                    deviceRegistrations, devicesRawJSON, groupRegistrations, httpPort, logger,
+                    mqttClient, mqttConfig, mqttDispatch, restartConditions, scheduledJobs)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
 import System.Environment (setEnv)
@@ -727,7 +725,7 @@ httpSpecs = do
       testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
-          (TVClient mqttMsgs) = env ^. mqttClient
+          (TestMQTTClient mqttMsgs) = env ^. mqttClient
           topicStr = "/device/lamp/set"
           Just topic = mkTopic . T.decodeUtf8Lenient . toStrictBS $ topicStr
 

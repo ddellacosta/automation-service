@@ -22,8 +22,8 @@ import Service.App (Logger (..))
 import qualified Service.Daemon as Daemon
 import qualified Service.Device as Device
 import qualified Service.Env as Env
-import Service.Env (Env, appCleanup, config,
-                    daemonBroadcast, devicesRawJSON, dbPath, devices, groups, groupsRawJSON)
+import Service.Env (Env, LogLevel, appCleanup, config, daemonBroadcast, dbPath, devices,
+                    devicesRawJSON, groups, groupsRawJSON)
 import qualified Service.Group as Group
 import Service.MQTT.Class (MQTTClient (..))
 import qualified Service.MQTT.Messages.Daemon as Daemon

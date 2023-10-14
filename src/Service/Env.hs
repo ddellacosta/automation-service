@@ -20,7 +20,6 @@ module Service.Env
   , groupRegistrations
   , groups
   , groupsRawJSON
-  , httpPort
   , initialize
   , invertRegistrations
   , loadedDevices
@@ -50,11 +49,11 @@ import Network.MQTT.Topic (Topic, unTopic)
 import Service.App.Logger (Logger (..))
 import qualified Service.Automation as Automation
 import Service.Automation (Automation)
-import Service.AutomationName (AutomationName, Port (..))
+import Service.AutomationName (AutomationName)
 import Service.Device (Device, DeviceId)
 import Service.Env.Config (Config, LogLevel (..), MQTTConfig (..), automationServiceTopic,
-                           configDecoder, dbPath, logFilePath, logLevel, luaScriptPath, mqttConfig,
-                           statusTopic)
+                           configDecoder, dbPath, httpPort, logFilePath, logLevel, luaScriptPath,
+                           mqttConfig, statusTopic)
 import Service.Group (Group, GroupId)
 import Service.MQTT.Class (MQTTClient (..))
 import qualified Service.MQTT.Messages.Daemon as Daemon

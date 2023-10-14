@@ -177,7 +177,7 @@ run' threadMapTV = do
           go
 
         Daemon.Publish (Daemon.MQTTMsg topic msg') ->
-          publishMQTT topic (encode msg') *> go
+          App.publish topic (encode msg') *> go
 
         Daemon.DeadAutoCleanup -> do
           cleanDeadAutomations threadMapTV
