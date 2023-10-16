@@ -2,8 +2,15 @@ module Test.Main where
 
 import Prelude
 
+import AutomationService.DeviceView as Devices
+import AutomationService.Message (Message(..))
+import AutomationService.WebSocket (class WebSocket)
 import Effect (Effect)
-import Effect.Aff (launchAff_)
+import Effect.Aff (Aff, launchAff_)
+import Effect.Class (liftEffect)
+import Effect.Console (debug)
+import Elmish (Transition)
+import Elmish.Component (Command)
 import Elmish.Test (find, testComponent, text, (>>))
 import Elmish.Test.Events (click)
 import Main as Main
@@ -15,11 +22,22 @@ import Test.Spec.Runner (runSpec)
 main :: Effect Unit
 main = launchAff_ $ runSpec [consoleReporter] spec
 
+newtype TestWS = TestWS String
+
+instance WebSocket TestWS where
+  connectToWS msgSink = liftEffect $ msgSink (InitWS (TestWS "Fake"))
+  initializeListeners _ws _msgSink = liftEffect $ debug "hey"
+
+type TestInit = Transition (Message TestWS) (Main.State TestWS)
+
+devicesInit :: TestWS -> Command Aff Devices.Message
+devicesInit _ws = \_ -> pure unit
+
 spec :: Spec Unit
 spec =
   describe "Home page" $
     it "Can navigate to different pages" $
-      testComponent { init: Main.init, view: Main.view, update: Main.update } do
+      testComponent { init: (Main.init :: TestInit), view: Main.view, update: Main.update } do
         find ("h2" `withTestId` "main-title") >> text
           >>= shouldEqual "Home"
 

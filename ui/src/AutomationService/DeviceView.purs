@@ -2,6 +2,7 @@ module AutomationService.DeviceView
   ( Message(..)
   , State
   , init
+  , render
   , view
   , update
   )
@@ -9,9 +10,9 @@ where
 
 import Prelude
 
-import AutomationService.Capability (BinaryProps, Capability(..), CapabilityBase, CompositeProps,
-                                     EnumProps, ListProps, NumericProps, canGet, canSet,
-                                     isPublished)
+import AutomationService.Capability (BinaryProps, Capability(..), CapabilityBase,
+                                     CompositeProps, EnumProps, ListProps,
+                                     NumericProps, canGet, canSet, isPublished)
 import AutomationService.Device (Capabilities, Device, DeviceId, Devices, decodeDevice)
 import AutomationService.Helpers (maybeHtml)
 import Control.Alternative (guard)
@@ -27,7 +28,7 @@ import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
 import Effect.Console (debug, info, warn)
 import Elmish (Transition, Dispatch, ReactElement, forkVoid, (<|))
-import Elmish.Component (Command)
+import Elmish.Component (Command, ComponentName(..), wrapWithLocalState)
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
 import Foreign (unsafeFromForeign)
@@ -47,26 +48,8 @@ type State =
   , selectedDeviceId :: Maybe DeviceId
   }
 
-init :: WebSocket -> Command Aff Message
-init ws msgSink = do
-  el <- liftEffect $ eventListener $ \evt -> do
-    for_ (fromEvent evt) \msgEvt -> do
-      let
-        -- is there a way to do this with Elmish.Foreign that I'm
-        -- missing?
-        jsonStr = unsafeFromForeign $ data_ msgEvt
-      debug jsonStr
-      msgSink $
-        either (LoadDevicesFailed <<< show) LoadDevices (decode jsonStr)
-
-  liftEffect $ addEventListener onMessage el false (toEventTarget ws)
-
-  where
-    decode :: String -> Either JsonDecodeError (Array Device)
-    decode jsonStr = do
-      devicesBlob <- parseJson jsonStr
-      traverse decodeDevice $ fromMaybe [] $ toArray devicesBlob
-
+init :: Transition Message State
+init = pure { devices: M.empty, selectedDeviceId: Nothing }
 
 update :: State -> Message -> Transition Message State
 update s = case _ of
@@ -177,3 +160,8 @@ view { devices, selectedDeviceId } dispatch =
       , guard (canSet a) *> Just "set"
       , guard (canGet a) *> Just "get"
       ]
+
+render :: {} -> ReactElement
+render =
+  wrapWithLocalState (ComponentName "DeviceView") \_args ->
+    { init, view, update }
