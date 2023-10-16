@@ -86,7 +86,7 @@ publishMQTT _s dispatch =
 view :: forall ws. (State ws) -> Dispatch (Message ws) -> ReactElement
 view state@{ currentPage } dispatch =
   H.div "container mx-auto mt-5 d-flex flex-column justify-content-between"
-  [ H.h2_ ("main-title " <> "main-title-" <> (pageNameClass currentPage))
+  [ H.h2_ ("main-title " <> "main-title-" <> pageNameClass currentPage)
     { _data: _data { "test-id": "main-title" }}
     $ pageName currentPage
   , H.ul "" $ H.fragment $ allElements <#> link
@@ -96,7 +96,7 @@ view state@{ currentPage } dispatch =
   where
     link :: Page -> ReactElement
     link pg = H.li_ (pageNameClass pg <> " navlink")
-      { _data: _data { "test-id": "nav-" <> (pageNameClass pg) }
+      { _data: _data { "test-id": "nav-" <> pageNameClass pg }
       } $
       H.a_ "" { href: "#", onClick: dispatch <| SetPage pg } $ pageName pg
 
