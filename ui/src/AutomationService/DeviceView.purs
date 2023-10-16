@@ -116,9 +116,9 @@ view { devices, selectedDeviceId } dispatch =
     binaryCap :: CapabilityBase BinaryProps -> ReactElement
     binaryCap cap =
       genericCap cap $
-           ", value_on: " <> (show cap.valueOn)
-        <> ", value_off: " <> (show cap.valueOff)
-        <> ", value_toggle: " <> (show cap.valueToggle)
+           ", value_on: " <> show cap.valueOn
+        <> ", value_off: " <> show cap.valueOff
+        <> ", value_toggle: " <> show cap.valueToggle
 
     enumCap :: CapabilityBase EnumProps -> ReactElement
     enumCap cap =
@@ -127,29 +127,29 @@ view { devices, selectedDeviceId } dispatch =
     numericCap :: CapabilityBase NumericProps -> ReactElement
     numericCap cap =
       genericCap cap $
-           ", value_max: " <> (show cap.valueMax)
-        <> ", value_min: " <> (show cap.valueMin)
-        <> ", value_step: " <> (show cap.valueStep)
-        <> ", unit: " <> (show cap.unit)
+           ", value_max: " <> show cap.valueMax
+        <> ", value_min: " <> show cap.valueMin
+        <> ", value_step: " <> show cap.valueStep
+        <> ", unit: " <> show cap.unit
 
     compositeCap :: CapabilityBase CompositeProps -> ReactElement
     compositeCap cap =
-      genericCap cap $ ", features: " <> (show cap.features)
+      genericCap cap $ ", features: " <> show cap.features
 
     listCap :: CapabilityBase ListProps -> ReactElement
     listCap cap =
-      genericCap cap $ ", item_type: " <> (show cap.itemType)
+      genericCap cap $ ", item_type: " <> show cap.itemType
 
     genericCap :: forall r. CapabilityBase r -> String -> ReactElement
     genericCap cap capFieldsStr =
       H.div "" $
       [ H.text $ "name: " <> cap.name
-        <> ", description: " <> (fromMaybe "" cap.description)
+        <> ", description: " <> fromMaybe "" cap.description
         <> ", type: " <> cap.capType
-        <> ", feature type: " <> (fromMaybe "n/a" cap.featureType)
+        <> ", feature type: " <> fromMaybe "n/a" cap.featureType
         <> ", label: " <> cap.label
-        <> ", property: " <> (show cap.property)
-        <> ", access: " <> (listAccess cap.access)
+        <> ", property: " <> show cap.property
+        <> ", access: " <> listAccess cap.access
         <> capFieldsStr
       ]
 
