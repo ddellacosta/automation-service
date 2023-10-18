@@ -2,15 +2,13 @@ module Test.Main where
 
 import Prelude
 
-import AutomationService.DeviceView as Devices
 import AutomationService.Message (Message(..))
 import AutomationService.WebSocket (class WebSocket)
 import Effect (Effect)
-import Effect.Aff (Aff, launchAff_)
+import Effect.Aff (launchAff_)
 import Effect.Class (liftEffect)
 import Effect.Console (debug)
 import Elmish (Transition)
-import Elmish.Component (Command)
 import Elmish.Test (find, testComponent, text, (>>))
 import Elmish.Test.Events (click)
 import Main as Main
@@ -22,6 +20,8 @@ import Test.Spec.Runner (runSpec)
 main :: Effect Unit
 main = launchAff_ $ runSpec [consoleReporter] spec
 
+-- WebSocket stub
+
 newtype TestWS = TestWS String
 
 instance WebSocket TestWS where
@@ -30,8 +30,7 @@ instance WebSocket TestWS where
 
 type TestInit = Transition (Message TestWS) (Main.State TestWS)
 
-devicesInit :: TestWS -> Command Aff Devices.Message
-devicesInit _ws = \_ -> pure unit
+-- 
 
 spec :: Spec Unit
 spec =
