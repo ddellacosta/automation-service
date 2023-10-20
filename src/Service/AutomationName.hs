@@ -1,5 +1,3 @@
-{-# LANGUAGE DerivingStrategies #-}
-
 module Service.AutomationName
   ( AutomationName(..)
   , Port(..)
@@ -20,8 +18,7 @@ import GHC.Generics (Generic)
 import Numeric.Natural (Natural)
 
 newtype Port = Port Natural
-  deriving (Generic, Eq, Ord, Show)
-  deriving newtype (Enum, Integral, Num, Real, Hashable, FromJSON)
+  deriving (Generic, Eq, Ord, Show, Enum, Integral, Num, Real, Hashable, FromJSON)
 
 data AutomationName
   = Gold
