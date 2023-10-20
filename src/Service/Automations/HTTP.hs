@@ -25,13 +25,12 @@ import Service.Automation (Automation (..))
 import qualified Service.AutomationName as AutomationName
 import Service.AutomationName (Port)
 import Service.Env (Env, LogLevel (..), daemonBroadcast, devicesRawJSON, logger)
-import Service.MQTT.Class (MQTTClient (..))
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import UnliftIO.STM (TChan, TVar, atomically, readTChan, readTVarIO, writeTChan)
 import Web.Scotty (file, get, middleware, raw, scottyApp, setHeader)
 
 httpAutomation
-  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
+  :: (Logger l, MonadReader (Env l mc) m, MonadUnliftIO m)
   => Port
   -> UTCTime
   -> Automation m
@@ -45,14 +44,14 @@ httpAutomation port ts =
 
 
 mkCleanupAutomation
-  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
+  :: (Logger l, MonadReader (Env l mc) m, MonadUnliftIO m)
   => (TChan Automation.Message -> m ())
 mkCleanupAutomation = \_broadcastChan -> do
   debug $ "Starting Cleanup: HTTP"
 
 
 mkRunAutomation
-  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
+  :: (Logger l, MonadReader (Env l mc) m, MonadUnliftIO m)
   => Port
   -> TChan Automation.Message
   -> m ()

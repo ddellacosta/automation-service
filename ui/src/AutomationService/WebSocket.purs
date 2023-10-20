@@ -2,6 +2,7 @@ module AutomationService.WebSocket
   ( class WebSocket
   , connectToWS
   , initializeListeners
+  , sendString
   )
 where
 
@@ -12,6 +13,7 @@ import AutomationService.DeviceView as Device
 import AutomationService.Message as Main
 import Data.Either (either)
 import Data.Traversable (for_)
+import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
 import Effect.Console (debug, info, warn)
@@ -24,13 +26,11 @@ import Web.Socket.WebSocket as WS
 import Web.Socket.WebSocket (create, toEventTarget)
 
 class WebSocket ws where
-  connectToWS :: Command Aff (Main.Message ws)
+  sendString :: ws -> String -> Effect Unit
   initializeListeners :: ws -> Command Aff Device.Message
 
 instance WebSocket WS.WebSocket where
-  connectToWS msgSink = do
-    ws <- liftEffect $ create "ws://localhost:8080" []
-    liftEffect $ msgSink (Main.InitWS ws)
+  sendString ws s = WS.sendString ws s
 
   initializeListeners ws msgSink = do
     el <- liftEffect $ eventListener $ \evt -> do
@@ -46,3 +46,8 @@ instance WebSocket WS.WebSocket where
             Device.LoadDevices
             (decodeDevices jsonStr)
     liftEffect $ addEventListener onMessage el false (toEventTarget ws)
+
+connectToWS :: Command Aff (Main.Message WS.WebSocket)
+connectToWS msgSink = do
+  ws <- liftEffect $ create "ws://localhost:8080" []
+  liftEffect $ msgSink (Main.InitWS ws)

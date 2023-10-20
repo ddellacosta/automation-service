@@ -143,6 +143,10 @@ Frontend tests:
 ```bash
 $ npm run test
 $ npm run test:watch
+
+# the above are wrappers for
+$ npx spago test
+$ watchexec -w src -w test -- npx spago test
 ```
 
 

@@ -1,0 +1,46 @@
+package:
+  name: automation-service
+  dependencies:
+    - aff
+    - argonaut
+    - argonaut-codecs
+    - arrays
+    - bifunctors
+    - console
+    - control
+    - datetime
+    - debug
+    - effect
+    - either
+    - elmish
+    - elmish-html
+    - enums
+    - foldable-traversable
+    - foreign
+    - foreign-object
+    - integers
+    - lists
+    - maybe
+    - nullable
+    - ordered-collections
+    - prelude
+    - record
+    - refs
+    - spec
+    - strings
+    - tuples
+    - typelevel-prelude
+    - web-events
+    - web-socket
+  test:
+    dependencies:
+      - elmish-testing-library
+      - spec
+      - web-dom
+      - web-html
+    main: Test.Main
+
+workspace:
+  package_set:
+    url: https://raw.githubusercontent.com/purescript/package-sets/psc-0.15.10-20230808/packages.json
+    hash: sha256-hE25zoTMi2ol9AxqouC7ztSS34JIhilmaIeU+Qo6GEY=

@@ -5,19 +5,21 @@ import Prelude
 import AutomationService.DeviceView as Devices
 import AutomationService.Helpers (allElements)
 import AutomationService.Message (Message(..), Page(..), pageName, pageNameClass)
-import AutomationService.WebSocket (class WebSocket, connectToWS, initializeListeners)
+import AutomationService.WebSocket (class WebSocket, connectToWS, initializeListeners, sendString)
 import Data.Bifunctor (bimap)
 import Data.Map as M
 import Data.Maybe (Maybe(..))
+import Data.Traversable (for_)
 import Effect (Effect)
+import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
 import Effect.Console (debug, info, warn)
-import Elmish (Transition, Dispatch, ReactElement, forks, forkVoid, (<|))
+import Elmish (Dispatch, ReactElement, Transition, forks, forkVoid, (<|))
 import Elmish.Boot (defaultMain)
+import Elmish.Component (Command)
 import Elmish.HTML (_data)
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
-import Web.Socket.WebSocket as WS
 
 
 type State ws =
@@ -27,10 +29,11 @@ type State ws =
   , publishMsg :: String
   }
 
-type ProductionInit = Transition (Message WS.WebSocket) (State WS.WebSocket)
-
-init :: forall ws. WebSocket ws => Transition (Message ws) (State ws)
-init = do
+init
+  :: forall ws. WebSocket ws
+  => Command Aff (Message ws)
+  -> Transition (Message ws) (State ws)
+init connectToWS = do
   forks connectToWS
 
   pure
@@ -61,13 +64,19 @@ update s = case _ of
   PublishMsgChanged msg -> pure $ s { publishMsg = msg }
 
   Publish -> do
-    forkVoid $ liftEffect $ debug $ "Message to publish: " <> (show s.publishMsg)
+    forkVoid $ do
+      liftEffect $ debug $ "Message to publish: " <> (show s.publishMsg)
+      for_ s.websocket $ \ws -> liftEffect $ sendString ws s.publishMsg
     pure s
 
 home :: forall s ws. s -> Dispatch (Message ws) -> ReactElement
 home _s _dispatch = H.div "" "Hey this is home"
 
-publishMQTT :: forall s ws. s -> (Message ws -> Effect Unit) -> ReactElement
+publishMQTT
+  :: forall ws r. WebSocket ws
+  => { websocket :: Maybe ws | r }
+  -> Dispatch (Message ws)
+  -> ReactElement
 publishMQTT _s dispatch =
   H.div "input-group"
   [ H.input_ "form-control publish-mqtt"
@@ -76,14 +85,13 @@ publishMQTT _s dispatch =
     , onChange: dispatch <| PublishMsgChanged <<< E.inputText
     }
   , H.button_ "btn btn-outline-secondary"
-    { type: "button"
-    , _data: _data { "test-id": "publish-mqtt-btn" }
+    { _data: _data { "test-id": "publish-mqtt-btn" }
     , onClick: dispatch <| Publish
     }
     "Publish"
   ]
 
-view :: forall ws. (State ws) -> Dispatch (Message ws) -> ReactElement
+view :: forall ws. WebSocket ws => (State ws) -> Dispatch (Message ws) -> ReactElement
 view state@{ currentPage } dispatch =
   H.div "container mx-auto mt-5 d-flex flex-column justify-content-between"
   [ H.h2_ ("main-title " <> "main-title-" <> pageNameClass currentPage)
@@ -100,7 +108,7 @@ view state@{ currentPage } dispatch =
       } $
       H.a_ "" { href: "#", onClick: dispatch <| SetPage pg } $ pageName pg
 
-    page :: forall ws'. Page -> (State ws') -> ReactElement
+    page :: WebSocket ws => Page -> State ws -> ReactElement
     page pg s = case pg of
       Home -> home s dispatch
       PublishMQTT -> publishMQTT s dispatch
@@ -109,7 +117,7 @@ view state@{ currentPage } dispatch =
 main :: Effect Unit
 main = defaultMain
   { def:
-      { init: (init :: ProductionInit)
+      { init: init connectToWS
       , view
       , update
       }

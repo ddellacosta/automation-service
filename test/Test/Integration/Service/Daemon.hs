@@ -727,7 +727,7 @@ httpSpecs = do
           daemonBroadcast' = env ^. daemonBroadcast
           (TestMQTTClient mqttMsgs) = env ^. mqttClient
           topicStr = "/device/lamp/set"
-          Just topic = mkTopic . T.decodeUtf8Lenient . toStrictBS $ topicStr
+          Just topic = mkTopic . T.decodeUtf8 . toStrictBS $ topicStr
 
           -- +1 to make sure we don't try to use the same port when
           -- these tests run in parallel.

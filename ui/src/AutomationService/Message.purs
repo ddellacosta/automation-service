@@ -14,6 +14,13 @@ import Data.Show.Generic (genericShow)
 import Data.String.Common as S
 import Data.String.Pattern (Pattern(..), Replacement(..))
 
+data Message ws
+  = SetPage Page
+  | DeviceMsg Devices.Message
+  | InitWS ws
+  | PublishMsgChanged String
+  | Publish
+
 data Page = Home | Devices | PublishMQTT
 
 derive instance Generic Page _
@@ -33,11 +40,3 @@ pageNameClass =
   >>> S.toLower
   >>> S.trim
   >>> S.replaceAll (Pattern " ") (Replacement "-")
-
-
-data Message ws
-  = SetPage Page
-  | DeviceMsg Devices.Message
-  | InitWS ws
-  | PublishMsgChanged String
-  | Publish
