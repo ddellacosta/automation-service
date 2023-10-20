@@ -79,7 +79,7 @@ spec = before setup $
         -- button is an unsolved problem, and getting it working is
         -- hindered by a few things, as far as I can tell so far:
         -- console debugging is a no-go, because I can't print log
-        -- messages when testing inside of testComponent. After
+        -- messages when testing inside of `testComponent`. After
         -- spending the better part of a work day yak-shaving just to
         -- figure out how this works, I _think_ it's because I can't
         -- set the console
@@ -87,7 +87,17 @@ spec = before setup $
         -- via GlobalReporter in happy-dom
         -- (https://github.com/capricorn86/happy-dom/issues/1105),
         -- used by elmish-test-library, but I honestly don't know.
-        -- in any case, for now I've been able to confirm this works
+        --
+        -- The second learning I acquired from yak-shaving is that it
+        -- seems that inside of test component, messages aren't
+        -- actually being dispatched to update, or perhaps,
+        -- `fork*` calls aren't run in testComponent...or something?
+        -- It's possible the way I am thinking about Refs is wrong
+        -- somehow too. I don't know, because I've already spent more
+        -- than a day just trying to understand what is going on and
+        -- my threshold has been reached. ¯\_(ツ)_/¯
+        --
+        -- Anyways, for now I've been able to confirm this works
         -- via manual testing, and hopefully I can find a different
         -- way to build automated tests soon that exercises this
         -- functionality on the frontend.
