@@ -3,7 +3,7 @@ module Main where
 import Prelude
 
 import AutomationService.DeviceView as Devices
-import AutomationService.Helpers (allElements)
+import AutomationService.Helpers (allElements, maybeHtml)
 import AutomationService.Message (Message(..), Page(..), pageName, pageNameClass)
 import AutomationService.WebSocket (class WebSocket, connectToWS, initializeListeners, sendString)
 import Data.Bifunctor (bimap)
@@ -27,6 +27,7 @@ type State ws =
   , devices :: Devices.State
   , websocket :: Maybe ws
   , publishMsg :: String
+  , lastSentMsg :: Maybe String
   }
 
 init
@@ -44,6 +45,7 @@ init connectToWS = do
       }
     , websocket: Nothing
     , publishMsg: "{}"
+    , lastSentMsg: Nothing
     }
 
 update
@@ -67,28 +69,41 @@ update s = case _ of
     forkVoid $ do
       liftEffect $ debug $ "Message to publish: " <> (show s.publishMsg)
       for_ s.websocket $ \ws -> liftEffect $ sendString ws s.publishMsg
-    pure s
+    pure $ s { lastSentMsg = Just s.publishMsg }
 
 home :: forall s ws. s -> Dispatch (Message ws) -> ReactElement
 home _s _dispatch = H.div "" "Hey this is home"
 
 publishMQTT
   :: forall ws r. WebSocket ws
-  => { websocket :: Maybe ws | r }
+  => { lastSentMsg :: Maybe String
+     , websocket :: Maybe ws
+     | r
+     }
   -> Dispatch (Message ws)
   -> ReactElement
-publishMQTT _s dispatch =
-  H.div "input-group"
-  [ H.input_ "form-control publish-mqtt"
-    { type: "text"
-    , _data: _data { "test-id": "publish-mqtt-input" }
-    , onChange: dispatch <| PublishMsgChanged <<< E.inputText
-    }
-  , H.button_ "btn btn-outline-secondary"
-    { _data: _data { "test-id": "publish-mqtt-btn" }
-    , onClick: dispatch <| Publish
-    }
-    "Publish"
+publishMQTT s dispatch =
+  H.div "publish-mqtt" $
+  [ H.div "input-group"
+    [ H.input_ "form-control publish-mqtt"
+      { type: "text"
+      , _data: _data { "test-id": "publish-mqtt-input" }
+      , onChange: dispatch <| PublishMsgChanged <<< E.inputText
+      }
+    , H.button_ "btn btn-outline-secondary"
+      { _data: _data { "test-id": "publish-mqtt-btn" }
+      , onClick: dispatch <| Publish
+      }
+      "Publish"
+    ]
+  , maybeHtml s.lastSentMsg $ \msg ->
+      H.div_
+        "publish-mqtt-status border border-primary-subtle rounded m-2 p-3 mt-4 text-secondary small"
+        { _data: _data { "test-id": "last-sent-msg" }} $
+        H.div ""
+        [ H.div "text-info fst-italic text-opacity-50 mb-0" "Last sent:"
+        , H.div "mt-0" msg
+        ]
   ]
 
 view :: forall ws. WebSocket ws => (State ws) -> Dispatch (Message ws) -> ReactElement

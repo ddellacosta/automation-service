@@ -74,35 +74,28 @@ spec = before setup $
            >>= shouldEqual mqttMsg
 
         --
-        -- Testing that I'm at least hitting the
-        -- AutomationService.WebSocket API when I hit the "Publish"
-        -- button is an unsolved problem, and getting it working is
-        -- hindered by a few things, as far as I can tell so far:
-        -- console debugging is a no-go, because I can't print log
-        -- messages when testing inside of `testComponent`. After
-        -- spending the better part of a work day yak-shaving just to
-        -- figure out how this works, I _think_ it's because I can't
-        -- set the console
-        -- (https://github.com/capricorn86/happy-dom/wiki/Virtual-Console)
-        -- via GlobalReporter in happy-dom
-        -- (https://github.com/capricorn86/happy-dom/issues/1105),
-        -- used by elmish-test-library, but I honestly don't know.
+        -- Kind of trivial, but helps validate that the message
+        -- was sent and some actions were triggered when the
+        -- 'Publish' button is clicked, at least.
         --
-        -- The second learning I acquired from yak-shaving is that it
-        -- seems that inside of test component, messages aren't
-        -- actually being dispatched to update, or perhaps,
-        -- `fork*` calls aren't run in testComponent...or something?
-        -- It's possible the way I am thinking about Refs is wrong
-        -- somehow too. I don't know, because I've already spent more
-        -- than a day just trying to understand what is going on and
-        -- my threshold has been reached. ¯\_(ツ)_/¯
-        --
-        -- Anyways, for now I've been able to confirm this works
-        -- via manual testing, and hopefully I can find a different
-        -- way to build automated tests soon that exercises this
-        -- functionality on the frontend.
-        --
+        find ("div" `withTestId` "last-sent-msg") >> text
+          >>= shouldEqual ("Last sent:\n" <> mqttMsg)
 
+        --
+        -- I wanted to test that I was actually hitting the API using
+        -- a Ref, but for reasons I don't understand sendString
+        -- doesn't get triggered inside this test. Maybe it has to do
+        -- with how `fork` and its siblings work in the context of
+        -- textComponent? Needs more digging. On a side note, I
+        -- couldn't figure out why I can't log inside of
+        -- testComponent, but I think it has to do with the virtual
+        -- console in Happy Dom...it makes it harder to debug, for
+        -- sure:
+        -- (https://github.com/capricorn86/happy-dom/wiki/Virtual-Console)
+        -- (This may prevent this from getting fixed inside of
+        -- elmish-test-library, for now?)
+        -- (https://github.com/capricorn86/happy-dom/issues/1105)
+        --
         -- wsStr <- liftEffect $ Ref.read wsState
         -- wsStr `shouldEqual` mqttMsg
 
