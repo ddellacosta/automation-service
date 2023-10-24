@@ -52,8 +52,8 @@ import Service.Automation (Automation)
 import Service.AutomationName (AutomationName)
 import Service.Device (Device, DeviceId)
 import Service.Env.Config (Config, LogLevel (..), MQTTConfig (..), automationServiceTopic,
-                           configDecoder, dbPath, logFilePath, logLevel, luaScriptPath, mqttConfig,
-                           statusTopic)
+                           configDecoder, dbPath, httpPort, logFilePath, logLevel, luaScriptPath,
+                           mqttConfig, statusTopic)
 import Service.Group (Group, GroupId)
 import Service.MQTT.Class (MQTTClient (..))
 import qualified Service.MQTT.Messages.Daemon as Daemon
@@ -62,7 +62,6 @@ import qualified Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
 import UnliftIO.Async (Async)
 import UnliftIO.Concurrent (ThreadId)
 import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO, writeTChan)
-
 
 -- in here to avoid a circular reference between Service.Daemon and
 -- Service.MQTT.Status, otherwise I'd leave it in Service.Daemon

@@ -157,7 +157,7 @@ mkRunAutomation filepath = \_broadcastChan -> do
 
 loadScript :: FilePath -> FilePath -> Lua.LuaE Lua.Exception Lua.Status
 loadScript luaScriptPath' filepath =
-  Lua.loadfile $ luaScriptPath' <> filepath <> ".lua"
+  Lua.loadfile . Just $ luaScriptPath' <> filepath <> ".lua"
 
 -- the Maybe here is a little bit hacky, just to let me match on
 -- it in loopAutomation in mkRunAutomation so that doesn't run

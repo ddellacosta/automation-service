@@ -22,15 +22,17 @@ import Service.App (Logger (..))
 import qualified Service.Daemon as Daemon
 import qualified Service.Device as Device
 import qualified Service.Env as Env
-import Service.Env (Env, LogLevel, appCleanup, config, daemonBroadcast, dbPath, devices, groups)
+import Service.Env (Env, LogLevel, appCleanup, config, daemonBroadcast, dbPath, devices,
+                    devicesRawJSON, groups, groupsRawJSON)
 import qualified Service.Group as Group
 import Service.MQTT.Class (MQTTClient (..))
 import qualified Service.MQTT.Messages.Daemon as Daemon
+import qualified Test.Helpers as Helpers
 import Test.Helpers (loadTestDevices, loadTestGroups)
 import Test.Hspec (Expectation, shouldBe)
 import UnliftIO.Async (withAsync)
 import UnliftIO.Exception (bracket)
-import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, modifyTVar', newTVarIO)
+import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, modifyTVar', newTVarIO, writeTVar)
 
 newtype TestMQTTClient = TestMQTTClient (TVar (HashMap Topic ByteString))
 
@@ -68,11 +70,20 @@ initAndCleanup runTests = bracket
       groups' <- loadTestGroups
 
       let
-        devicesTVar = env ^. devices
-        groupsTVar = env ^. groups
+        devicesTV = env ^. devices
+        groupsTV = env ^. groups
+        devicesJsonTV = env ^. devicesRawJSON
+        groupsJsonTV = env ^. groupsRawJSON
 
-      Daemon.loadResources Device._id devicesTVar devices'
-      Daemon.loadResources Group._id groupsTVar groups'
+      Daemon.loadResources Device._id devicesTV devices'
+      Daemon.loadResources Group._id groupsTV groups'
+
+      devicesJSON <- Helpers.devicesRawJSON
+      groupsJSON <- Helpers.groupsRawJSON
+
+      atomically $ do
+        writeTVar devicesJsonTV devicesJSON
+        writeTVar groupsJsonTV groupsJSON
 
       uuid <- UUID.nextRandom
       pure $

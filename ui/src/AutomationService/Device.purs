@@ -4,19 +4,20 @@ module AutomationService.Device
   , DeviceId
   , Devices
   , decodeDevice
+  , decodeDevices
   )
 where
 
 import Prelude (bind, pure, ($), (<#>))
 
 import AutomationService.Capability (Capability, decodeCapability)
-import Data.Argonaut (Json, JsonDecodeError, decodeJson, toArray)
+import Data.Argonaut (Json, JsonDecodeError, decodeJson, parseJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Either (Either(..))
 import Data.Foldable (foldMap)
 import Data.Map (Map)
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Traversable (for, sequence)
+import Data.Traversable (for, sequence, traverse)
 
 
 type Capabilities = Array Capability
@@ -33,6 +34,11 @@ type Device =
   }
 
 type Devices = Map DeviceId Device
+
+decodeDevices :: String -> Either JsonDecodeError (Array Device)
+decodeDevices jsonStr = do
+  devicesBlob <- parseJson jsonStr
+  traverse decodeDevice $ fromMaybe [] $ toArray devicesBlob
 
 --
 -- TODO: make this store failures on as granular a level as possible,

@@ -5,6 +5,7 @@ module Service.MQTT.Messages.Daemon
   ( AutomationSchedule
   , JobId
   , Message(..)
+  , MQTTMessage(..)
   , _DeviceUpdate
   , _GroupUpdate
   , _Null
@@ -37,6 +38,12 @@ import UnliftIO.STM (TChan)
 type AutomationSchedule = Text
 type JobId = Text
 
+data MQTTMessage = MQTTMsg
+  { topic :: Topic
+  , msg   :: Value
+  }
+  deriving (Generic, Eq, Show)
+
 data Message where
   Start :: AutomationName -> Message
   Stop :: AutomationName -> Message
@@ -51,6 +58,7 @@ data Message where
   DeadAutoCleanup :: Message
   Subscribe :: AutomationName -> Maybe Topic -> TChan Value -> Message
   Status :: Message
+  Publish :: MQTTMessage -> Message
   Null :: Message
   deriving (Generic, Eq)
 
@@ -85,6 +93,7 @@ instance Show Message where
     DeadAutoCleanup -> "DeadAutoCleanup"
     Subscribe automationName mTopic _automationListenerChannel ->
       "Subscribe " <> show automationName <> " " <> show mTopic <> ", with listener channel"
+    Publish (MQTTMsg topic msg) -> "Publish to " <> show topic <> ": " <> show msg
     Status -> "Status"
     Null -> "Null"
 
@@ -132,15 +141,30 @@ instance FromJSON Message where
     schedule <- o .:? "schedule"
     jobId <- o .:? "jobId"
     unschedule <- o .:? "unschedule"
+    --
+    -- This is meant to be JSON to pass along over MQTT (to
+    -- `topic`). I think I want to just pass ByteString through
+    -- without first decoding it as a Value, but I'm not yet sure how
+    -- to do that here. Also, maybe it is better to ensure it is valid
+    -- and fail here if not? I need to make this parsing smarter real
+    -- soon now...
+    --
+    (publishMsg :: Maybe Value) <- o .:? "publish"
+    (topic :: Maybe Topic) <- o .:? "topic"
     pure $
       fromMaybe Null $
-        case (startAutomation, stopAutomation, sendTo, jobId, schedule, unschedule) of
-          (Just automationName, _, _, _, _, _) -> Start <$> parseAutomationName automationName
-          (_, Just automationName, _, _, _, _) -> Stop <$> parseAutomationName automationName
-          (_, _, Just automationName, _, _, _) -> do
+        case (startAutomation, stopAutomation, sendTo, jobId, schedule, unschedule, publishMsg, topic) of
+          (Just automationName, _, _, _, _, _, _, _) ->
+            Start <$> parseAutomationName automationName
+          (_, Just automationName, _, _, _, _, _, _) ->
+            Stop <$> parseAutomationName automationName
+          (_, _, Just automationName, _, _, _, _, _) -> do
             sendToAutomation <- parseAutomationName automationName
             SendTo sendToAutomation <$> msg
-          (_, _, _, Just (Aeson.String jobId'), Just (Aeson.String schedule'),  _) ->
+          (_, _, _, Just (Aeson.String jobId'), Just (Aeson.String schedule'),  _, _, _) ->
             Schedule jobId' schedule' <$> job
-          (_, _, _, _, _, Just (Aeson.String jobId')) -> Just (Unschedule jobId')
+          (_, _, _, _, _, Just (Aeson.String jobId'), _, _) ->
+            Just (Unschedule jobId')
+          (_, _, _, _, _, _, Just publishMsg', Just topic') ->
+            Just (Publish (MQTTMsg topic' publishMsg'))
           _ -> Nothing

@@ -11,6 +11,7 @@ in    { mqttBroker =
         { uri =
             "mqtts://automation-service:wvwSWIXIKnpiI6qyR8Z7ojg9BH4RWPbHY6SHTGvLWd2AeYPifH@mosquitto:8883"
         , automationServiceTopic = "automation-service/set"
+        , statusTopic = "automation-service/status"
         , caCertPath = Some "ca.crt"
         , clientCertPath = Some "client.crt"
         , clientKeyPath = Some "client.key"
@@ -19,5 +20,6 @@ in    { mqttBroker =
       , logLevel = LogLevel.Debug
       , luaScriptPath = "lua-automations/"
       , dbPath = "automationState.db"
+      , httpPort = 8080
       }
     : ./config/Config.dhall

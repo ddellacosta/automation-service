@@ -96,8 +96,9 @@ run' threadMapTV = do
     -- are met and previously running Automations get loaded. See
     -- tryRestoreRunningAutomations.
     --
-    view daemonBroadcast >>= \db ->
-      atomically . writeTChan db $ Daemon.Start StateManager
+    view daemonBroadcast >>= \db -> atomically $ do
+      writeTChan db $ Daemon.Start StateManager
+      writeTChan db $ Daemon.Start HTTPDefault
     go
 
   where
@@ -174,6 +175,9 @@ run' threadMapTV = do
           for_ mTopic $ \topic -> do
             subscribe automationName topic listenerBcastChan
           go
+
+        Daemon.Publish (Daemon.MQTTMsg topic msg') ->
+          App.publish topic (encode msg') *> go
 
         Daemon.DeadAutoCleanup -> do
           cleanDeadAutomations threadMapTV

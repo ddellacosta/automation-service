@@ -129,13 +129,24 @@ You can now take this and drop it in your `compose.yml` file for docker-compose.
 
 ### Testing
 
-Running tests:
+Running main application test suite:
 
 ```bash
 # watchexec is handy:
 $ watchexec -w test -w src -w app -i "*.db" -i "test/dbs/*" 'cabal test --test-show-details=always --test-options "--color=always"'
 $ cabal test --test-show-details=always --test-options '--color=always -l -p Unit'
 $ cabal test --test-show-details=always --test-options '--color=always -l -p Integration'
+```
+
+Frontend tests:
+
+```bash
+$ npm run test
+$ npm run test:watch
+
+# the above are wrappers for
+$ npx spago test
+$ watchexec -w src -w test -- npx spago test
 ```
 
 

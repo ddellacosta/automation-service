@@ -6,30 +6,26 @@
   description = "automation-service";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs";
+    # for PureScript 0.15.11
+    nixpkgs.url = "nixpkgs/9957cd48326fe8dbd52fdc50dd2502307f188b0d";
     flake-utils.url = "github:numtide/flake-utils";
-    easy-purescript-nix.url = "github:justinwoo/easy-purescript-nix";
   };
 
-  outputs = { self, nixpkgs, flake-utils, easy-purescript-nix }:
+  outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachSystem ["x86_64-linux"] (system:
       with nixpkgs.legacyPackages.${system};
       let
         t = lib.trivial;
         hl = haskell.lib;
         haskellPackages = haskell.packages.ghc927;
-        easy-ps = easy-purescript-nix.packages.${system};
 
         name = "automation-service";
 
         project = devTools:
           let
             addBuildTools = (t.flip hl.addBuildTools) (devTools ++ [
-              easy-ps.purs-0_15_10
-              easy-ps.spago
-              easy-ps.purescript-language-server
-              easy-ps.purs-tidy
-              pkgs.nodejs_20
+              pkgs.purescript
+              pkgs.nodejs_18
               pkgs.esbuild
               zlib
             ]);
@@ -59,6 +55,7 @@
               ];
             };
 
+        # should I bump this? - 2023-10-19
         nixFromDockerHub = pkgs.dockerTools.pullImage {
           imageName = "nixos/nix";
           imageDigest = "sha256:31b808456afccc2a419507ea112e152cf27e9bd2527517b0b6ca8639cc423501";

@@ -1,5 +1,6 @@
 module Service.AutomationName
   ( AutomationName(..)
+  , Port(..)
   , parseAutomationName
   , parseAutomationNameText
   , serializeAutomationName
@@ -14,10 +15,15 @@ import Data.List (uncons)
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
+import Numeric.Natural (Natural)
+
+newtype Port = Port Natural
+  deriving (Generic, Eq, Ord, Show, Enum, Integral, Num, Real, Hashable, FromJSON)
 
 data AutomationName
   = Gold
-  | HTTP
+  | HTTP Port
+  | HTTPDefault
   | LuaScript FilePath
   | Null
   | StateManager
@@ -39,9 +45,7 @@ serializeAutomationName = \case
 parseAutomationName :: String -> Maybe AutomationName
 parseAutomationName = \case
   "Gold" -> Just Gold
-  "HTTP" -> Just HTTP
   "Null" -> Just Null
-  "StateManager" -> Just StateManager
   maybeLuaScript -> do
     let filepath = filter (/= '"') maybeLuaScript
     (firstChar, _remainder) <- uncons filepath

@@ -2,186 +2,139 @@ module Main where
 
 import Prelude
 
-import AutomationService.Capability (BinaryProps, Capability(..), CapabilityBase, CompositeProps,
-                                     EnumProps, ListProps, NumericProps, canGet, canSet,
-                                     isPublished)
-import AutomationService.Device (Capabilities, Device, DeviceId, Devices, decodeDevice)
-import AutomationService.Helpers (maybeHtml)
-import Control.Alternative (guard)
-import Data.Argonaut (JsonDecodeError, parseJson, toArray)
-import Data.Array (catMaybes, sortBy)
-import Data.Either (Either, either)
-import Data.Foldable (foldMap, for_, intercalate)
-import Data.List as L
+import AutomationService.DeviceView as Devices
+import AutomationService.Helpers (allElements, maybeHtml)
+import AutomationService.Message (Message(..), Page(..), pageName, pageNameClass)
+import AutomationService.WebSocket (class WebSocket, connectToWS, initializeListeners, sendString)
+import Data.Bifunctor (bimap)
 import Data.Map as M
-import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Time.Duration (Milliseconds(..))
-import Data.Traversable (traverse)
+import Data.Maybe (Maybe(..))
+import Data.Traversable (for_)
 import Effect (Effect)
-import Effect.Aff (delay)
+import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
 import Effect.Console (debug, info, warn)
-import Elmish (Transition, Dispatch, ReactElement, forks, forkVoid, (<|))
+import Elmish (Dispatch, ReactElement, Transition, forks, forkVoid, (<|))
 import Elmish.Boot (defaultMain)
+import Elmish.Component (Command)
+import Elmish.HTML (_data)
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
-import Foreign (unsafeFromForeign)
-import Web.Event.EventTarget (addEventListener, eventListener)
-import Web.Socket.Event.EventTypes (onMessage)
-import Web.Socket.Event.MessageEvent (data_, fromEvent)
-import Web.Socket.WebSocket (create, sendString, toEventTarget)
 
 
-data Message
-  = LoadDevices (Array Device)
-  | LoadDevicesFailed String
-  | DeviceSelected DeviceId
-
-type State =
-  { devices          :: Devices
-  , selectedDeviceId :: Maybe DeviceId
+type State ws =
+  { currentPage :: Page
+  , devices :: Devices.State
+  , websocket :: Maybe ws
+  , publishMsg :: String
+  , lastSentMsg :: Maybe String
   }
 
+init
+  :: forall ws. WebSocket ws
+  => Command Aff (Message ws)
+  -> Transition (Message ws) (State ws)
+init connectToWS = do
+  forks connectToWS
 
-init :: Transition Message State
-init = do
-  forks $ \msgSink -> do
-    ws <- liftEffect $ create "ws://localhost:8080" []
-    delay (Milliseconds 500.0)
-    liftEffect $ sendString ws "woah"
+  pure
+    { currentPage: Home
+    , devices:
+      { devices: M.empty
+      , selectedDeviceId: Nothing
+      }
+    , websocket: Nothing
+    , publishMsg: "{}"
+    , lastSentMsg: Nothing
+    }
 
-    el <- liftEffect $ eventListener $ \evt -> do
-      for_ (fromEvent evt) \msgEvt -> do
-        let
-          -- is there a way to do this with Elmish.Foreign that I'm
-          -- missing?
-          jsonStr = unsafeFromForeign $ data_ msgEvt
-        debug jsonStr
-        msgSink $
-          either (LoadDevicesFailed <<< show) LoadDevices (decode jsonStr)
-
-    liftEffect $ addEventListener onMessage el false (toEventTarget ws)
-
-  pure { devices: M.empty, selectedDeviceId: Nothing }
-
-  where
-    decode :: String -> Either JsonDecodeError (Array Device)
-    decode jsonStr = do
-      devicesBlob <- parseJson jsonStr
-      traverse decodeDevice $ fromMaybe [] $ toArray devicesBlob
-
-
-update :: State -> Message -> Transition Message State
+update
+  :: forall ws. WebSocket ws
+  => State ws
+  -> (Message ws)
+  -> Transition (Message ws) (State ws)
 update s = case _ of
-  LoadDevices newDevices -> do
-    forkVoid $ liftEffect $ info $ "loaded devices: " <> show newDevices
-    pure $ s { devices = foldMap (\d@{ id } -> M.singleton id d) newDevices }
+  SetPage newPage -> pure $ s { currentPage = newPage }
 
-  LoadDevicesFailed msg ->
-    (forkVoid $ liftEffect $ warn $ "Failed with msg: " <> msg) *> pure s
+  DeviceMsg deviceMsg ->
+    Devices.update s.devices deviceMsg # bimap DeviceMsg (s { devices = _ })
 
-  DeviceSelected deviceId -> do
-    forkVoid $ liftEffect $ info $ "device: " <> deviceId
-    pure $ s { selectedDeviceId = Just deviceId }
+  InitWS ws -> do
+    forks $ \ms -> initializeListeners ws (ms <<< DeviceMsg)
+    pure $ s { websocket = Just ws }
 
+  PublishMsgChanged msg -> pure $ s { publishMsg = msg }
 
-view :: State -> Dispatch Message -> ReactElement
-view { devices, selectedDeviceId } dispatch =
+  Publish -> do
+    forkVoid $ do
+      liftEffect $ debug $ "Message to publish: " <> (show s.publishMsg)
+      for_ s.websocket $ \ws -> liftEffect $ sendString ws s.publishMsg
+    pure $ s { lastSentMsg = Just s.publishMsg }
+
+home :: forall s ws. s -> Dispatch (Message ws) -> ReactElement
+home _s _dispatch = H.div "" "Hey this is home"
+
+publishMQTT
+  :: forall ws r. WebSocket ws
+  => { lastSentMsg :: Maybe String
+     , websocket :: Maybe ws
+     | r
+     }
+  -> Dispatch (Message ws)
+  -> ReactElement
+publishMQTT s dispatch =
+  H.div "publish-mqtt" $
+  [ H.div "input-group"
+    [ H.input_ "form-control publish-mqtt"
+      { type: "text"
+      , _data: _data { "test-id": "publish-mqtt-input" }
+      , onChange: dispatch <| PublishMsgChanged <<< E.inputText
+      }
+    , H.button_ "btn btn-outline-secondary"
+      { _data: _data { "test-id": "publish-mqtt-btn" }
+      , onClick: dispatch <| Publish
+      }
+      "Publish"
+    ]
+  , maybeHtml s.lastSentMsg $ \msg ->
+      H.div_
+        "publish-mqtt-status border border-primary-subtle rounded m-2 p-3 mt-4 text-secondary small"
+        { _data: _data { "test-id": "last-sent-msg" }} $
+        H.div ""
+        [ H.div "text-info fst-italic text-opacity-50 mb-0" "Last sent:"
+        , H.div "mt-0" msg
+        ]
+  ]
+
+view :: forall ws. WebSocket ws => (State ws) -> Dispatch (Message ws) -> ReactElement
+view state@{ currentPage } dispatch =
   H.div "container mx-auto mt-5 d-flex flex-column justify-content-between"
-  [ H.h2 "" "Devices"
-
-  , H.select_
-      "device-select"
-      { onChange: dispatch <| DeviceSelected <<< E.selectSelectedValue } $
-      -- This is converted to an Array first because there is no
-      -- instance of Elmish.React.ReactChildren (List ReactElement)
-      sortBy (\a b -> compare a.name b.name) (L.toUnfoldable $ M.values devices) <#> \d ->
-        H.option_ "" { value: d.id } d.name
-
-  , maybeHtml (flip M.lookup devices =<< selectedDeviceId) listDevice
-
+  [ H.h2_ ("main-title " <> "main-title-" <> pageNameClass currentPage)
+    { _data: _data { "test-id": "main-title" }}
+    $ pageName currentPage
+  , H.ul "" $ H.fragment $ allElements <#> link
+  , page currentPage state
   ]
 
   where
-    listDevice { id, name, category, model, manufacturer, capabilities } =
-      H.div "card mt-2"
-      [ H.div "card-body"
-        [ H.h4 "" name
-        , H.ul ""
-          [ H.li "" $ "id: " <> id
-          , H.li "" $ "category: " <> category
-          , maybeHtml model $ \model' -> H.li "" $ "model: " <> model'
-          , maybeHtml manufacturer $ \m -> H.li "" $ "manufacturer: " <> m
-          , maybeHtml capabilities $ H.li "" <<< listCapabilities
-          ]
-        ]
-      ]
+    link :: Page -> ReactElement
+    link pg = H.li_ (pageNameClass pg <> " navlink")
+      { _data: _data { "test-id": "nav-" <> pageNameClass pg }
+      } $
+      H.a_ "" { href: "#", onClick: dispatch <| SetPage pg } $ pageName pg
 
-    listCapabilities :: Capabilities -> ReactElement
-    listCapabilities cs =
-      H.div "" $
-      [ H.span "display-block" "capabilities: " ]
-      <>
-      (cs <#> case _ of
-          BinaryCap cap -> binaryCap cap
-          EnumCap cap -> enumCap cap
-          NumericCap cap -> numericCap cap
-          CompositeCap cap -> compositeCap cap
-          ListCap cap -> listCap cap
-          GenericCap cap -> genericCap cap ""
-      )
-
-    binaryCap :: CapabilityBase BinaryProps -> ReactElement
-    binaryCap cap =
-      genericCap cap $
-           ", value_on: " <> (show cap.valueOn)
-        <> ", value_off: " <> (show cap.valueOff)
-        <> ", value_toggle: " <> (show cap.valueToggle)
-
-    enumCap :: CapabilityBase EnumProps -> ReactElement
-    enumCap cap =
-      genericCap cap $ ", values: " <> (show cap.values)
-
-    numericCap :: CapabilityBase NumericProps -> ReactElement
-    numericCap cap =
-      genericCap cap $
-           ", value_max: " <> (show cap.valueMax)
-        <> ", value_min: " <> (show cap.valueMin)
-        <> ", value_step: " <> (show cap.valueStep)
-        <> ", unit: " <> (show cap.unit)
-
-    compositeCap :: CapabilityBase CompositeProps -> ReactElement
-    compositeCap cap =
-      genericCap cap $ ", features: " <> (show cap.features)
-
-    listCap :: CapabilityBase ListProps -> ReactElement
-    listCap cap =
-      genericCap cap $ ", item_type: " <> (show cap.itemType)
-
-    genericCap :: forall r. CapabilityBase r -> String -> ReactElement
-    genericCap cap capFieldsStr =
-      H.div "" $
-      [ H.text $ "name: " <> cap.name
-        <> ", description: " <> (fromMaybe "" cap.description)
-        <> ", type: " <> cap.capType
-        <> ", feature type: " <> (fromMaybe "n/a" cap.featureType)
-        <> ", label: " <> cap.label
-        <> ", property: " <> (show cap.property)
-        <> ", access: " <> (listAccess cap.access)
-        <> capFieldsStr
-      ]
-
-    listAccess :: Int -> String
-    listAccess a = intercalate ", " $
-      catMaybes
-      [ guard (isPublished a) *> Just "published"
-      , guard (canSet a) *> Just "set"
-      , guard (canGet a) *> Just "get"
-      ]
-
+    page :: WebSocket ws => Page -> State ws -> ReactElement
+    page pg s = case pg of
+      Home -> home s dispatch
+      PublishMQTT -> publishMQTT s dispatch
+      Devices -> Devices.view s.devices (dispatch <<< DeviceMsg)
 
 main :: Effect Unit
 main = defaultMain
-  { def: { init, view, update }
+  { def:
+      { init: init connectToWS
+      , view
+      , update
+      }
   , elementId: "app"
   }

@@ -10,6 +10,7 @@ module Service.Env.Config
   , clientKeyPath
   , configDecoder
   , dbPath
+  , httpPort
   , logFilePath
   , logLevel
   , luaScriptPath
@@ -26,6 +27,7 @@ import Data.Maybe (fromMaybe)
 import Dhall (Decoder, FromDhall (..), Generic, auto, field, record, strictText, string)
 import Network.MQTT.Topic (Topic)
 import Network.URI (URI, nullURI, parseURI)
+import Service.AutomationName (Port (..))
 import Service.MQTT.Topic (parseTopic)
 
 data LogLevel = Debug | Info | Warn | Error
@@ -69,6 +71,7 @@ data Config = Config
   , _logLevel      :: LogLevel
   , _luaScriptPath :: FilePath
   , _dbPath        :: FilePath
+  , _httpPort      :: Port
   }
   deriving (Generic, Show)
 
@@ -83,4 +86,5 @@ configDecoder =
         <*> field "logLevel" auto
         <*> field "luaScriptPath" string
         <*> field "dbPath" string
+        <*> field "httpPort" (Port <$> auto)
     )

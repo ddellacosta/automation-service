@@ -6,12 +6,14 @@ module Test.Integration.Service.Daemon
   )
 where
 
-import Control.Lens (_1, _2, _3, _Just, _head, ix, preview, (<&>), (^.), (^?))
+import Control.Exception (SomeException, handle)
+import Control.Lens (_1, _2, _3, _Just, _head, folded, ix, preview, (<&>), (^.), (^..), (^?))
 import Control.Monad (void)
 import Data.Aeson (Value, decode, encode)
 import qualified Data.Aeson as Aeson
-import Data.Aeson.Lens (_Array, key)
+import Data.Aeson.Lens (_Array, _Object, key)
 import qualified Data.ByteString.Char8 as SBS
+import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Foldable (for_)
 import qualified Data.HashMap.Strict as M
@@ -20,15 +22,18 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+import qualified Data.Text.IO as T
+import qualified Data.Vector as V
 import GHC.Conc (ThreadStatus (..), threadStatus)
 import Network.MQTT.Topic (mkTopic)
+import qualified Network.WebSockets as WS
 import Safe (headMay)
 import Service.Automation (name)
 import Service.AutomationName (AutomationName (..), parseAutomationName, serializeAutomationName)
 import Service.Env (RestartConditions (..), automationServiceTopic, config, daemonBroadcast, dbPath,
-                    deviceRegistrations, groupRegistrations, logger, mqttClient, mqttConfig,
-                    mqttDispatch, restartConditions, scheduledJobs)
-import Service.MQTT.Class (MQTTClient)
+                    deviceRegistrations, devicesRawJSON, groupRegistrations, httpPort, logger,
+                    mqttClient, mqttConfig, mqttDispatch, restartConditions, scheduledJobs)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
 import System.Environment (setEnv)
@@ -38,7 +43,8 @@ import Test.Integration.Service.DaemonTestHelpers (TestLogger (..), TestMQTTClie
                                                    waitUntilEqSTM)
 import UnliftIO.Async (asyncThreadId)
 import UnliftIO.Concurrent (threadDelay)
-import UnliftIO.STM (atomically, readTChan, readTVar, readTVarIO, writeTChan, writeTVar)
+import UnliftIO.STM (STM, atomically, readTChan, readTVar, readTVarIO, tryReadTChan, writeTChan,
+                     writeTVar)
 
 -- TODO: Haven't yet figured out how to test scheduler
 -- functionality. Would like to be able to do something similar to
@@ -57,6 +63,7 @@ spec = do
   stateStoreSpecs
   schedulerSpecs
   statusMessageSpecs
+  httpSpecs
 
 --
 -- The first two here seem to have a race condition because of
@@ -314,14 +321,16 @@ luaScriptSpecs = do
         atomically $ writeTChan daemonBroadcast' $
           Daemon.Start (LuaScript "testSendMsg")
 
-        threadDelay 50000
+        threadDelay 60000
 
-        startGold <- atomically $ do
-          _ <- readTChan daemonSnooper
-          _ <- readTChan daemonSnooper
-          readTChan daemonSnooper
+        let
+          getCurrentMsgBatch :: [Daemon.Message] -> STM [Daemon.Message]
+          getCurrentMsgBatch msgs = tryReadTChan daemonSnooper >>=
+            maybe (pure msgs) (\msg' -> getCurrentMsgBatch $ msg':msgs)
 
-        luaScriptSentMsg `shouldBe` startGold
+        msgs <- atomically $ getCurrentMsgBatch []
+
+        (null $ filter (== luaScriptSentMsg) msgs) `shouldBe` False
 
 
 threadMapSpecs :: Spec
@@ -425,7 +434,9 @@ stateStoreSpecs = do
 
         res <- StateStore.allRunning $ env ^. config . dbPath
 
-        length res `shouldBe` 2
+        -- HTTPDefault, HTTP <$config.httpPort>, StateManager, LuaScript "test"
+        length res `shouldBe` 4
+
         parseAutomationName . T.unpack <$> (findMatchingSerialized "test" res)
           `shouldBe` [Just (LuaScript "test")]
 
@@ -451,7 +462,9 @@ stateStoreSpecs = do
 
         res <- StateStore.allRunning dbPath'
 
-        length res `shouldBe` 2
+        -- HTTPDefault, HTTP <$config.httpPort>, StateManager, LuaScript "test"
+        length res `shouldBe` 4
+
         parseAutomationName . T.unpack <$> (findMatchingSerialized "test" res)
           `shouldBe` [Just (LuaScript "test")]
         -- started up by Daemon independently if it is not running, so
@@ -621,7 +634,7 @@ stateStoreSpecs = do
     findMatchingSerialized serialized res =
       snd <$> filter (\(_id, serialized') -> serialized' == serialized) res
 
-    encodeStrict = SBS.concat . LBS.toChunks . encode
+    encodeStrict = toStrictBS . encode
 
 schedulerSpecs :: Spec
 schedulerSpecs = do
@@ -671,10 +684,91 @@ statusMessageSpecs = do
         threadDelay 50000
 
         topicMap <- readTVarIO topicMapTV
-        let
-          statusMsg = M.lookup automationServiceTopic' topicMap
-          statusMsg' = (statusMsg >>= decode :: Maybe Value)
 
-        (statusMsg' ^? _Just . key "runningAutomations" . _Array . ix 0 . key "name")
+        let
+          autoServiceTopic = do
+            decoded :: Maybe Value <- decode =<< M.lookup automationServiceTopic' topicMap
+            Just $ decoded ^.. _Just . key "runningAutomations" . _Array . folded . key "name"
+
+        (null . filter (== Aeson.String "HTTPDefault")) <$> autoServiceTopic
           `shouldBe`
-          Just (Aeson.String "StateManager")
+          Just False
+
+        (null . filter (== Aeson.String "StateManager")) <$> autoServiceTopic
+          `shouldBe`
+          Just False
+
+
+httpSpecs :: Spec
+httpSpecs = do
+  around initAndCleanup $ do
+    it "sends device data over websockets" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          port = env ^. config . httpPort
+          devices = env ^. devicesRawJSON
+
+        -- HTTPDefault is run by default on start
+
+        -- not sure why "localhost" doesn't work vs. "127.0.0.1",
+        -- probably something basic I'm forgetting
+        devicesReceived <- retry $ WS.runClient "127.0.0.1" (fromIntegral port) "" $
+          \conn -> do
+            msg <- WS.receiveData conn
+            WS.sendClose conn ("close" :: Text)
+            pure msg
+
+        devices' <- readTVarIO devices
+        devicesReceived `shouldBe` devices'
+
+    it "allows a websockets client to publish an MQTT message" $
+      testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          (TestMQTTClient mqttMsgs) = env ^. mqttClient
+          topicStr = "/device/lamp/set"
+          Just topic = mkTopic . T.decodeUtf8 . toStrictBS $ topicStr
+
+          -- +1 to make sure we don't try to use the same port when
+          -- these tests run in parallel.
+          port = 1 + (env ^. config . httpPort)
+
+        atomically $ writeTChan daemonBroadcast' (Daemon.Start (HTTP port))
+
+        retry $ WS.runClient "127.0.0.1" (fromIntegral port) "" $
+          \conn -> do
+            WS.sendTextData conn ("{\"start\": \"test\"}" :: ByteString)
+            WS.sendTextData conn
+              (  "{\"publish\": {\"state\": \"ON\"}, "
+              <>  "\"topic\": \"" <> topicStr <> "\""
+              <>  "}"
+              :: ByteString
+              )
+            WS.sendClose conn ("close" :: Text)
+
+        -- seem to need this to let the messages accumulate
+        threadDelay 50000
+
+        let
+          getCurrentMsgBatch :: [Daemon.Message] -> STM [Daemon.Message]
+          getCurrentMsgBatch msgs = tryReadTChan daemonSnooper >>=
+            maybe (pure msgs) (\msg' -> getCurrentMsgBatch $ msg':msgs)
+
+        msgs <- atomically $ getCurrentMsgBatch []
+        (null $ filter (== Daemon.Start (LuaScript "test")) msgs) `shouldBe` False
+
+        receivedMsg <- M.lookup topic <$> readTVarIO mqttMsgs
+        receivedMsg `shouldBe` Just "{\"state\":\"ON\"}"
+
+  where
+    --
+    -- stolen from
+    --   https://github.com/jaspervdj/websockets/blob/72b6a7223220c90e0045930e4ef7e771f010be92/tests/haskell/Network/WebSockets/Server/Tests.hs#L119-L129
+    --
+    retry :: IO a -> IO a
+    retry action = handle
+      (\(_ :: SomeException) -> (threadDelay 2000000) >> retry action)
+      action
+
+toStrictBS :: LBS.ByteString -> SBS.ByteString
+toStrictBS = SBS.concat . LBS.toChunks
