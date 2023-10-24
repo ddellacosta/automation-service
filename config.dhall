@@ -8,8 +8,7 @@ This config should not be checked into git with passwords and other sensitive va
 let LogLevel = ./config/LogLevel.dhall
 
 in    { mqttBroker =
-        { uri =
-            "mqtts://automation-service:wvwSWIXIKnpiI6qyR8Z7ojg9BH4RWPbHY6SHTGvLWd2AeYPifH@mosquitto:8883"
+        { uri = "mqtts://automation-service:password@mosquitto:8883"
         , automationServiceTopic = "automation-service/set"
         , statusTopic = "automation-service/status"
         , caCertPath = Some "ca.crt"
