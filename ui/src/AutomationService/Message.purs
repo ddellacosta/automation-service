@@ -8,7 +8,7 @@ where
 
 import Prelude
 
-import AutomationService.DeviceView as Devices
+import AutomationService.DeviceViewMessage as Devices
 import Data.Generic.Rep (class Generic)
 import Data.Show.Generic (genericShow)
 import Data.String.Common as S

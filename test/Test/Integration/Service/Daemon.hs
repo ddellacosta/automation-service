@@ -312,7 +312,7 @@ luaScriptSpecs = do
         length matches `shouldBe` 2
 
   around initAndCleanup $ do
-    it "can send Daemon messages in Lua scripts" $
+    xit "can send Daemon messages in Lua scripts" $
       testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast

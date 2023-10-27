@@ -1,8 +1,6 @@
 module AutomationService.DeviceView
-  ( Message(..)
-  , State
+  ( State
   , init
-  , render
   , view
   , update
   )
@@ -12,47 +10,38 @@ import Prelude
 
 import AutomationService.Capability (BinaryProps, Capability(..), CapabilityBase,
                                      CompositeProps, EnumProps, ListProps,
-                                     NumericProps, canGet, canSet, isPublished)
-import AutomationService.Device (Capabilities, Device, DeviceId, Devices, decodeDevice)
+                                     NumericProps, canGet, canSet, isPublished,
+                                     serializeValueOnOff)
+import AutomationService.Device (Capabilities, DeviceId, Devices)
+import AutomationService.DeviceViewMessage (Message(..))
 import AutomationService.Helpers (maybeHtml)
+import AutomationService.WebSocket (class WebSocket, sendString)
 import Control.Alternative (guard)
-import Data.Argonaut (JsonDecodeError, parseJson, toArray)
 import Data.Array (catMaybes, sortBy)
-import Data.Either (Either, either)
-import Data.Foldable (foldMap, for_, intercalate)
+import Data.Foldable (foldMap, intercalate)
 import Data.List as L
 import Data.Map as M
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Traversable (traverse)
-import Effect.Aff (Aff)
+import Data.Traversable (for_)
 import Effect.Class (liftEffect)
 import Effect.Console (debug, info, warn)
 import Elmish (Transition, Dispatch, ReactElement, forkVoid, (<|))
-import Elmish.Component (Command, ComponentName(..), wrapWithLocalState)
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
-import Foreign (unsafeFromForeign)
-import Web.Event.EventTarget (addEventListener, eventListener)
-import Web.Socket.Event.EventTypes (onMessage)
-import Web.Socket.Event.MessageEvent (data_, fromEvent)
-import Web.Socket.WebSocket (WebSocket, toEventTarget)
-
-
-data Message
-  = LoadDevices (Array Device)
-  | LoadDevicesFailed String
-  | DeviceSelected DeviceId
 
 type State =
-  { devices          :: Devices
+  { devices :: Devices
   , selectedDeviceId :: Maybe DeviceId
   }
 
 init :: Transition Message State
-init = pure { devices: M.empty, selectedDeviceId: Nothing }
+init = pure
+  { devices: M.empty
+  , selectedDeviceId: Nothing
+  }
 
-update :: State -> Message -> Transition Message State
-update s = case _ of
+update :: forall ws. WebSocket ws => Maybe ws -> State -> Message -> Transition Message State
+update ws s = case _ of
   LoadDevices newDevices -> do
     forkVoid $ liftEffect $ info $ "loaded devices: " <> show newDevices
     pure $ s { devices = foldMap (\d@{ id } -> M.singleton id d) newDevices }
@@ -63,6 +52,13 @@ update s = case _ of
   DeviceSelected deviceId -> do
     forkVoid $ liftEffect $ info $ "device: " <> deviceId
     pure $ s { selectedDeviceId = Just deviceId }
+
+  PublishDeviceMsg topic msg -> do
+    forkVoid $ liftEffect $ do
+      debug $ "publish msg '" <> msg <> "' to topic: " <> topic
+      for_ ws $ \ws' ->
+        sendString ws' ("{\"publish\":" <> msg <> ", \"topic\": \"" <> topic <> "\"}")
+    pure s
 
 
 view :: State -> Dispatch Message -> ReactElement
@@ -94,50 +90,80 @@ view { devices, selectedDeviceId } dispatch =
           , H.li "" $ "category: " <> category
           , maybeHtml model $ \model' -> H.li "" $ "model: " <> model'
           , maybeHtml manufacturer $ \m -> H.li "" $ "manufacturer: " <> m
-          , maybeHtml capabilities $ H.li "" <<< listCapabilities
+          , maybeHtml capabilities $
+              H.li "" <<<
+                listCapabilities { id, name, category, model, manufacturer }
           ]
         ]
       ]
 
-    listCapabilities :: Capabilities -> ReactElement
-    listCapabilities cs =
+    setTopic name = "zigbee2mqtt/" <> name <> "/set"
+    getTopic name = "zigbee2mqtt/" <> name <> "/get"
+
+    listCapabilities
+      :: { id :: String
+         , name :: String
+         , category :: String
+         , model :: Maybe String
+         , manufacturer :: Maybe String
+         }
+      -> Capabilities
+      -> ReactElement
+    listCapabilities s cs =
       H.div "" $
       [ H.span "display-block" "capabilities: " ]
       <>
       (cs <#> case _ of
-          BinaryCap cap -> binaryCap cap
-          EnumCap cap -> enumCap cap
-          NumericCap cap -> numericCap cap
-          CompositeCap cap -> compositeCap cap
-          ListCap cap -> listCap cap
+          BinaryCap cap -> binaryCap s cap
+          EnumCap cap -> enumCap s cap
+          NumericCap cap -> numericCap s cap
+          CompositeCap cap -> compositeCap s cap
+          ListCap cap -> listCap s cap
           GenericCap cap -> genericCap cap ""
       )
 
-    binaryCap :: CapabilityBase BinaryProps -> ReactElement
-    binaryCap cap =
-      genericCap cap $
-           ", value_on: " <> show cap.valueOn
-        <> ", value_off: " <> show cap.valueOff
-        <> ", value_toggle: " <> show cap.valueToggle
+    binaryCap :: forall r. { name :: String | r} -> CapabilityBase BinaryProps -> ReactElement
+    binaryCap s cap =
+      H.div_ "form-check form-switch" {}
+      [ H.input_
+        "form-check-input"
+        { type: "checkbox"
+        , role: "switch"
+        , id: "flexSwitchCheckDefault"
+        , value: serializeValueOnOff cap.valueOn
+        -- this will become more sophisticated once this takes into
+        -- account the currently set value, and whether or not any
+        -- capability has the 'set' permission--this is a placeholder
+        -- spike
+        , onChange: dispatch
+            <| PublishDeviceMsg (setTopic s.name)
+            <<< (\_t -> "{\"" <> fromMaybe "state" cap.property <> "\": \"" <> "TOGGLE" <> "\"}")
+            <<< E.inputText
+        }
+      , H.label_
+        "form-check-label"
+        { htmlFor: "flexSwitchCheckDefault" } $
+        H.text $ "set state for " <> cap.name
+      ]
 
-    enumCap :: CapabilityBase EnumProps -> ReactElement
-    enumCap cap =
+    enumCap :: forall s. s -> CapabilityBase EnumProps -> ReactElement
+    enumCap _s cap =
       genericCap cap $ ", values: " <> (show cap.values)
 
-    numericCap :: CapabilityBase NumericProps -> ReactElement
-    numericCap cap =
+    numericCap :: forall s. s -> CapabilityBase NumericProps -> ReactElement
+    numericCap _s cap =
       genericCap cap $
            ", value_max: " <> show cap.valueMax
         <> ", value_min: " <> show cap.valueMin
         <> ", value_step: " <> show cap.valueStep
         <> ", unit: " <> show cap.unit
 
-    compositeCap :: CapabilityBase CompositeProps -> ReactElement
-    compositeCap cap =
+    compositeCap :: forall s. s -> CapabilityBase CompositeProps -> ReactElement
+    compositeCap _s cap =
       genericCap cap $ ", features: " <> show cap.features
 
-    listCap :: CapabilityBase ListProps -> ReactElement
-    listCap cap =
+    listCap :: forall s. s -> CapabilityBase ListProps -> ReactElement
+    listCap _s cap =
       genericCap cap $ ", item_type: " <> show cap.itemType
 
     genericCap :: forall r. CapabilityBase r -> String -> ReactElement
@@ -160,8 +186,3 @@ view { devices, selectedDeviceId } dispatch =
       , guard (canSet a) *> Just "set"
       , guard (canGet a) *> Just "get"
       ]
-
-render :: {} -> ReactElement
-render =
-  wrapWithLocalState (ComponentName "DeviceView") \_args ->
-    { init, view, update }

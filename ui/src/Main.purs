@@ -2,11 +2,14 @@ module Main where
 
 import Prelude
 
-import AutomationService.DeviceView as Devices
+import AutomationService.Device (decodeDevices) as Devices
+import AutomationService.DeviceView (State, update, view) as Devices
+import AutomationService.DeviceViewMessage (Message(..)) as Devices
 import AutomationService.Helpers (allElements, maybeHtml)
 import AutomationService.Message (Message(..), Page(..), pageName, pageNameClass)
-import AutomationService.WebSocket (class WebSocket, connectToWS, initializeListeners, sendString)
+import AutomationService.WebSocket (class WebSocket, addWSEventListener, connectToWS, sendString)
 import Data.Bifunctor (bimap)
+import Data.Either (either)
 import Data.Map as M
 import Data.Maybe (Maybe(..))
 import Data.Traversable (for_)
@@ -20,7 +23,9 @@ import Elmish.Component (Command)
 import Elmish.HTML (_data)
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
-
+import Foreign (unsafeFromForeign)
+import Web.Event.EventTarget (eventListener)
+import Web.Socket.Event.MessageEvent (data_, fromEvent)
 
 type State ws =
   { currentPage :: Page
@@ -57,10 +62,25 @@ update s = case _ of
   SetPage newPage -> pure $ s { currentPage = newPage }
 
   DeviceMsg deviceMsg ->
-    Devices.update s.devices deviceMsg # bimap DeviceMsg (s { devices = _ })
+    Devices.update s.websocket s.devices deviceMsg # bimap DeviceMsg (s { devices = _ })
 
   InitWS ws -> do
-    forks $ \ms -> initializeListeners ws (ms <<< DeviceMsg)
+    forks $ \msgSink -> do
+      let msgSink' = msgSink <<< DeviceMsg
+      el <- liftEffect $ eventListener $ \evt -> do
+        for_ (fromEvent evt) \msgEvt -> do
+          let
+            -- is there a way to do this with Elmish.Foreign that I'm
+            -- missing?
+            jsonStr = unsafeFromForeign $ data_ msgEvt
+          debug jsonStr
+          msgSink' $
+            either
+              (Devices.LoadDevicesFailed <<< show)
+              Devices.LoadDevices
+              (Devices.decodeDevices jsonStr)
+      liftEffect $ addWSEventListener ws el
+
     pure $ s { websocket = Just ws }
 
   PublishMsgChanged msg -> pure $ s { publishMsg = msg }

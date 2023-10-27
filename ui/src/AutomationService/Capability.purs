@@ -13,10 +13,11 @@ module AutomationService.Capability
   , canSet
   , decodeCapability
   , isPublished
+  , serializeValueOnOff
   )
 where
 
-import Prelude (class Show, bind, const, pure, (<<<), ($), (<$>), (=<<), (>))
+import Prelude (class Show, bind, const, pure, show, (<<<), ($), (<$>), (=<<), (>))
 
 import Control.Alternative ((<|>))
 import Data.Argonaut (Json, JsonDecodeError, decodeJson, toArray)
@@ -57,6 +58,11 @@ instance DecodeJson ValueOnOff where
 
 instance Show ValueOnOff where
   show = genericShow
+
+serializeValueOnOff :: ValueOnOff -> String
+serializeValueOnOff = case _ of
+  ValueOnOffBool b -> show b
+  ValueOnOffString s -> s
 
 -- Base type properties
 

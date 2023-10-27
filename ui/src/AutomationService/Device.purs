@@ -19,7 +19,6 @@ import Data.Map (Map)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Traversable (for, sequence, traverse)
 
-
 type Capabilities = Array Capability
 
 type DeviceId = String

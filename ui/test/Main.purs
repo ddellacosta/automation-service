@@ -30,7 +30,7 @@ instance WebSocket TestWS where
   sendString (TestWS wsStr) s = Ref.write s wsStr
 
   -- don't really care what this does in test...yet
-  initializeListeners _ws _msgSink = liftEffect $ log "hey"
+  addWSEventListener _ws _el = log "hey"
 
 connectToWS :: Ref String -> Command Aff (Message TestWS)
 connectToWS wsState msgSink =
