@@ -333,15 +333,11 @@ run' threadMapTV = do
       :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => TVar (ThreadMap m) -> m ()
     publishUpdatedStatus threadMapTV' = do
       automationServiceTopic' <- view $ config . mqttConfig . automationServiceTopic
-      deviceRegs <- view deviceRegistrations
-      groupRegs <- view groupRegistrations
-      scheduled <- view scheduledJobs
-      statusMsg <- atomically $ do
-        running <- readTVar threadMapTV'
-        scheduled' <- readTVar scheduled
-        deviceRegs' <- readTVar deviceRegs
-        groupRegs' <- readTVar groupRegs
-        pure $ encodeAutomationStatus running scheduled' deviceRegs' groupRegs'
+      statusMsg <- encodeAutomationStatus
+        <$> readTVarIO threadMapTV'
+        <*> (readTVarIO =<< view scheduledJobs)
+        <*> (readTVarIO =<< view deviceRegistrations)
+        <*> (readTVarIO =<< view groupRegistrations)
       App.publish automationServiceTopic' statusMsg
 
     sendClientMsg
