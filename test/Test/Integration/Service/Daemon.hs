@@ -49,9 +49,10 @@ import Test.Integration.Service.DaemonTestHelpers (TestLogger (..), TestMQTTClie
                                                    waitUntilEqSTM)
 import UnliftIO.Async (asyncThreadId)
 import UnliftIO.Concurrent (threadDelay)
+import UnliftIO.Retry (constantDelay, exponentialBackoff, limitRetries, retryPolicyDefault,
+                       retrying)
 import UnliftIO.STM (STM, atomically, readTChan, readTVar, readTVarIO, tryReadTChan, writeTChan,
                      writeTVar)
-import UnliftIO.Retry (constantDelay, exponentialBackoff, limitRetries, retrying, retryPolicyDefault)
 
 -- TODO: Haven't yet figured out how to test scheduler
 -- functionality. Would like to be able to do something similar to

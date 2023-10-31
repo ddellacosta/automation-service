@@ -8,12 +8,9 @@ module Service.AutomationName
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (guard)
 import Data.Aeson (FromJSON (..), ToJSON (..))
-import qualified Data.Char as Char
 import Data.Char (isDigit, isLower, isSpace)
 import Data.Hashable (Hashable (..))
-import Data.List (uncons)
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
@@ -64,8 +61,8 @@ parseAutomationNameText = parseAutomationName . T.unpack
 
 parseHTTP :: RP.ReadP (Maybe AutomationName)
 parseHTTP = do
-  http <- RP.string "HTTP"
-  _spc <- RP.string " "
+  _http <- RP.string "HTTP"
+  _space <- RP.string " "
   port <- RP.munch1 isDigit
   pure $ HTTP . Port <$> (readMaybe port :: Maybe Natural)
 

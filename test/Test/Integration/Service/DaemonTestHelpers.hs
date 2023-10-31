@@ -9,7 +9,6 @@ module Test.Integration.Service.DaemonTestHelpers
   where
 
 import Control.Lens (view, (%~), (&), (^.))
-import Control.Monad (unless)
 import Data.ByteString.Lazy (ByteString)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as M
@@ -18,7 +17,6 @@ import qualified Data.Text as T
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 import Network.MQTT.Client (Topic)
-import Network.MQTT.Topic (mkTopic)
 import qualified Service.App as App
 import Service.App (Logger (..))
 import qualified Service.Daemon as Daemon
@@ -34,7 +32,7 @@ import Test.Helpers (loadTestDevices, loadTestGroups)
 import Test.Hspec (Expectation, shouldBe)
 import UnliftIO.Async (withAsync)
 import UnliftIO.Exception (bracket)
-import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, modifyTVar', newTVarIO, readTVarIO, writeTVar)
+import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, modifyTVar', newTVarIO, writeTVar)
 
 newtype TestMQTTClient = TestMQTTClient (TVar (HashMap Topic ByteString))
 

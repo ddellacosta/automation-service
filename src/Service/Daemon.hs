@@ -11,7 +11,7 @@ import Prelude hiding (filter)
 import Control.Lens (Lens', view, (&), (.~), (<&>), (^.))
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
-import Data.Aeson (Value, decode, encode, object)
+import Data.Aeson (decode, encode)
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Char8 as SBS
 import qualified Data.ByteString.Lazy as LBS
@@ -52,8 +52,8 @@ import System.Cron (addJob, execSchedule)
 import UnliftIO.Async (Async, async, asyncThreadId, cancel)
 import UnliftIO.Concurrent (killThread)
 import UnliftIO.Exception (bracket, finally)
-import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, modifyTVar', newTVarIO, readTChan,
-                     readTVar, readTVarIO, writeTChan, writeTVar)
+import UnliftIO.STM (STM, TVar, atomically, dupTChan, modifyTVar', newTVarIO, readTChan, readTVar,
+                     readTVarIO, writeTChan, writeTVar)
 
 run
   :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
