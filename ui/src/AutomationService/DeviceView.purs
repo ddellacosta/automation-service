@@ -136,7 +136,7 @@ view { devices, selectedDeviceId } dispatch =
         -- capability has the 'set' permission--this is a placeholder
         -- spike
         , onChange: dispatch
-            <| PublishDeviceMsg (setTopic s.name)
+            <|  PublishDeviceMsg (setTopic s.name)
             <<< (\_t -> "{\"" <> fromMaybe "state" cap.property <> "\": \"" <> "TOGGLE" <> "\"}")
             <<< E.inputText
         }
@@ -146,17 +146,44 @@ view { devices, selectedDeviceId } dispatch =
         H.text $ "set state for " <> cap.name
       ]
 
-    enumCap :: forall s. s -> CapabilityBase EnumProps -> ReactElement
-    enumCap _s cap =
-      genericCap cap $ ", values: " <> (show cap.values)
+    enumCap :: forall r. { name :: String | r} -> CapabilityBase EnumProps -> ReactElement
+    enumCap s cap =
+      H.div "border rounded p-2 m-2"
+      [ H.strong "" cap.name
+      , H.select_
+          "form-select"
+          -- not with Elmish? aria-label="Default select example"
+          { onChange: dispatch
+              <|  PublishDeviceMsg (setTopic s.name)
+              <<< (\s -> "{\""
+                     <> fromMaybe "CHECK_YOUR_PROPERTY" cap.property
+                     <> "\": \""
+                     <> s <> "\"}"
+                  )
+              <<< E.selectSelectedValue
+           }
+          $ cap.values <#> \v -> H.option_ "" { value: v } v
+      , H.p "" $ H.text $ fromMaybe "" cap.description
+      , H.p "" $ H.text $ listAccess cap.access
+      , genericCap cap ""
+      ]
 
     numericCap :: forall s. s -> CapabilityBase NumericProps -> ReactElement
     numericCap _s cap =
-      genericCap cap $
-           ", value_max: " <> show cap.valueMax
-        <> ", value_min: " <> show cap.valueMin
-        <> ", value_step: " <> show cap.valueStep
-        <> ", unit: " <> show cap.unit
+      H.div ""
+      [ H.label_
+        "form-label"
+        { htmlFor: "customRange2" } $
+        H.text cap.name
+
+      , H.input_
+        "form-range"
+        { type: "range"
+        , min: "0"
+        , max: "100"
+        , id: "customRange2"
+        }
+      ]
 
     compositeCap :: forall s. s -> CapabilityBase CompositeProps -> ReactElement
     compositeCap _s cap =

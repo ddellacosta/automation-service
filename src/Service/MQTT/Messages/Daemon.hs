@@ -33,7 +33,6 @@ import Service.Automation (ClientMsg)
 import Service.AutomationName (AutomationName, parseAutomationName)
 import Service.Device (Device, DeviceId)
 import Service.Group (Group, GroupId)
-import UnliftIO.STM (TChan)
 
 type AutomationSchedule = Text
 type JobId = Text
@@ -56,46 +55,13 @@ data Message where
   RegisterGroup :: GroupId -> AutomationName -> Message
   DeRegisterDevicesAndGroups :: AutomationName -> Message
   DeadAutoCleanup :: Message
-  Subscribe :: AutomationName -> Maybe Topic -> TChan Value -> Message
+  Subscribe :: AutomationName -> Maybe Topic -> Message
   Status :: Message
   Publish :: MQTTMessage -> Message
   Null :: Message
-  deriving (Generic, Eq)
+  deriving (Generic, Eq, Show)
 
 makePrisms ''Message
-
---
--- This is tedious but it's not a big deal compared to having to do
--- some other nonsense to independently pass the TChan Value around so
--- that I can automatically generate a Show and ToJSON instance for
--- Message. Anyways, Show instances are only used in logging.
---
--- Also see the comment for ToJSON below.
---
-instance Show Message where
-  show = \case
-    Start automationName -> "Start " <> show automationName
-    Stop automationName -> "Stop " <> show automationName
-    SendTo automationName msg ->
-      "SendTo " <> show automationName <> " " <> show msg
-    Schedule jobId schedule msg ->
-      "Schedule " <> " " <> show jobId <> " " <> show schedule <> " " <> show msg
-    Unschedule jobId -> "Unschedule " <> show jobId
-    -- todo: show truncated msg for these two
-    DeviceUpdate devices _msg -> "DeviceUpdate " <> show devices
-    GroupUpdate groups _msg -> "GroupUpdate " <> show groups
-    RegisterDevice deviceId automationName ->
-      "RegisterDevice " <> show deviceId <> " " <> show automationName
-    RegisterGroup groupId automationName ->
-      "RegisterGroup " <> show groupId <> " " <> show automationName
-    DeRegisterDevicesAndGroups automationName ->
-      "DeRegisterDevicesAndGroups " <> show automationName
-    DeadAutoCleanup -> "DeadAutoCleanup"
-    Subscribe automationName mTopic _automationListenerChannel ->
-      "Subscribe " <> show automationName <> " " <> show mTopic <> ", with listener channel"
-    Publish (MQTTMsg topic msg) -> "Publish to " <> show topic <> ": " <> show msg
-    Status -> "Status"
-    Null -> "Null"
 
 instance ToJSON Message where
   toJSON (Start autoName) = object [ "start" .= autoName ]
@@ -151,20 +117,23 @@ instance FromJSON Message where
     --
     (publishMsg :: Maybe Value) <- o .:? "publish"
     (topic :: Maybe Topic) <- o .:? "topic"
+    subscribe <- o .:? "subscribe"
     pure $
       fromMaybe Null $
-        case (startAutomation, stopAutomation, sendTo, jobId, schedule, unschedule, publishMsg, topic) of
-          (Just automationName, _, _, _, _, _, _, _) ->
+        case (startAutomation, stopAutomation, sendTo, jobId, schedule, unschedule, publishMsg, topic, subscribe) of
+          (Just automationName, _, _, _, _, _, _, _, _) ->
             Start <$> parseAutomationName automationName
-          (_, Just automationName, _, _, _, _, _, _) ->
+          (_, Just automationName, _, _, _, _, _, _, _) ->
             Stop <$> parseAutomationName automationName
-          (_, _, Just automationName, _, _, _, _, _) -> do
+          (_, _, Just automationName, _, _, _, _, _, _) -> do
             sendToAutomation <- parseAutomationName automationName
             SendTo sendToAutomation <$> msg
-          (_, _, _, Just (Aeson.String jobId'), Just (Aeson.String schedule'),  _, _, _) ->
+          (_, _, _, Just (Aeson.String jobId'), Just (Aeson.String schedule'),  _, _, _, _) ->
             Schedule jobId' schedule' <$> job
-          (_, _, _, _, _, Just (Aeson.String jobId'), _, _) ->
+          (_, _, _, _, _, Just (Aeson.String jobId'), _, _, _) ->
             Just (Unschedule jobId')
-          (_, _, _, _, _, _, Just publishMsg', Just topic') ->
+          (_, _, _, _, _, _, Just publishMsg', Just topic', _) ->
             Just (Publish (MQTTMsg topic' publishMsg'))
+          (_, _, _, _, _, _, _, _, Just automationName) ->
+            (\an -> Subscribe an topic) <$> parseAutomationName automationName
           _ -> Nothing

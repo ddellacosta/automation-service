@@ -8,7 +8,6 @@ module Service.Env
   , Registrations
   , RestartConditions(..)
   , ScheduledJobs
-  , Subscriptions
   , ThreadMap
   , appCleanup
   , automationBroadcast
@@ -32,13 +31,12 @@ module Service.Env
   , restartConditions
   , scheduledJobs
   , startupMessages
-  , subscriptions
   )
 where
 
 import Control.Lens (makeFieldsNoPrefix, (^.))
 import Control.Lens.Unsound (lensProduct)
-import Data.Aeson (Value, decode)
+import Data.Aeson (decode)
 import Data.ByteString.Lazy (ByteString)
 import Data.Foldable (foldl', for_)
 import Data.HashMap.Strict (HashMap)
@@ -83,8 +81,6 @@ invertRegistrations = M.foldlWithKey'
 type MsgAction = ByteString -> IO ()
 type MQTTDispatch = HashMap Topic (NonEmpty MsgAction)
 
-type Subscriptions = HashMap AutomationName (NonEmpty (TChan Value))
-
 type ScheduledJobs =
   HashMap Daemon.JobId (Daemon.AutomationSchedule, Daemon.Message, ThreadId)
 
@@ -110,7 +106,6 @@ data Env logger mqttClient = Env
   , _deviceRegistrations :: TVar (Registrations DeviceId)
   , _groups              :: TVar (HashMap GroupId Group)
   , _groupRegistrations  :: TVar (Registrations GroupId)
-  , _subscriptions       :: TVar Subscriptions
   , _scheduledJobs       :: TVar ScheduledJobs
   , _restartConditions   :: TVar RestartConditions
   , _startupMessages     :: TVar [Daemon.Message]
@@ -148,7 +143,6 @@ initialize configFilePath mkLogger mkMQTTClient = do
     <*> (newTVarIO M.empty) -- deviceRegistrations
     <*> (newTVarIO M.empty) -- groups
     <*> (newTVarIO M.empty) -- groupRegistrations
-    <*> (newTVarIO M.empty) -- subscriptions
     <*> (newTVarIO M.empty) -- scheduledJobs
     <*> (newTVarIO $ RestartConditions False False True)
     <*> (newTVarIO [])      -- startupMessages

@@ -11,7 +11,7 @@ let LogLevel = ../config/LogLevel.dhall
 
 in    { mqttBroker =
         { uri = "mqtt://localhost:1883"
-        , automationServiceTopic = "automation-service/set"
+        , automationServiceTopic = "automation-service"
         , statusTopic = "automation-service/status"
         , caCertPath = None Text
         , clientCertPath = None Text
