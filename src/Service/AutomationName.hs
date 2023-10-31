@@ -15,6 +15,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Numeric.Natural (Natural)
+import Safe (headMay)
 import qualified Text.ParserCombinators.ReadP as RP
 import Text.Read (readMaybe)
 
@@ -48,13 +49,7 @@ parseAutomationName = \case
   "Gold" -> Just Gold
   "Null" -> Just Null
   httpOrLuaScript ->
-    let
-      parsed = RP.readP_to_S (parseHTTP <|> parseLuaScript) httpOrLuaScript
-    in
-      if null parsed then
-        Nothing
-      else
-        fst . head $ parsed
+    headMay (RP.readP_to_S (parseHTTP <|> parseLuaScript) httpOrLuaScript) >>= fst
 
 parseAutomationNameText :: Text -> Maybe AutomationName
 parseAutomationNameText = parseAutomationName . T.unpack
