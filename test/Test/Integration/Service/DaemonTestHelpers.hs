@@ -39,7 +39,7 @@ newtype TestMQTTClient = TestMQTTClient (TVar (HashMap Topic ByteString))
 newtype TestLogger = TestLogger (TVar [Text])
 
 instance MQTTClient TestMQTTClient where
-  publishMQTT (TestMQTTClient mc) topic msg = do
+  publishMQTT (TestMQTTClient mc) topic msg =
     atomically $ modifyTVar' mc $ \mqttMsgs ->
       M.insert topic msg mqttMsgs
   subscribeMQTT (TestMQTTClient _mc) _topic = pure ()
