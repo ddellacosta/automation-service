@@ -155,10 +155,11 @@ view { devices, selectedDeviceId } dispatch =
           -- not with Elmish? aria-label="Default select example"
           { onChange: dispatch
               <|  PublishDeviceMsg (setTopic s.name)
-              <<< (\s -> "{\""
+              <<< (\propVal -> "{\""
                      <> fromMaybe "CHECK_YOUR_PROPERTY" cap.property
                      <> "\": \""
-                     <> s <> "\"}"
+                     <> propVal
+                     <> "\"}"
                   )
               <<< E.selectSelectedValue
            }

@@ -70,8 +70,6 @@ update s = case _ of
       el <- liftEffect $ eventListener $ \evt -> do
         for_ (fromEvent evt) \msgEvt -> do
           let
-            -- is there a way to do this with Elmish.Foreign that I'm
-            -- missing?
             jsonStr = unsafeFromForeign $ data_ msgEvt
           debug jsonStr
           msgSink' $

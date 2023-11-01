@@ -8,10 +8,10 @@ module AutomationService.Device
   )
 where
 
-import Prelude (bind, pure, ($), (<#>))
+import Prelude (bind, pure, show, ($), (<#>), (<>), (<<<))
 
 import AutomationService.Capability (Capability, decodeCapability)
-import Data.Argonaut (Json, JsonDecodeError, decodeJson, parseJson, toArray)
+import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, parseJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Either (Either(..))
 import Data.Foldable (foldMap)
@@ -37,7 +37,10 @@ type Devices = Map DeviceId Device
 decodeDevices :: String -> Either JsonDecodeError (Array Device)
 decodeDevices jsonStr = do
   devicesBlob <- parseJson jsonStr
-  traverse decodeDevice $ fromMaybe [] $ toArray devicesBlob
+  case toArray devicesBlob of
+    Just ds -> traverse decodeDevice ds
+    Nothing ->
+      Left <<< TypeMismatch $ "Expected device array, got " <> show jsonStr
 
 --
 -- TODO: make this store failures on as granular a level as possible,

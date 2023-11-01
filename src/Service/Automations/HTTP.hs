@@ -7,7 +7,7 @@ import Control.Lens (view)
 import Control.Monad (forever)
 import Control.Monad.IO.Unlift (MonadUnliftIO (..), liftIO)
 import Control.Monad.Reader (MonadReader)
-import Data.Aeson (decode)
+import Data.Aeson (decode, encode)
 import Data.ByteString.Lazy (ByteString)
 import Data.Foldable (for_)
 import Data.Text (Text)
@@ -111,8 +111,8 @@ mkRunAutomation port broadcastChan = do
             msg <- atomically . readTChan $ broadcastChan
             logDebugMsg logger' $ "Received on broadcastChan: " <> (T.pack $ show msg)
             case msg of
-              Client (AutomationName.HTTP msgPort) (ValueMsg _v)
-                | msgPort == port -> pure ()
+              Client (AutomationName.HTTP msgPort) (ValueMsg v)
+                | msgPort == port -> WS.sendTextData conn $ encode v
                 | otherwise -> pure ()
               _ -> pure ()
         )
