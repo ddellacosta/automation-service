@@ -17,7 +17,7 @@ module AutomationService.Capability
   )
 where
 
-import Prelude (class Show, bind, const, pure, show, (<<<), ($), (<$>), (=<<), (>))
+import Prelude (class Eq, class Show, bind, const, pure, show, (<<<), ($), (<$>), (=<<), (>))
 
 import Control.Alternative ((<|>))
 import Data.Argonaut (Json, JsonDecodeError, decodeJson, toArray)
@@ -50,6 +50,7 @@ canGet a = 4 .&. a > 0
 data ValueOnOff = ValueOnOffBool Boolean | ValueOnOffString String
 
 derive instance Generic ValueOnOff _
+derive instance Eq ValueOnOff
 
 instance DecodeJson ValueOnOff where
   decodeJson :: Json -> Either JsonDecodeError ValueOnOff

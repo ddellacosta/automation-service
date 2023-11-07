@@ -12,7 +12,6 @@ import AutomationService.Message as Main
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
-import Effect.Console (debug, info, warn)
 import Elmish.Component (Command)
 import Web.Event.EventTarget as ET
 import Web.Event.EventTarget (EventListener)

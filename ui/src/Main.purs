@@ -3,11 +3,13 @@ module Main where
 import Prelude
 
 import AutomationService.Device (decodeDevices) as Devices
+import AutomationService.DeviceState (decodeDeviceState) as DeviceState
 import AutomationService.DeviceView (State, update, view) as Devices
 import AutomationService.DeviceViewMessage (Message(..)) as Devices
 import AutomationService.Helpers (allElements, maybeHtml)
 import AutomationService.Message (Message(..), Page(..), pageName, pageNameClass)
 import AutomationService.WebSocket (class WebSocket, addWSEventListener, connectToWS, sendString)
+import Data.Argonaut (parseJson)
 import Data.Bifunctor (bimap)
 import Data.Either (either)
 import Data.Map as M
@@ -16,7 +18,7 @@ import Data.Traversable (for_)
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
-import Effect.Console (debug, info, warn)
+import Effect.Console (debug)
 import Elmish (Dispatch, ReactElement, Transition, forks, forkVoid, (<|))
 import Elmish.Boot (defaultMain)
 import Elmish.Component (Command)
@@ -46,6 +48,7 @@ init connectToWS = do
     { currentPage: Home
     , devices:
       { devices: M.empty
+      , deviceStates: M.empty
       , selectedDeviceId: Nothing
       }
     , websocket: Nothing
@@ -71,12 +74,38 @@ update s = case _ of
         for_ (fromEvent evt) \msgEvt -> do
           let
             jsonStr = unsafeFromForeign $ data_ msgEvt
+            jsonBlob = parseJson jsonStr
+            devices = Devices.decodeDevices =<< jsonBlob
+            deviceState = DeviceState.decodeDeviceState =<< jsonBlob
+
           debug jsonStr
-          msgSink' $
-            either
-              (Devices.LoadDevicesFailed <<< show)
-              Devices.LoadDevices
-              (Devices.decodeDevices jsonStr)
+
+          --
+          -- Probably going to abstract this pattern away.
+          -- What I really want is something that lets me run a bunch
+          -- of Eithers and collect the Left values until I hit a
+          -- Right. That is, I want the short-circuiting behavior of
+          -- `<|>` with something that returns the accumulated state
+          -- of all Left values at the end. And the accumulated state
+          -- should tell me in order what it failed at and finally
+          -- what it succeeded with. Also I think I only want one
+          -- message for parsing failure that summarizes what failed,
+          -- and sends it to debug by default, and warns only if
+          -- nothing was parsed successfully.
+          --
+
+          msgSink' $ either
+            (\jsonDecodeError ->
+              Devices.LoadDeviceStateFailed <<< show $ jsonDecodeError)
+            (\deviceState' -> Devices.LoadDeviceState deviceState')
+            deviceState
+
+          msgSink' $ either
+            (\jsonDecodeError ->
+              Devices.LoadDevicesFailed <<< show $ jsonDecodeError)
+            (\devices' -> Devices.LoadDevices devices')
+            devices
+
       liftEffect $ addWSEventListener ws el
 
     pure $ s { websocket = Just ws }

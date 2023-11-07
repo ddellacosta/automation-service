@@ -27,7 +27,7 @@ import Service.AutomationName (Port)
 import Service.Env (Env, LogLevel (..), daemonBroadcast, devicesRawJSON, logger)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import UnliftIO.Async (concurrently_)
-import UnliftIO.STM (TChan, TVar, atomically, readTChan, readTVarIO, writeTChan)
+import UnliftIO.STM (TChan, TVar, atomically, dupTChan, readTChan, readTVarIO, writeTChan)
 import Web.Scotty (file, get, middleware, raw, scottyApp, setHeader)
 
 httpAutomation
@@ -94,6 +94,8 @@ mkRunAutomation port broadcastChan = do
       logDebugMsg logger' "(TODO) Sending Group data to client"
       -- WS.sendTextData conn =<< readTVarIO groups
 
+      broadcastChanCopy <- atomically . dupTChan $ broadcastChan
+
       WS.withPingThread conn 30 (pure ()) $ concurrently_
         -- Wait for Daemon.Message values coming back from the
         -- WebSocket connection.
@@ -108,7 +110,7 @@ mkRunAutomation port broadcastChan = do
         -- published to MQTT topics subscribed to by the client on the
         -- other end of the WebSocket connection.
         (forever $ do
-            msg <- atomically . readTChan $ broadcastChan
+            msg <- atomically . readTChan $ broadcastChanCopy
             logDebugMsg logger' $ "Received on broadcastChan: " <> (T.pack $ show msg)
             case msg of
               Client (AutomationName.HTTP msgPort) (ValueMsg v)

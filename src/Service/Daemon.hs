@@ -489,7 +489,7 @@ run' threadMapTV = do
       App.subscribe topic
 
       where
-        mkDefaultTopicMsgAction automationBroadcast' = \topicMsg ->
+        mkDefaultTopicMsgAction automationBroadcast' = \_topic topicMsg ->
           for_ (decode topicMsg) $
               atomically
             . writeTChan automationBroadcast'

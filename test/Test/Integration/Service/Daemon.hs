@@ -251,7 +251,7 @@ luaScriptSpecs = do
         threadDelay 80000
 
         dispatchActions <- M.lookup topic <$> readTVarIO mqttDispatch'
-        for_ (fromJust dispatchActions) ($ "{\"msg\": \"hey\"}")
+        for_ (fromJust dispatchActions) (\action -> action topic "{\"msg\": \"hey\"}")
 
         -- Probably the slowest part of the entire test suite. Would
         -- be good to find another way to test this. Also the lookup

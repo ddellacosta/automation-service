@@ -5,13 +5,16 @@ module AutomationService.Device
   , Devices
   , decodeDevice
   , decodeDevices
+  , deviceTopic
+  , getTopic
+  , setTopic
   )
 where
 
-import Prelude (bind, pure, show, ($), (<#>), (<>), (<<<))
+import Prelude (bind, pure, ($), (<#>), (<>), (<<<))
 
 import AutomationService.Capability (Capability, decodeCapability)
-import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, parseJson, toArray)
+import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, stringify, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Either (Either(..))
 import Data.Foldable (foldMap)
@@ -34,13 +37,12 @@ type Device =
 
 type Devices = Map DeviceId Device
 
-decodeDevices :: String -> Either JsonDecodeError (Array Device)
-decodeDevices jsonStr = do
-  devicesBlob <- parseJson jsonStr
-  case toArray devicesBlob of
+decodeDevices :: Json -> Either JsonDecodeError (Array Device)
+decodeDevices devicesJson = do
+  case toArray devicesJson of
     Just ds -> traverse decodeDevice ds
     Nothing ->
-      Left <<< TypeMismatch $ "Expected device array, got " <> show jsonStr
+      Left <<< TypeMismatch $ "Expected device array, got " <> stringify devicesJson
 
 --
 -- TODO: make this store failures on as granular a level as possible,
@@ -93,3 +95,12 @@ decodeDevice json = do
       features <- obj .: "features"
       featureType <- obj .: "type"
       pure $ { featureType, features: fromMaybe [] $ toArray features }
+
+deviceTopic :: String -> String
+deviceTopic name = "zigbee2mqtt/" <> name
+
+setTopic :: String -> String
+setTopic name = deviceTopic name <> "/set"
+
+getTopic :: String -> String
+getTopic name = deviceTopic name <> "/get"

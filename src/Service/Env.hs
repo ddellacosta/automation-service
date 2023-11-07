@@ -78,7 +78,7 @@ invertRegistrations = M.foldlWithKey'
   M.empty
 
 
-type MsgAction = ByteString -> IO ()
+type MsgAction = Topic -> ByteString -> IO ()
 type MQTTDispatch = HashMap Topic (NonEmpty MsgAction)
 
 type ScheduledJobs =
@@ -161,10 +161,10 @@ initialize configFilePath mkLogger mkMQTTClient = do
         setTopic = parseTopic . (<> "/set") . unTopic $ automationServiceTopic'
       in
         M.fromList
-          [ (setTopic, (\msg -> for_ (decode msg) $ write daemonBroadcast') :| [])
+          [ (setTopic, (\_topic msg -> for_ (decode msg) $ write daemonBroadcast') :| [])
 
           , (Zigbee2MQTT.devicesTopic,
-             (\msg ->
+             (\_topic msg ->
                 case decode msg of
                   Just [] -> pure ()
                   Nothing -> pure ()
@@ -174,7 +174,7 @@ initialize configFilePath mkLogger mkMQTTClient = do
             )
 
           , (Zigbee2MQTT.groupsTopic,
-             (\msg ->
+             (\_topic msg ->
                 case decode msg of
                   Just [] -> pure ()
                   Nothing -> pure ()
@@ -183,5 +183,5 @@ initialize configFilePath mkLogger mkMQTTClient = do
              ) :| []
             )
 
-          , (statusTopic', (const $ write daemonBroadcast' Daemon.Status) :| [])
+          , (statusTopic', (\_topic _msg -> write daemonBroadcast' Daemon.Status) :| [])
           ]
