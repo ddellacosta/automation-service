@@ -11,25 +11,38 @@ import Prelude
 import AutomationService.Capability (BinaryProps, Capability(..), CapabilityBase,
                                      CompositeProps, EnumProps, ListProps,
                                      NumericProps, canGet, canSet, isPublished)
-import AutomationService.Device (Capabilities, DeviceId, Devices, deviceTopic, getTopic, setTopic)
+import AutomationService.Device (Capabilities, Device, DeviceId, Devices, deviceTopic,
+                                 getTopic, setTopic)
 import AutomationService.DeviceState (DeviceState, DeviceStates)
 import AutomationService.DeviceViewMessage (Message(..))
 import AutomationService.Helpers (maybeHtml)
+import AutomationService.MQTT as MQTT
 import AutomationService.WebSocket (class WebSocket, sendString)
+import AutomationService.React.SketchColor (sketchColor)
 import Control.Alternative (guard)
 import Data.Argonaut (decodeJson, fromString)
+import Data.Argonaut.Core (stringify)
+import Data.Argonaut.Encode.Class (encodeJson)
 import Data.Array (catMaybes, sortBy)
 import Data.Foldable (foldMap, intercalate)
 import Data.Either (either)
+import Data.Int as Int
 import Data.List as L
 import Data.Map as M
 import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Number (round)
 import Data.Traversable (for_)
 import Effect.Class (liftEffect)
 import Effect.Console (debug)
-import Elmish (Transition, Dispatch, ReactElement, forkVoid, (<|))
+import Elmish (Transition, Dispatch, ReactElement, forkVoid, (<|), (<?|))
+import Elmish.HTML (css)
 import Elmish.HTML.Events as E
+import Elmish.HTML.Events (InputChangeEvent)
+import Elmish.HTML.Internal as I
 import Elmish.HTML.Styled as H
+import Foreign.Object as O
+
+import Effect.Uncurried (EffectFn1)
 
 type State =
   { devices :: Devices
@@ -52,15 +65,13 @@ update ws s = case _ of
       liftEffect $ for_ newDevices $ \d -> do
         let
           -- this needs to get passed in from parent state as config, or something
-          subscribeMsg =
-            "{\"subscribe\": \"HTTP 8080\", \"topic\": \"" <> deviceTopic d.name <> "\"}"
-          pingStateMsg =
-            "{\"publish\": {\"state\": \"\"}, \"topic\": \"" <> getTopic d.name <> "\"}"
-        debug $ "subscribing with: " <> subscribeMsg
-        debug $ "pinging to get initial state: " <> pingStateMsg
+          subscribeMsg = MQTT.subscribe (deviceTopic d.name) "HTTP 8080" 
+          pingStateMsg = MQTT.publish (getTopic d.name) (encodeJson $ MQTT.state "")
+        debug $ "subscribing with: " <> (stringify $ encodeJson subscribeMsg)
+        debug $ "pinging to get initial state: " <> (stringify $ encodeJson pingStateMsg)
         for_ ws $ \ws' -> do
-          sendString ws' subscribeMsg
-          sendString ws' pingStateMsg
+          sendString ws' <<< encodeJson $ subscribeMsg
+          sendString ws' <<< encodeJson $ pingStateMsg
     pure $ s { devices = foldMap (\d@{ id } -> M.singleton id d) newDevices }
 
   LoadDeviceState deviceState -> do
@@ -81,16 +92,19 @@ update ws s = case _ of
 
   PublishDeviceMsg topic msg -> do
     forkVoid $ liftEffect $ do
-      debug $ "publish msg '" <> msg <> "' to topic: " <> topic
+      debug $ "publish msg '" <> stringify msg <> "' to topic: " <> topic
       for_ ws $ \ws' ->
-        sendString ws' ("{\"publish\":" <> msg <> ", \"topic\": \"" <> topic <> "\"}")
+        sendString ws' <<< encodeJson <<< MQTT.publish topic $ msg
     pure s
-
 
 view :: State -> Dispatch Message -> ReactElement
 view { devices, deviceStates, selectedDeviceId } dispatch =
   H.div "container mx-auto mt-5 d-flex flex-column justify-content-between"
   [ H.h3 "" "Devices"
+
+  , H.div "d-flex flex-row justify-content-around align-items-start flex-wrap" $
+      devicesA <#> \d ->
+        listDeviceMini (M.lookup d.id deviceStates) d
 
   , H.select_
       "device-select"
@@ -99,7 +113,7 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
       -- This is converted to an Array first because there is no
       -- instance of Elmish.React.ReactChildren (List ReactElement)
       -- ...maybe there's a better way?
-      sortBy (\a b -> compare a.name b.name) (L.toUnfoldable $ M.values devices) <#> \d ->
+      sortBy (\a b -> compare a.name b.name) devicesA <#> \d ->
         H.option_ "" { value: d.id } d.name
 
   , maybeHtml (flip M.lookup devices =<< selectedDeviceId) $
@@ -108,6 +122,38 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
   ]
 
   where
+    devicesA :: Array Device
+    devicesA = L.toUnfoldable $ M.values devices
+
+    listDeviceMini
+      :: forall r
+       . Maybe DeviceState
+      -> { name :: String | r }
+      -> ReactElement
+    listDeviceMini mDeviceState { name } =
+      H.div_
+      "card m-2 p-1"
+      {} -- style: css { width: "200px", height: "100px" } }
+      [ H.div "card-body"
+        [ H.h5 "card-title" name
+        , H.i "bi-power" H.empty
+        , slider
+          { value: Int.toNumber $
+              fromMaybe 50 (_.brightness =<< mDeviceState)
+          , min: 0.0
+          , max: 100.0
+          , onChange: dispatch <?| \e ->
+               let
+                 newValue = E.inputText e
+               in
+                 mDeviceState >>= \ds -> Just
+                   <<< PublishDeviceMsg (setTopic ds.device.friendlyName)
+                   <<< encodeJson
+                   <<< MQTT.genericProp "brightness" $ newValue
+          }
+        ]
+      ]
+
     listDevice mDeviceState { id, name, category, model, manufacturer, capabilities } =
       H.div "card mt-2"
       [ H.div "card-body"
@@ -166,12 +212,9 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
                 (const false)
                 (\state' -> if cap.valueOn == state' then true else false)
                 (decodeJson $ fromString $ fromMaybe "" $ _.state =<< ds)
-          , onChange: dispatch
-              <|  PublishDeviceMsg (setTopic s.name)
-              <<< (\_t ->
-                    "{\"" <> fromMaybe "state" cap.property <> "\": \"TOGGLE\"}"
-                  )
-              <<< E.inputText
+                -- I should test cap.property, but probably in the guard? 
+          , onChange: dispatch <| \_e ->
+                PublishDeviceMsg (setTopic s.name) <<< encodeJson <<< MQTT.state $ "TOGGLE"
           }
         , H.label_
           "form-check-label"
@@ -194,12 +237,7 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
             -- how with Elmish? aria-label="Default select example"
             { onChange: dispatch
                 <|  PublishDeviceMsg (setTopic s.name)
-                <<< (\propVal -> "{\""
-                       <> fromMaybe "CHECK_YOUR_PROPERTY" cap.property
-                       <> "\": \""
-                       <> propVal
-                       <> "\"}"
-                    )
+                <<< MQTT.genericProp (fromMaybe "CHECK_YOUR_PROPERTY" cap.property)
                 <<< E.selectSelectedValue
              }
             $ cap.values <#> \v -> H.option_ "" { value: v } v
@@ -209,25 +247,50 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
         ]
 
     numericCap
-      :: forall s. Maybe DeviceState
-      -> s
+      :: forall r
+       . Maybe DeviceState
+      -> { id :: DeviceId | r }
       -> CapabilityBase NumericProps
       -> ReactElement
-    numericCap _ds _s cap =
-      H.div ""
-      [ H.label_
-        "form-label"
-        { htmlFor: "numeric-range" } $
-        H.text cap.name
+    numericCap ds s cap = case cap.property of
+      Just propName ->
+        let
+          idStr = "numericRange_" <> s.id
 
-      , H.input_
-        "form-range"
-        { type: "range"
-        , min: "0"
-        , max: "100"
-        , id: "numeric-range"
-        }
-      ]
+          getProp :: String -> DeviceState -> Maybe Int
+          getProp propName' ds' = case propName' of
+            "brightness" -> ds'.brightness
+            "color_temp" -> ds'.colorTemp
+            "color_temp_startup" -> ds'.colorTempStartup
+            _ -> Nothing
+
+        in
+          H.div ""
+          [ H.label_ "form-label" { htmlFor: idStr } $
+              H.text cap.name
+    
+          , H.input_
+            "form-range"
+            { type: "range"
+            , min: show $ fromMaybe 0 cap.valueMin
+            , max: show $ fromMaybe 255 cap.valueMax
+            , step: show $ fromMaybe 1 cap.valueStep
+            , value: show $ fromMaybe 100 (getProp propName =<< ds)
+            , id: idStr
+            , onChange: dispatch <?| \e ->
+                 let
+                   newValue = E.inputText e
+                 in
+                   ds >>= \ds' -> Just
+                     <<< PublishDeviceMsg (setTopic ds'.device.friendlyName)
+                     <<< encodeJson
+                     <<< MQTT.genericProp propName $ newValue
+            }
+  
+          , genericCap ds cap ""
+          ]
+
+      Nothing -> genericCap ds cap ""
 
     -- these two are...under-implemented for now
     compositeCap
@@ -235,8 +298,22 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
       -> s
       -> CapabilityBase CompositeProps
       -> ReactElement
-    compositeCap ds _s cap =
-      genericCap ds cap $ ", features: " <> show cap.features
+    compositeCap ds _s cap
+      | cap.property == Just "color" =
+        H.div ""
+        [ sketchColor
+          { onChange: dispatch <?| \color -> do
+                hex <- O.lookup "hex" color 
+                ds' <- ds
+                Just
+                  <<< PublishDeviceMsg (setTopic ds'.device.friendlyName)
+                  <<< encodeJson
+                  <<< MQTT.hexColor $ hex 
+          }
+        , genericCap ds cap $ ", features: " <> show cap.features
+        ]
+      | otherwise =
+        genericCap ds cap $ ", features: " <> show cap.features
 
     listCap
       :: forall s. Maybe DeviceState
@@ -270,3 +347,57 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
       , guard (canSet a) *> Just "set"
       , guard (canGet a) *> Just "get"
       ]
+
+
+slider
+  :: forall r
+   . { value :: Number
+     , min :: Number
+     , max :: Number
+     , onChange :: EffectFn1 InputChangeEvent Unit
+     | r
+     }
+  -> ReactElement
+slider s@{ onChange } =
+  H.div "slider"
+  [
+    H.input_
+    ""
+    { type: "range"
+    , value
+    , min
+    , max
+    , onChange
+    }
+    , H.svg_
+      ""
+      { width: "100%"
+      , height: "100%"
+      , viewBox: "0 0 1 1"
+      , preserveAspectRatio: "none"
+      } $ 
+      path_
+      ""
+      { d: "M 0.5 1L0.5 " <> show (1.0 - roundedProgress)
+      , stroke: "rgba(255,255,255,0.6)"
+      }
+  ]
+
+  where
+    min = show s.min
+    max = show s.max
+    value = show s.value
+
+    progress = (s.value - s.min) / (s.max - s.min)
+
+    roundedProgress = round(progress * 100.0) / 100.0
+
+type OptProps_path =
+  ( d :: String
+  , fill :: String
+  , stroke :: String
+  , strokeWidth :: Number
+  )
+
+path_ :: I.StyledTagNoContent_ OptProps_path
+path_ = I.styledTagNoContent_ "path"

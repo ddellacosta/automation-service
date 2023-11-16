@@ -138,6 +138,7 @@ type DeviceState =
   , color :: Maybe Color
   , colorMode :: Maybe String -- probably should be enum
   , colorTemp :: Maybe Int
+  , colorTempStartup :: Maybe Int
   , state :: Maybe String
   , gradient :: Maybe (Array String)
   , powerOnBehavior :: Maybe String -- should be enum?
@@ -168,6 +169,7 @@ decodeDeviceState deviceStateJson = do
   color <- for colorJson decodeColor
   colorMode <- obj .:? "color_mode"
   colorTemp <- obj .:? "color_temp"
+  colorTempStartup <- obj .:? "color_temp_startup"
   state <- obj .:? "state"
   gradient <- obj .:? "gradient"
   powerOnBehavior <- obj .:? "power_on_behavior"
@@ -187,6 +189,7 @@ decodeDeviceState deviceStateJson = do
     , color
     , colorMode
     , colorTemp
+    , colorTempStartup
     , state
     , gradient
     , powerOnBehavior

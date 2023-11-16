@@ -2,6 +2,7 @@ module Main where
 
 import Prelude
 
+import Data.Argonaut.Encode.Class (encodeJson)
 import AutomationService.Device (decodeDevices) as Devices
 import AutomationService.DeviceState (decodeDeviceState) as DeviceState
 import AutomationService.DeviceView (State, update, view) as Devices
@@ -45,7 +46,7 @@ init connectToWS = do
   forks connectToWS
 
   pure
-    { currentPage: Home
+    { currentPage: Devices
     , devices:
       { devices: M.empty
       , deviceStates: M.empty
@@ -115,11 +116,8 @@ update s = case _ of
   Publish -> do
     forkVoid $ do
       liftEffect $ debug $ "Message to publish: " <> (show s.publishMsg)
-      for_ s.websocket $ \ws -> liftEffect $ sendString ws s.publishMsg
+      for_ s.websocket $ \ws -> liftEffect $ sendString ws $ encodeJson s.publishMsg
     pure $ s { lastSentMsg = Just s.publishMsg }
-
-home :: forall s ws. s -> Dispatch (Message ws) -> ReactElement
-home _s _dispatch = H.div "" "Hey this is home"
 
 publishMQTT
   :: forall ws r. WebSocket ws
@@ -172,7 +170,6 @@ view state@{ currentPage } dispatch =
 
     page :: WebSocket ws => Page -> State ws -> ReactElement
     page pg s = case pg of
-      Home -> home s dispatch
       PublishMQTT -> publishMQTT s dispatch
       Devices -> Devices.view s.devices (dispatch <<< DeviceMsg)
 

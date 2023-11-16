@@ -19,9 +19,11 @@ package:
     - foreign
     - foreign-object
     - integers
+    - js-uri
     - lists
     - maybe
     - nullable
+    - numbers
     - ordered-collections
     - prelude
     - record

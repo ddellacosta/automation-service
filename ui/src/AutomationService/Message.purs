@@ -21,7 +21,7 @@ data Message ws
   | PublishMsgChanged String
   | Publish
 
-data Page = Home | Devices | PublishMQTT
+data Page = Devices | PublishMQTT
 
 derive instance Generic Page _
 
@@ -31,7 +31,6 @@ instance Show Page where
 pageName :: Page -> String
 pageName = case _ of
   Devices -> "Devices"
-  Home -> "Home"
   PublishMQTT -> "Publish MQTT"
 
 pageNameClass :: Page -> String

@@ -2,6 +2,7 @@ module Test.Main where
 
 import Prelude
 
+import Data.Argonaut.Core (stringify)
 import AutomationService.Message (Message(..))
 import AutomationService.WebSocket (class WebSocket)
 import Effect (Effect)
@@ -27,7 +28,7 @@ main = launchAff_ $ runSpec [consoleReporter] spec
 newtype TestWS = TestWS (Ref String)
 
 instance WebSocket TestWS where
-  sendString (TestWS wsStr) s = Ref.write s wsStr
+  sendString (TestWS wsStr) s = Ref.write (stringify s) wsStr
 
   -- don't really care what this does in test...yet
   addWSEventListener _ws _el = log "hey"
@@ -40,7 +41,7 @@ connectToWS wsState msgSink =
 
 spec :: Spec Unit
 spec = before setup $
-  describe "Home page" $
+  describe "Main app" $
     it "Can navigate to different pages" $ \wsState -> do
       let mqttMsg = "{\"start\": \"test\"}"
 
@@ -51,7 +52,7 @@ spec = before setup $
          } do
 
         find ("h2" `withTestId` "main-title") >> text
-          >>= shouldEqual "Home"
+          >>= shouldEqual "Devices"
 
         -- Devices
         find ("li" `withTestId` "nav-devices" <> " a") >> click

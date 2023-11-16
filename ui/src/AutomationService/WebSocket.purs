@@ -9,6 +9,7 @@ where
 import Prelude
 
 import AutomationService.Message as Main
+import Data.Argonaut.Core (Json, stringify)
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
@@ -20,11 +21,11 @@ import Web.Socket.WebSocket as WS
 import Web.Socket.WebSocket (create, toEventTarget)
 
 class WebSocket ws where
-  sendString :: ws -> String -> Effect Unit
+  sendString :: ws -> Json -> Effect Unit
   addWSEventListener :: ws -> EventListener -> Effect Unit
 
 instance WebSocket WS.WebSocket where
-  sendString ws s = WS.sendString ws s
+  sendString ws s = WS.sendString ws $ stringify s
 
   addWSEventListener ws eventListener =
     ET.addEventListener onMessage eventListener false (toEventTarget ws)

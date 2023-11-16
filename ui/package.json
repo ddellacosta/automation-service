@@ -15,7 +15,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@uiw/react-color-alpha": "^2.0.2",
     "@uiw/react-color-chrome": "^1.3.3",
+    "@uiw/react-color-sketch": "^2.0.2",
+    "@uiw/react-color-wheel": "^2.0.2",
+    "color-convert": "^2.0.1",
     "purescript-language-server": "^0.17.2",
     "purs-tidy": "^0.10.0",
     "react": "^17.0.2",
