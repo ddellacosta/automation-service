@@ -11,6 +11,7 @@ import Prelude
 import AutomationService.Capability (BinaryProps, Capability(..), CapabilityBase,
                                      CompositeProps, EnumProps, ListProps,
                                      NumericProps, canGet, canSet, isPublished)
+import AutomationService.Components.Slider (slider)
 import AutomationService.Device (Capabilities, Device, DeviceId, Devices, deviceTopic,
                                  getTopic, setTopic)
 import AutomationService.DeviceState (DeviceState, DeviceStates)
@@ -30,19 +31,14 @@ import Data.Int as Int
 import Data.List as L
 import Data.Map as M
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Number (round)
 import Data.Traversable (for_)
 import Effect.Class (liftEffect)
 import Effect.Console (debug)
 import Elmish (Transition, Dispatch, ReactElement, forkVoid, (<|), (<?|))
 import Elmish.HTML (css)
 import Elmish.HTML.Events as E
-import Elmish.HTML.Events (InputChangeEvent)
-import Elmish.HTML.Internal as I
 import Elmish.HTML.Styled as H
 import Foreign.Object as O
-
-import Effect.Uncurried (EffectFn1)
 
 type State =
   { devices :: Devices
@@ -347,57 +343,3 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
       , guard (canSet a) *> Just "set"
       , guard (canGet a) *> Just "get"
       ]
-
-
-slider
-  :: forall r
-   . { value :: Number
-     , min :: Number
-     , max :: Number
-     , onChange :: EffectFn1 InputChangeEvent Unit
-     | r
-     }
-  -> ReactElement
-slider s@{ onChange } =
-  H.div "slider"
-  [
-    H.input_
-    ""
-    { type: "range"
-    , value
-    , min
-    , max
-    , onChange
-    }
-    , H.svg_
-      ""
-      { width: "100%"
-      , height: "100%"
-      , viewBox: "0 0 1 1"
-      , preserveAspectRatio: "none"
-      } $ 
-      path_
-      ""
-      { d: "M 0.5 1L0.5 " <> show (1.0 - roundedProgress)
-      , stroke: "rgba(255,255,255,0.6)"
-      }
-  ]
-
-  where
-    min = show s.min
-    max = show s.max
-    value = show s.value
-
-    progress = (s.value - s.min) / (s.max - s.min)
-
-    roundedProgress = round(progress * 100.0) / 100.0
-
-type OptProps_path =
-  ( d :: String
-  , fill :: String
-  , stroke :: String
-  , strokeWidth :: Number
-  )
-
-path_ :: I.StyledTagNoContent_ OptProps_path
-path_ = I.styledTagNoContent_ "path"
