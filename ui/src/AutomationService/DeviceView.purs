@@ -10,13 +10,10 @@ where
 
 import Prelude
 
-import Debug (trace)
-
 import AutomationService.Capability (BinaryProps, Capability(..), CapabilityBase,
                                      CompositeProps, EnumProps, ListProps,
                                      NumericProps, ValueOnOff(..), canGet, canSet,
-                                     getBaseCapability, isPublished)
-import AutomationService.Components.Slider (slider)
+                                     isPublished)
 import AutomationService.Device (Capabilities, Device, DeviceId, Devices, deviceTopic,
                                  getTopic, setTopic)
 import AutomationService.DeviceState (DeviceState, DeviceStates)
@@ -26,25 +23,20 @@ import AutomationService.MQTT as MQTT
 import AutomationService.React.SketchColor (sketchColor)
 import AutomationService.WebSocket (class WebSocket, sendString)
 import Control.Alternative (guard)
-import Data.Argonaut (decodeJson, fromString)
 import Data.Argonaut.Core (stringify)
 import Data.Argonaut.Encode.Class (encodeJson)
-import Data.Array (catMaybes, filter, head, sortBy)
-import Data.DateTime.Instant (Instant(..))
-import Data.Either (either)
-import Data.Foldable (any, foldMap, foldr, intercalate, null)
-import Data.Int as Int
+import Data.Array (catMaybes, sortBy)
+import Data.DateTime.Instant (Instant)
+import Data.Foldable (foldMap, intercalate)
 import Data.List as L
 import Data.Map as M
 import Data.Map (Map)
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Traversable (for_)
 import Effect.Class (liftEffect)
-import Effect.Console (debug, info)
-import Effect.Ref as Ref
+import Effect.Console (debug)
 import Effect.Ref (Ref)
 import Elmish (Transition, Dispatch, ReactElement, forkVoid, (<|), (<?|))
-import Elmish.HTML (css)
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
 import Foreign.Object as O
@@ -86,11 +78,14 @@ update ws s = case _ of
           sendString ws' <<< encodeJson $ pingStateMsg
     pure $ s { devices = foldMap (\d@{ id } -> M.singleton id d) newDevices }
 
+  -- Currently unimplemented on the WS end
   LoadDeviceState deviceState -> do
     forkVoid $ liftEffect $ do
       debug $ "loaded DeviceState: " <> show deviceState
     pure $
-      s { deviceStates = M.insert deviceState.device.ieeeAddr deviceState s.deviceStates }
+      s { deviceStates =
+             M.insert deviceState.device.ieeeAddr deviceState s.deviceStates
+        }
 
   LoadDevicesFailed msg ->
     (forkVoid $ liftEffect $ debug $ "LoadDevicesFailed with msg: " <> msg) *> pure s
@@ -129,14 +124,7 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
       )
 
   , maybeHtml (flip M.lookup devices =<< selectedDeviceId) $
-      listDevice (flip M.lookup deviceStates =<< selectedDeviceId)
-
-  , H.fragment $
-      devicesA <#> \d -> flip (maybe H.empty) d.capabilities $ \caps ->
-        if isLighting caps then
-          listLightMini (M.lookup d.id deviceStates) d
-        else
-          H.empty
+    listDevice (flip M.lookup deviceStates =<< selectedDeviceId)
 
   ]
 
@@ -148,118 +136,6 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
     -- ...maybe there's a better way?
     devicesA :: Array Device
     devicesA = L.toUnfoldable $ M.values devices
-
-    isLighting :: Capabilities -> Boolean
-    isLighting = any (\c -> (_.featureType <<< getBaseCapability $ c) == Just "light")
-
-    getStateCap :: Capabilities -> Maybe (CapabilityBase BinaryProps)
-    getStateCap caps =
-      let
-        filterStateCap cap final = case cap of
-          BinaryCap cap' ->
-            if cap'.property == Just "state" then
-              Just cap'
-            else
-              final
-          _ -> final
-      in
-       foldr filterStateCap Nothing caps
-
-    getBrightnessCap :: Capabilities -> Maybe (CapabilityBase NumericProps)
-    getBrightnessCap caps =
-      let
-        filterBrightnessCap cap final = case cap of
-          NumericCap cap' ->
-            if cap'.property == Just "brightness" then
-              Just cap'
-            else
-              final
-          _ -> final
-      in
-       foldr filterBrightnessCap Nothing caps
-
-    listLightMini
-      :: forall r
-       . Maybe DeviceState
-      -> { name :: String, capabilities :: Maybe Capabilities | r }
-      -> ReactElement
-    listLightMini mDeviceState { name, capabilities } =
-      let
-        valueOn = fromMaybe (ValueOnOffString "ON") $
-          _.valueOn <$> (getStateCap =<< capabilities)
-
-        stateStatusClass = case (fromMaybe (ValueOnOffString "OFF") $ _.state =<< mDeviceState) of
-          currentState
-            | valueOn == currentState ->
-              "bg-success text-light fw-bold"  -- "power-button-on"
-          _ -> "bg-dark text-secondary text-opacity-75" -- "power-button-off"
-      in
-        H.div "w-100 border border-1 rounded rounded-2 m-2 p-1 d-flex flex-row justify-content-end"
-        [ H.div "" $ H.text name
-        , H.div_ ("rounded-3 m-2 p-0 fs-1 " <> stateStatusClass)
-          { onClick: dispatch <| \_e ->
-             PublishDeviceMsg (setTopic name) <<< encodeJson <<< MQTT.state $ "TOGGLE"
-          , role: "button" -- adds pointer behavior
-          }
-          $ H.i "px-2 bi-power" $ H.empty
-        ]
-
-
-    listDeviceMini
-      :: forall r
-       . Maybe DeviceState
-      -> { name :: String, capabilities :: Maybe Capabilities | r }
-      -> ReactElement
-    listDeviceMini mDeviceState { name, capabilities }
-      | (isLighting <$> capabilities) == Just true =
-        H.div_
-        "card m-2 p-1"
-        {}
-        let
-          setTopic' = setTopic name
-          valueOn = fromMaybe (ValueOnOffString "ON") $
-            _.valueOn <$> (getStateCap =<< capabilities)
-          stateStatusClass = case (fromMaybe (ValueOnOffString "OFF") $ _.state =<< mDeviceState) of
-            currentState
-              | valueOn == currentState -> "bg-success text-light fw-bold"  -- "power-button-on"
-            _ -> "bg-dark text-secondary text-opacity-75" -- "power-button-off"
-        in
-         [ H.div "card-body d-flex flex-row justify-content-start align-items-start"
-           [ H.div_ "p-2 m-2 me-4 d-flex flex-column justify-content-start align-items-center border border-info"
-             { style: css { width: "6rem" } }
-             -- on-off button
-             [ H.div_ ("rounded-3 m-2 p-2 fs-1 w-75 " <> stateStatusClass)
-               { onClick: dispatch <| \_e ->
-                  PublishDeviceMsg (setTopic name) <<< encodeJson <<< MQTT.state $ "TOGGLE"
-               , role: "button" -- adds pointer behavior
-               }
-               $ H.i "bi-power" $ H.empty
-             , H.span "badge bg-primary fs-7 w-100 text-wrap"
-               -- { style: css { overflowWrap: "normal" }}
-               name
-             ]
-             -- brightness slider
-           , H.div "slider-wrapper"
-               -- { style: css { touchAction: "pan-x" } }
-               $ slider
-                 { value: Int.toNumber $
-                     fromMaybe 50 (_.brightness =<< mDeviceState)
-                 , min: fromMaybe 0.0 $
-                     capabilities >>= getBrightnessCap >>= _.valueMin <#> Int.toNumber
-                 , max: fromMaybe 100.0 $
-                     capabilities >>= getBrightnessCap >>= _.valueMax <#> Int.toNumber
-                 , onChange: dispatch <?| \e ->
-                      let
-                        newValue = E.inputText e
-                      in Just
-                         <<< PublishDeviceMsg setTopic'
-                         <<< encodeJson
-                         <<< MQTT.genericProp "brightness" $ newValue
-                 }
-           ]
-         ]
-      | otherwise =
-          H.div "card m-2 p-1" $ H.div "card-body" $ H.text name
 
     listDevice mDeviceState { id, name, category, model, manufacturer, capabilities } =
       H.div "card mt-2"
