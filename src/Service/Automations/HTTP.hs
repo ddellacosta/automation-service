@@ -7,7 +7,7 @@ import Control.Lens (view)
 import Control.Monad (forever)
 import Control.Monad.IO.Unlift (MonadUnliftIO (..), liftIO)
 import Control.Monad.Reader (MonadReader)
-import Data.Aeson (decode)
+import Data.Aeson (decode, encode)
 import Data.ByteString.Lazy (ByteString)
 import Data.Foldable (for_)
 import Data.Text (Text)
@@ -21,12 +21,13 @@ import qualified Network.WebSockets as WS
 import Service.App (Logger (..), debug)
 import qualified Service.App.Logger as Logger
 import qualified Service.Automation as Automation
-import Service.Automation (Automation (..))
+import Service.Automation (Automation (..), ClientMsg (..), Message (..))
 import qualified Service.AutomationName as AutomationName
 import Service.AutomationName (Port)
 import Service.Env (Env, LogLevel (..), daemonBroadcast, devicesRawJSON, logger)
 import qualified Service.MQTT.Messages.Daemon as Daemon
-import UnliftIO.STM (TChan, TVar, atomically, readTChan, readTVarIO, writeTChan)
+import UnliftIO.Async (concurrently_)
+import UnliftIO.STM (TChan, TVar, atomically, dupTChan, readTChan, readTVarIO, writeTChan)
 import Web.Scotty (file, get, middleware, raw, scottyApp, setHeader)
 
 httpAutomation
@@ -93,13 +94,30 @@ mkRunAutomation port broadcastChan = do
       logDebugMsg logger' "(TODO) Sending Group data to client"
       -- WS.sendTextData conn =<< readTVarIO groups
 
-      -- set up process loop. For now just waits to receive msg
-      WS.withPingThread conn 30 (pure ()) $ forever $ do
-        received <- WS.receiveData conn
-        logDebugMsg logger' $ "Received " <> (T.pack $ show received)
-        for_ (decode received) $ atomically . writeTChan daemonBC
+      broadcastChanCopy <- atomically . dupTChan $ broadcastChan
 
-    send _conn _logger' = atomically . readTChan $ broadcastChan
+      WS.withPingThread conn 30 (pure ()) $ concurrently_
+        -- Wait for Daemon.Message values coming back from the
+        -- WebSocket connection.
+        (forever $ do
+            received <- WS.receiveData conn
+            logDebugMsg logger' $ "Received via WebSocket: " <> (T.pack $ show received)
+            for_ (decode received) $ atomically . writeTChan daemonBC
+        )
+        -- Coming from the other direction, wait for messages from the
+        -- broadcastChan that need to get passed to the WebSocket
+        -- connection. At the present time this means only messages
+        -- published to MQTT topics subscribed to by the client on the
+        -- other end of the WebSocket connection.
+        (forever $ do
+            msg <- atomically . readTChan $ broadcastChanCopy
+            logDebugMsg logger' $ "Received on broadcastChan: " <> (T.pack $ show msg)
+            case msg of
+              Client (AutomationName.HTTP msgPort) (ValueMsg v)
+                | msgPort == port -> WS.sendTextData conn $ encode v
+                | otherwise -> pure ()
+              _ -> pure ()
+        )
 
     logDebugMsg :: (Logger logger) => logger -> Text -> IO ()
     logDebugMsg logger' msg =

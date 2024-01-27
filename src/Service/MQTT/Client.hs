@@ -114,7 +114,7 @@ mqttClientCallback logLevelSet logger mqttDispatch =
         "Received message " <> T.pack (show msg) <> " to " <> T.pack (show topic)
     mqttDispatch' <- readTVarIO mqttDispatch
     case M.lookup topic mqttDispatch' of
-      Just msgAction -> mapM_ ($ msg) msgAction
+      Just msgActions -> mapM_ (\action -> action topic msg) msgActions
       Nothing -> do
         when (Warn >= logLevelSet) $
           App.log logger Warn $

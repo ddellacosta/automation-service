@@ -35,7 +35,7 @@ import Network.MQTT.Topic (mkTopic, unTopic)
 import qualified Service.App as App
 import Service.App (Logger (..), debug)
 import qualified Service.Automation as Automation
-import Service.Automation (Automation (..))
+import Service.Automation (Automation (..), ClientMsg (..), Message (..))
 import qualified Service.AutomationName as AutomationName
 import Service.Device (Device, DeviceId, toLuaDevice, topicSet)
 import Service.Env (Env, LogLevel (Debug), config, daemonBroadcast, devices, groups, logger,
@@ -48,8 +48,7 @@ import qualified Service.TimeHelpers as TH
 import System.Random (initStdGen, uniformR)
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.Exception (handle, throwIO)
-import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChan, readTChan, readTVar,
-                     readTVarIO, writeTChan)
+import UnliftIO.STM (TChan, TVar, atomically, readTChan, readTVar, readTVarIO, writeTChan)
 
 luaAutomation
   :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
@@ -68,21 +67,22 @@ mkCleanupAutomation
   :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => FilePath
   -> (TChan Automation.Message -> m ())
-mkCleanupAutomation filepath = \_broadcastChan -> do
+mkCleanupAutomation filepath = \broadcastChan -> do
   debug $ "Starting Cleanup: LuaScript " <> T.pack filepath
 
-  logger' <- view logger
-  mqttClient' <- view mqttClient
-  daemonBroadcast' <- view daemonBroadcast
-  devices' <- view devices
-  groups' <- view groups
+  (logger', mqttClient', daemonBroadcast', devices', groups') <- (,,,,)
+    <$> view logger
+    <*> view mqttClient
+    <*> view daemonBroadcast
+    <*> view devices
+    <*> view groups
 
   luaScriptPath' <- view $ config . luaScriptPath
   luaState <- liftIO Lua.newstate
 
   luaStatusString <- liftIO . Lua.unsafeRunWith luaState $ do
     Lua.openlibs -- load the default Lua packages
-    loadAPI filepath logger' mqttClient' daemonBroadcast' devices' groups'
+    loadAPI filepath logger' mqttClient' daemonBroadcast' broadcastChan devices' groups'
     loadScript luaScriptPath' filepath *> Lua.callTrace 0 0
     callWhenExists "cleanup"
 
@@ -109,7 +109,7 @@ mkRunAutomation
   :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
   => FilePath
   -> (TChan Automation.Message -> m ())
-mkRunAutomation filepath = \_broadcastChan -> do
+mkRunAutomation filepath = \broadcastChan -> do
   debug $ "Beginning run of LuaScript " <> T.pack filepath
 
   logger' <- view logger
@@ -130,7 +130,7 @@ mkRunAutomation filepath = \_broadcastChan -> do
   luaStatusString <- handle (\e -> pure . show $ (e :: Lua.Exception)) $
     liftIO . Lua.unsafeRunWith luaState $ do
       Lua.openlibs -- load the default Lua packages
-      loadAPI filepath logger' mqttClient' daemonBroadcast' devices' groups'
+      loadAPI filepath logger' mqttClient' daemonBroadcast' broadcastChan devices' groups'
       -- TODO this needs error handling
       loadScript luaScriptPath' filepath *> Lua.callTrace 0 0
 
@@ -176,10 +176,11 @@ loadAPI
   -> logger
   -> mqttClient
   -> TChan Daemon.Message
+  -> TChan Automation.Message
   -> TVar (HashMap DeviceId Device)
   -> TVar (HashMap GroupId Group)
   -> Lua.LuaE Lua.Exception ()
-loadAPI filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
+loadAPI filepath logger' mqttClient' daemonBroadcast' broadcastChan devices' groups' = do
   for_ functions $ \(fn, fnName) ->
     pushDocumentedFunction fn *> Lua.setglobal fnName
 
@@ -264,9 +265,6 @@ loadAPI filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
     logDebugMsg :: DocumentedFunction Lua.Exception
     logDebugMsg =
       defun "logDebugMsg"
-      -- I'll be honest with you, I have no idea what types any of
-      -- these combinators are, other than having a bunch of LuaE in
-      -- there
       ### liftIO . logDebugMsg' filepath logger'
       <#> parameter LM.peekText "string" "logString" "string to log"
       =#> []
@@ -380,24 +378,29 @@ loadAPI filepath logger' mqttClient' daemonBroadcast' devices' groups' = do
     subscribe =
       defun "subscribe"
       ### (\topic -> do
-              listenerChan' <- atomically $ do
-                automationBroadcastChan <- newBroadcastTChan
-                listenerChan <- dupTChan $ automationBroadcastChan
-                writeTChan daemonBroadcast' $
-                  Daemon.Subscribe thisAutoName (mkTopic topic) automationBroadcastChan
-                pure listenerChan
-              liftIO . mkListenerFn $ listenerChan'
+              atomically $ writeTChan daemonBroadcast' $
+                Daemon.Subscribe thisAutoName (mkTopic topic)
+              liftIO . mkListenerFn $ broadcastChan
           )
       <#> parameter LM.peekText "string" "topic" "topic to subscribe to"
       =#> functionResult pushDocumentedFunction "function" "fn"
 
-    mkListenerFn :: TChan Value -> IO (DocumentedFunction Lua.Exception)
+    mkListenerFn :: TChan Automation.Message -> IO (DocumentedFunction Lua.Exception)
     mkListenerFn listenerChan = do
       fnName' <- liftIO UUID.nextRandom
       let fnName = BS.pack . UUID.toString $ fnName'
       pure $
         defun (Lua.Name fnName)
-        ### (atomically . readTChan $ listenerChan)
+        ### (let
+                go = do
+                  msg <- atomically . readTChan $ listenerChan
+                  case msg of
+                    (Client autoName (ValueMsg v))
+                      | autoName == thisAutoName -> pure v
+                      | otherwise -> go
+                    _ -> go
+              in go
+            )
         =#> functionResult LA.pushViaJSON "msg" "incoming data from subscribed topic"
 
     timestampToCron :: DocumentedFunction Lua.Exception

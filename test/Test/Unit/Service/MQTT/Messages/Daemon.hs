@@ -10,8 +10,9 @@ import Control.Lens (_1, _2, _Just, (^?))
 import Data.Aeson (decode, object)
 import qualified Data.Aeson as Aeson
 import Data.Aeson.Lens (key)
+import Network.MQTT.Topic (mkTopic)
 import Service.Automation (ClientMsg (..), _ValueMsg)
-import Service.AutomationName (AutomationName (Gold, LuaScript))
+import Service.AutomationName (AutomationName (Gold, HTTP, LuaScript), Port (..))
 import Service.MQTT.Messages.Daemon (Message (..), _SendTo)
 import Test.Hspec (Spec, describe, it, shouldBe)
 
@@ -27,6 +28,7 @@ spec = describe "Automation message parsing" $ do
       `shouldBe`
       Just (Stop Gold)
 
+    -- SendTo
     let
       sendToGold :: Maybe Message
       sendToGold =
@@ -59,6 +61,7 @@ spec = describe "Automation message parsing" $ do
         )
       )
 
+    -- Schedule
     let
       (Just (Schedule jobId sched msg)) =
         decode "{\"job\": {\"start\": \"Gold\"}, \"jobId\": \"myJob\", \"schedule\": \"* * * * *\"}"
@@ -67,13 +70,17 @@ spec = describe "Automation message parsing" $ do
     sched `shouldBe` "* * * * *"
     msg `shouldBe` Start Gold
 
-
+   -- Unschedule
     let
       (Just (Unschedule jobId')) =
         decode "{\"unschedule\": \"myJob\"}"
 
     jobId' `shouldBe` "myJob"
 
+    -- Subscribe
+    decode "{\"subscribe\": \"HTTP 8080\", \"topic\": \"myTopic\"}"
+      `shouldBe`
+      Just (Subscribe (HTTP (Port 8080)) (mkTopic "myTopic"))
 
   it "returns a Null Automation message when given an unparseable message" $ do
     (decode "{\"what\": \"nope\"}" :: Maybe Message)

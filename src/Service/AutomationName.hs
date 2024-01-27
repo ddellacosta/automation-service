@@ -7,15 +7,17 @@ module Service.AutomationName
   )
 where
 
-import Control.Monad (guard)
+import Control.Applicative ((<|>))
 import Data.Aeson (FromJSON (..), ToJSON (..))
-import qualified Data.Char as Char
+import Data.Char (isDigit, isLower, isSpace)
 import Data.Hashable (Hashable (..))
-import Data.List (uncons)
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Numeric.Natural (Natural)
+import Safe (headMay)
+import qualified Text.ParserCombinators.ReadP as RP
+import Text.Read (readMaybe)
 
 newtype Port = Port Natural
   deriving (Generic, Eq, Ord, Show, Enum, Integral, Num, Real, Hashable, FromJSON)
@@ -46,11 +48,22 @@ parseAutomationName :: String -> Maybe AutomationName
 parseAutomationName = \case
   "Gold" -> Just Gold
   "Null" -> Just Null
-  maybeLuaScript -> do
-    let filepath = filter (/= '"') maybeLuaScript
-    (firstChar, _remainder) <- uncons filepath
-    guard (Char.isLower firstChar) *>
-      (pure . LuaScript $ filepath)
+  httpOrLuaScript ->
+    headMay (RP.readP_to_S (parseHTTP <|> parseLuaScript) httpOrLuaScript) >>= fst
 
 parseAutomationNameText :: Text -> Maybe AutomationName
 parseAutomationNameText = parseAutomationName . T.unpack
+
+parseHTTP :: RP.ReadP (Maybe AutomationName)
+parseHTTP = do
+  _http <- RP.string "HTTP"
+  _space <- RP.string " "
+  port <- RP.munch1 isDigit
+  pure $ HTTP . Port <$> (readMaybe port :: Maybe Natural)
+
+parseLuaScript :: RP.ReadP (Maybe AutomationName)
+parseLuaScript = do
+  firstIsLower <- RP.satisfy isLower
+  scriptName <-
+    (firstIsLower:) <$> RP.manyTill RP.get (RP.satisfy isSpace *> pure () <|> RP.eof)
+  pure $ Just (LuaScript scriptName)

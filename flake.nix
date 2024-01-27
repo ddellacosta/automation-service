@@ -27,6 +27,7 @@
               pkgs.purescript
               pkgs.nodejs_18
               pkgs.esbuild
+              pkgs.sass
               zlib
             ]);
           in

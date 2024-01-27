@@ -4,12 +4,14 @@ import Prelude
 
 import AutomationService.Message (Message(..))
 import AutomationService.WebSocket (class WebSocket)
+import Data.Argonaut.Core (stringify)
+import Data.Map as M
 import Effect (Effect)
 import Effect.Aff (Aff, launchAff_)
 import Effect.Class (liftEffect)
 import Effect.Console (log)
-import Effect.Ref as Ref
 import Effect.Ref (Ref)
+import Effect.Ref as Ref
 import Elmish.Component (Command)
 import Elmish.Test (find, prop, testComponent, text, (>>))
 import Elmish.Test.DomProps as P
@@ -27,10 +29,10 @@ main = launchAff_ $ runSpec [consoleReporter] spec
 newtype TestWS = TestWS (Ref String)
 
 instance WebSocket TestWS where
-  sendString (TestWS wsStr) s = Ref.write s wsStr
+  sendString (TestWS wsStr) s = Ref.write (stringify s) wsStr
 
   -- don't really care what this does in test...yet
-  initializeListeners _ws _msgSink = liftEffect $ log "hey"
+  addWSEventListener _ws _el = log "hey"
 
 connectToWS :: Ref String -> Command Aff (Message TestWS)
 connectToWS wsState msgSink =
@@ -40,18 +42,21 @@ connectToWS wsState msgSink =
 
 spec :: Spec Unit
 spec = before setup $
-  describe "Home page" $
+  describe "Main app" $
     it "Can navigate to different pages" $ \wsState -> do
       let mqttMsg = "{\"start\": \"test\"}"
 
+      newDsUpdateTimers <- liftEffect $ Ref.new M.empty
+
       testComponent
-         { init: Main.init (connectToWS wsState)
+         { init: Main.init newDsUpdateTimers $ connectToWS wsState
+
          , view: Main.view
          , update: Main.update
          } do
 
         find ("h2" `withTestId` "main-title") >> text
-          >>= shouldEqual "Home"
+          >>= shouldEqual "Devices"
 
         -- Devices
         find ("li" `withTestId` "nav-devices" <> " a") >> click

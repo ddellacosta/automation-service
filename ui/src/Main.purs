@@ -2,25 +2,36 @@ module Main where
 
 import Prelude
 
-import AutomationService.DeviceView as Devices
+import Data.Argonaut.Encode.Class (encodeJson)
+import AutomationService.Device (decodeDevices) as Devices
+import AutomationService.DeviceView (DeviceStateUpdateTimers, State, initState, update,
+                                     view)
+  as Devices
+import AutomationService.DeviceViewMessage (Message(..)) as Devices
 import AutomationService.Helpers (allElements, maybeHtml)
 import AutomationService.Message (Message(..), Page(..), pageName, pageNameClass)
-import AutomationService.WebSocket (class WebSocket, connectToWS, initializeListeners, sendString)
+import AutomationService.WebSocket (class WebSocket, addWSEventListener, connectToWS, sendString)
+import Data.Argonaut (parseJson)
 import Data.Bifunctor (bimap)
-import Data.Map as M
+import Data.Either (either)
 import Data.Maybe (Maybe(..))
+import Data.Map as M
 import Data.Traversable (for_)
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
-import Effect.Console (debug, info, warn)
+import Effect.Console (debug)
+import Effect.Ref as Ref
+import Effect.Ref (Ref)
 import Elmish (Dispatch, ReactElement, Transition, forks, forkVoid, (<|))
 import Elmish.Boot (defaultMain)
 import Elmish.Component (Command)
 import Elmish.HTML (_data)
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
-
+import Foreign (unsafeFromForeign)
+import Web.Event.EventTarget (eventListener)
+import Web.Socket.Event.MessageEvent (data_, fromEvent)
 
 type State ws =
   { currentPage :: Page
@@ -31,18 +42,16 @@ type State ws =
   }
 
 init
-  :: forall ws. WebSocket ws
+  :: forall ws
+   . Ref Devices.DeviceStateUpdateTimers
+  -> WebSocket ws
   => Command Aff (Message ws)
   -> Transition (Message ws) (State ws)
-init connectToWS = do
+init newDsUpdateTimers connectToWS = do
   forks connectToWS
-
   pure
-    { currentPage: Home
-    , devices:
-      { devices: M.empty
-      , selectedDeviceId: Nothing
-      }
+    { currentPage: Devices
+    , devices: Devices.initState newDsUpdateTimers
     , websocket: Nothing
     , publishMsg: "{}"
     , lastSentMsg: Nothing
@@ -57,10 +66,58 @@ update s = case _ of
   SetPage newPage -> pure $ s { currentPage = newPage }
 
   DeviceMsg deviceMsg ->
-    Devices.update s.devices deviceMsg # bimap DeviceMsg (s { devices = _ })
+    Devices.update s.websocket s.devices deviceMsg # bimap DeviceMsg (s { devices = _ })
 
   InitWS ws -> do
-    forks $ \ms -> initializeListeners ws (ms <<< DeviceMsg)
+    forks $ \msgSink -> do
+      let msgSink' = msgSink <<< DeviceMsg
+      el <- liftEffect $ eventListener $ \evt -> do
+        for_ (fromEvent evt) \msgEvt -> do
+          let
+            jsonStr = unsafeFromForeign $ data_ msgEvt
+            jsonBlob = parseJson jsonStr
+            devices = Devices.decodeDevices =<< jsonBlob
+
+            -- TODO ...see below re: state updates
+            -- deviceState = DeviceState.decodeDeviceState =<< jsonBlob
+
+          -- debug jsonStr
+
+          --
+          -- Probably going to abstract this pattern away.
+          -- What I really want is something that lets me run a bunch
+          -- of Eithers and collect the Left values until I hit a
+          -- Right. That is, I want the short-circuiting behavior of
+          -- `<|>` with something that returns the accumulated state
+          -- of all Left values at the end. And the accumulated state
+          -- should tell me in order what it failed at and finally
+          -- what it succeeded with. Also I think I only want one
+          -- message for parsing failure that summarizes what failed,
+          -- and sends it to debug by default, and warns only if
+          -- nothing was parsed successfully.
+          --
+
+          --
+          -- TODO figure out algorithm for updating device states
+          --  that doesn't slow everything to a halt but is
+          --  responsive enough to respond quickly to user feedback.
+          --
+          --
+          -- let
+          --   deviceStateMsg = either
+          --     (\jsonDecodeError ->
+          --       Devices.LoadDeviceStateFailed <<< show $ jsonDecodeError)
+          --     (\deviceState' -> Devices.LoadDeviceState deviceState')
+          --     deviceState
+
+          msgSink' $ either
+            (\jsonDecodeError ->
+              Devices.LoadDevicesFailed <<< show $ jsonDecodeError)
+            (\devices' -> Devices.LoadDevices devices')
+            devices
+
+      liftEffect $ addWSEventListener ws el
+
     pure $ s { websocket = Just ws }
 
   PublishMsgChanged msg -> pure $ s { publishMsg = msg }
@@ -68,11 +125,8 @@ update s = case _ of
   Publish -> do
     forkVoid $ do
       liftEffect $ debug $ "Message to publish: " <> (show s.publishMsg)
-      for_ s.websocket $ \ws -> liftEffect $ sendString ws s.publishMsg
+      for_ s.websocket $ \ws -> liftEffect $ sendString ws $ encodeJson s.publishMsg
     pure $ s { lastSentMsg = Just s.publishMsg }
-
-home :: forall s ws. s -> Dispatch (Message ws) -> ReactElement
-home _s _dispatch = H.div "" "Hey this is home"
 
 publishMQTT
   :: forall ws r. WebSocket ws
@@ -108,33 +162,38 @@ publishMQTT s dispatch =
 
 view :: forall ws. WebSocket ws => (State ws) -> Dispatch (Message ws) -> ReactElement
 view state@{ currentPage } dispatch =
-  H.div "container mx-auto mt-5 d-flex flex-column justify-content-between"
-  [ H.h2_ ("main-title " <> "main-title-" <> pageNameClass currentPage)
+  H.div "container mx-auto mt-2 d-flex flex-column justify-content-between"
+  [ H.ul "mb-2 list-group list-group-horizontal" $
+      H.fragment $ allElements <#> link
+
+  , H.h2_ ("main-title " <> "main-title-" <> pageNameClass currentPage)
     { _data: _data { "test-id": "main-title" }}
     $ pageName currentPage
-  , H.ul "" $ H.fragment $ allElements <#> link
+
   , page currentPage state
+
   ]
 
   where
     link :: Page -> ReactElement
-    link pg = H.li_ (pageNameClass pg <> " navlink")
+    link pg = H.li_ (pageNameClass pg <> " navlink list-group-item")
       { _data: _data { "test-id": "nav-" <> pageNameClass pg }
       } $
       H.a_ "" { href: "#", onClick: dispatch <| SetPage pg } $ pageName pg
 
     page :: WebSocket ws => Page -> State ws -> ReactElement
     page pg s = case pg of
-      Home -> home s dispatch
       PublishMQTT -> publishMQTT s dispatch
       Devices -> Devices.view s.devices (dispatch <<< DeviceMsg)
 
 main :: Effect Unit
-main = defaultMain
-  { def:
-      { init: init connectToWS
-      , view
-      , update
-      }
-  , elementId: "app"
-  }
+main = do
+  newDsUpdateTimers <- Ref.new M.empty
+  defaultMain
+    { def:
+        { init: init newDsUpdateTimers connectToWS
+        , view
+        , update
+        }
+    , elementId: "app"
+    }
