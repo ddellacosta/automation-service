@@ -19,9 +19,11 @@ package:
     - foreign
     - foreign-object
     - integers
+    - js-date
     - js-uri
     - lists
     - maybe
+    - now
     - nullable
     - numbers
     - ordered-collections

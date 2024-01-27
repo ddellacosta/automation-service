@@ -1,3 +1,25 @@
+$primary: #0802A3;
+$secondary: #FF7676;
+$success: #FF4B91;
+// $info:
+$warning: #FFCD4B;
+// $danger:
+// $light:
+// $dark:
+
+
+.power-button-on {
+  background: #004EFF;
+  color: #fff;
+}
+
+.power-button-off {
+  background: #ADD8E6;
+  color: #999;
+}
+
+// todo: make this a separate scss include?
+
 $width: 80px;
 $height: 280px;
 $border-radius: $width / 4;

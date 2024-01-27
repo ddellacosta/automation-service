@@ -2,15 +2,16 @@ module Test.Main where
 
 import Prelude
 
-import Data.Argonaut.Core (stringify)
 import AutomationService.Message (Message(..))
 import AutomationService.WebSocket (class WebSocket)
+import Data.Argonaut.Core (stringify)
+import Data.Map as M
 import Effect (Effect)
 import Effect.Aff (Aff, launchAff_)
 import Effect.Class (liftEffect)
 import Effect.Console (log)
-import Effect.Ref as Ref
 import Effect.Ref (Ref)
+import Effect.Ref as Ref
 import Elmish.Component (Command)
 import Elmish.Test (find, prop, testComponent, text, (>>))
 import Elmish.Test.DomProps as P
@@ -45,8 +46,11 @@ spec = before setup $
     it "Can navigate to different pages" $ \wsState -> do
       let mqttMsg = "{\"start\": \"test\"}"
 
+      newDsUpdateTimers <- liftEffect $ Ref.new M.empty
+
       testComponent
-         { init: Main.init (connectToWS wsState)
+         { init: Main.init newDsUpdateTimers $ connectToWS wsState
+
          , view: Main.view
          , update: Main.update
          } do

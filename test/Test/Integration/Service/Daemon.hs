@@ -418,7 +418,7 @@ threadMapSpecs = do
             gold1ThreadStatus `shouldBe` ThreadFinished
           Nothing -> expectationFailure "Couldn't find Gold instance 1 in threadMap"
 
-  -- flaky?
+  -- flaky? x2
   around initAndCleanup $ do
     it "removes entries from ThreadMap for automations when they are not shut down via message" $
       testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
@@ -655,7 +655,7 @@ stateStoreSpecs = do
 
 schedulerSpecs :: Spec
 schedulerSpecs = do
-  -- flaky?
+  -- flaky? x2
   around initAndCleanup $ do
     it "stores Schedule jobs when they come in, and removes then when Unscheduled" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do

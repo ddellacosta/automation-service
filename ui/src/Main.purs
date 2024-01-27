@@ -1,25 +1,36 @@
 module Main where
 
+import Debug (trace)
+
 import Prelude
 
 import Data.Argonaut.Encode.Class (encodeJson)
-import AutomationService.Device (decodeDevices) as Devices
+import AutomationService.Device (DeviceId, decodeDevices) as Devices
 import AutomationService.DeviceState (decodeDeviceState) as DeviceState
-import AutomationService.DeviceView (State, update, view) as Devices
+import AutomationService.DeviceView (DeviceStateUpdateTimers, State, initState, update,
+                                     view)
+  as Devices
 import AutomationService.DeviceViewMessage (Message(..)) as Devices
 import AutomationService.Helpers (allElements, maybeHtml)
 import AutomationService.Message (Message(..), Page(..), pageName, pageNameClass)
 import AutomationService.WebSocket (class WebSocket, addWSEventListener, connectToWS, sendString)
 import Data.Argonaut (parseJson)
 import Data.Bifunctor (bimap)
+import Data.DateTime.Instant as Instant
+import Data.DateTime.Instant (Instant, instant, unInstant)
 import Data.Either (either)
+import Data.Maybe (Maybe(..), fromMaybe, isNothing)
 import Data.Map as M
-import Data.Maybe (Maybe(..))
+import Data.Map (Map)
+import Data.Time.Duration as Duration
 import Data.Traversable (for_)
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
-import Effect.Console (debug)
+import Effect.Console (debug, info)
+import Effect.Now as Now
+import Effect.Ref as Ref
+import Effect.Ref (Ref)
 import Elmish (Dispatch, ReactElement, Transition, forks, forkVoid, (<|))
 import Elmish.Boot (defaultMain)
 import Elmish.Component (Command)
@@ -39,19 +50,16 @@ type State ws =
   }
 
 init
-  :: forall ws. WebSocket ws
+  :: forall ws
+   . Ref Devices.DeviceStateUpdateTimers
+  -> WebSocket ws
   => Command Aff (Message ws)
   -> Transition (Message ws) (State ws)
-init connectToWS = do
+init newDsUpdateTimers connectToWS = do
   forks connectToWS
-
   pure
     { currentPage: Devices
-    , devices:
-      { devices: M.empty
-      , deviceStates: M.empty
-      , selectedDeviceId: Nothing
-      }
+    , devices: Devices.initState newDsUpdateTimers
     , websocket: Nothing
     , publishMsg: "{}"
     , lastSentMsg: Nothing
@@ -79,7 +87,7 @@ update s = case _ of
             devices = Devices.decodeDevices =<< jsonBlob
             deviceState = DeviceState.decodeDeviceState =<< jsonBlob
 
-          debug jsonStr
+          -- debug jsonStr
 
           --
           -- Probably going to abstract this pattern away.
@@ -95,11 +103,57 @@ update s = case _ of
           -- nothing was parsed successfully.
           --
 
-          msgSink' $ either
-            (\jsonDecodeError ->
-              Devices.LoadDeviceStateFailed <<< show $ jsonDecodeError)
-            (\deviceState' -> Devices.LoadDeviceState deviceState')
-            deviceState
+          nowTs <- Now.now
+
+          let
+            deviceStateMsg = either
+              (\jsonDecodeError ->
+                Devices.LoadDeviceStateFailed <<< show $ jsonDecodeError)
+              (\deviceState' -> Devices.LoadDeviceState deviceState')
+              deviceState
+
+            timeoutMs = Duration.Milliseconds 150.0
+            epoch = bottom :: Instant
+
+            pastThrottleTimeout :: Duration.Milliseconds -> Instant -> Instant -> Boolean
+            pastThrottleTimeout timeout prev now = Instant.diff now prev > timeout
+
+            _ = trace ("epoch: " <> (show epoch)) (\_ -> "")
+
+            _ = trace ("nowTs: " <> (show nowTs)) (\_ -> "")
+
+            _ = trace ("nowTs + timeoutMs: " <> (show (instant $ unInstant nowTs <> timeoutMs))) (\_ -> "")
+
+            devicePreviousTs :: Devices.DeviceId -> Map Devices.DeviceId Instant -> Instant -> Instant
+            devicePreviousTs deviceId deviceStateUpdateTimers now =
+              fromMaybe (fromMaybe now (instant $ unInstant now <> timeoutMs <> timeoutMs)) $ M.lookup deviceId deviceStateUpdateTimers
+
+          dsUpdateTimers <- Ref.read s.devices.deviceStateUpdateTimers
+
+          -- holy shit this is ugly
+          case trace "WAT? " (\_ -> deviceStateMsg) of
+            Devices.LoadDeviceState ds ->
+              let
+                previousTs = devicePreviousTs ds.device.ieeeAddr dsUpdateTimers nowTs
+              in do
+               when (isNothing $ M.lookup ds.device.ieeeAddr dsUpdateTimers) $
+                 Ref.write
+                   (M.insert ds.device.ieeeAddr nowTs dsUpdateTimers)
+                   s.devices.deviceStateUpdateTimers
+
+               when (pastThrottleTimeout timeoutMs previousTs nowTs) $ do
+                 debug $ "sending LoadDeviceState msg for " <> ds.device.friendlyName
+                 -- info $ "wat " <> show dsUpdateTimers
+                 -- info $ "Timeout: " <> show timeoutMs
+                 -- info $ "Prev: " <> show previous'
+                 -- info $ "Now: " <> show nowTs
+                 -- info $ "Diff: " <> (show $ (Instant.diff nowTs previous' :: Duration.Milliseconds))
+                 Ref.write
+                   (M.insert ds.device.ieeeAddr nowTs dsUpdateTimers)
+                   s.devices.deviceStateUpdateTimers
+                 msgSink' $ Devices.LoadDeviceState ds
+
+            failed -> msgSink' failed
 
           msgSink' $ either
             (\jsonDecodeError ->
@@ -153,17 +207,21 @@ publishMQTT s dispatch =
 
 view :: forall ws. WebSocket ws => (State ws) -> Dispatch (Message ws) -> ReactElement
 view state@{ currentPage } dispatch =
-  H.div "container mx-auto mt-5 d-flex flex-column justify-content-between"
-  [ H.h2_ ("main-title " <> "main-title-" <> pageNameClass currentPage)
+  H.div "container mx-auto mt-2 d-flex flex-column justify-content-between"
+  [ H.ul "mb-2 list-group list-group-horizontal" $
+      H.fragment $ allElements <#> link
+
+  , H.h2_ ("main-title " <> "main-title-" <> pageNameClass currentPage)
     { _data: _data { "test-id": "main-title" }}
     $ pageName currentPage
-  , H.ul "" $ H.fragment $ allElements <#> link
+
   , page currentPage state
+
   ]
 
   where
     link :: Page -> ReactElement
-    link pg = H.li_ (pageNameClass pg <> " navlink")
+    link pg = H.li_ (pageNameClass pg <> " navlink list-group-item")
       { _data: _data { "test-id": "nav-" <> pageNameClass pg }
       } $
       H.a_ "" { href: "#", onClick: dispatch <| SetPage pg } $ pageName pg
@@ -174,11 +232,13 @@ view state@{ currentPage } dispatch =
       Devices -> Devices.view s.devices (dispatch <<< DeviceMsg)
 
 main :: Effect Unit
-main = defaultMain
-  { def:
-      { init: init connectToWS
-      , view
-      , update
-      }
-  , elementId: "app"
-  }
+main = do
+  newDsUpdateTimers <- Ref.new M.empty
+  defaultMain
+    { def:
+        { init: init newDsUpdateTimers connectToWS
+        , view
+        , update
+        }
+    , elementId: "app"
+    }

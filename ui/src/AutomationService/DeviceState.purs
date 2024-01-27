@@ -10,6 +10,7 @@ where
 
 import Prelude
 
+import AutomationService.Capability (ValueOnOff(..))
 import AutomationService.Device (DeviceId)
 import Control.Alternative ((<|>))
 import Data.Argonaut (Json, JsonDecodeError, decodeJson)
@@ -139,7 +140,7 @@ type DeviceState =
   , colorMode :: Maybe String -- probably should be enum
   , colorTemp :: Maybe Int
   , colorTempStartup :: Maybe Int
-  , state :: Maybe String
+  , state :: Maybe ValueOnOff
   , gradient :: Maybe (Array String)
   , powerOnBehavior :: Maybe String -- should be enum?
 

@@ -3,9 +3,9 @@ module AutomationService.DeviceViewMessage
  )
 where
 
-import Data.Argonaut.Core (Json)
 import AutomationService.Device (Device, DeviceId)
 import AutomationService.DeviceState (DeviceState)
+import Data.Argonaut.Core (Json)
 
 data Message
   = LoadDevices (Array Device)
@@ -13,4 +13,5 @@ data Message
   | LoadDeviceState DeviceState
   | LoadDeviceStateFailed String
   | DeviceSelected DeviceId
+  | NoDeviceSelected
   | PublishDeviceMsg String Json

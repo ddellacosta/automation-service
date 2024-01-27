@@ -12,12 +12,15 @@ module AutomationService.Capability
   , canGet
   , canSet
   , decodeCapability
+  , getBaseCapability
   , isPublished
   , serializeValueOnOff
   )
 where
 
-import Prelude (class Eq, class Show, bind, const, pure, show, (<<<), ($), (<$>), (=<<), (>))
+import Debug (trace)
+
+import Prelude (class Eq, class Show, bind, const, pure, show, (<<<), ($), (<$>), (=<<), (>), flip, (<>))
 
 import Control.Alternative ((<|>))
 import Data.Argonaut (Json, JsonDecodeError, decodeJson, toArray)
@@ -27,7 +30,7 @@ import Data.Argonaut.Decode.Decoders (decodeBoolean, decodeString)
 import Data.Int.Bits ((.&.))
 import Data.Either (Either, fromRight, either)
 import Data.Generic.Rep (class Generic)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), maybe)
 import Data.Show.Generic (genericShow)
 import Data.Traversable (sequence)
 import Record (delete, merge)
@@ -46,6 +49,8 @@ canSet a = 2 .&. a > 0
 -- this implies isPublished
 canGet :: Int -> Boolean
 canGet a = 4 .&. a > 0
+
+-- https://www.zigbee2mqtt.io/guide/usage/exposes.html#binary
 
 data ValueOnOff = ValueOnOffBool Boolean | ValueOnOffString String
 
@@ -169,6 +174,19 @@ derive instance Generic Capability _
 instance Show Capability where
   show = genericShow
 
+getBaseCapability :: Capability -> CapabilityBase ()
+getBaseCapability = case _ of
+  GenericCap r -> r
+  BinaryCap r -> getBaseCapability r
+  EnumCap  r -> getBaseCapability r
+  NumericCap r -> getBaseCapability r
+  CompositeCap r -> getBaseCapability r
+  ListCap r -> getBaseCapability r
+  where
+    getBaseCapability :: forall r. CapabilityBase r -> CapabilityBase ()
+    getBaseCapability { capType, featureType, name, description, label, property, access } =
+      { capType, featureType, name, description, label, property, access }
+
 
 decodeBaseCapability
   :: Maybe String -> Json -> Either JsonDecodeError (CapabilityBase ())
@@ -216,6 +234,9 @@ decodeCapability featureType capabilityJson = do
     fromRightCap
       :: forall r. (r -> Capability) -> Either JsonDecodeError r -> Capability
     fromRightCap = either (const $ GenericCap baseCap)
+    _ = flip (maybe "") baseCap.featureType $ \ft ->
+         let _ = trace ("baseCap.featureType: " <> ft) $ \_ -> ""
+         in ft
 
   case baseCap.capType, mItemType, toArray =<< mFeatures of
     "binary", _, _ -> pure $

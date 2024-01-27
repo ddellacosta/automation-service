@@ -32,5 +32,6 @@ instance WebSocket WS.WebSocket where
 
 connectToWS :: Command Aff (Main.Message WS.WebSocket)
 connectToWS msgSink = do
-  ws <- liftEffect $ create "ws://localhost:8080" []
+  -- hey this needs to be configurable
+  ws <- liftEffect $ create "ws://192.168.1.235:8080" []
   liftEffect $ msgSink (Main.InitWS ws)
