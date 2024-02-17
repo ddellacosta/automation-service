@@ -29,7 +29,8 @@ main = launchAff_ $ runSpec [consoleReporter] spec
 newtype TestWS = TestWS (Ref String)
 
 instance WebSocket TestWS where
-  sendString (TestWS wsStr) s = Ref.write (stringify s) wsStr
+  sendJson (TestWS wsStr) s = Ref.write (stringify s) wsStr
+  sendString (TestWS wsStr) s = Ref.write s wsStr
 
   -- don't really care what this does in test...yet
   addWSEventListener _ws _el = log "hey"

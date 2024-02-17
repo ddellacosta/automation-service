@@ -2,7 +2,6 @@ module Main where
 
 import Prelude
 
-import Data.Argonaut.Encode.Class (encodeJson)
 import AutomationService.Device (decodeDevices) as Devices
 import AutomationService.DeviceView (DeviceStateUpdateTimers, State, initState, update,
                                      view)
@@ -81,7 +80,24 @@ update s = case _ of
             -- TODO ...see below re: state updates
             -- deviceState = DeviceState.decodeDeviceState =<< jsonBlob
 
-          -- debug jsonStr
+          -- so it seems like we get a device state message as soon 
+          -- as we update the device, for every change. some things I 
+          -- want
+          -- * it should be easy enough to determine if we need to 
+          --   update simply by comparing the stored device state 
+          --   with the new device state. So, we'll need a place to 
+          --   store the device data, which we already have I think
+          -- * each device state should be easily comparable _somehow_ 
+          --   to the current device state. So, we need some sort of 
+          --   abstraction for comparing a device's state to the 
+          --   device type's state and effect any relevant change 
+          --   that is needed. I guess this is almost like an 
+          --   abstraction of the same simply json-diff check we'd do 
+          --   first (?)
+            
+            
+
+          debug jsonStr
 
           --
           -- Probably going to abstract this pattern away.
@@ -124,8 +140,8 @@ update s = case _ of
 
   Publish -> do
     forkVoid $ do
-      liftEffect $ debug $ "Message to publish: " <> (show s.publishMsg)
-      for_ s.websocket $ \ws -> liftEffect $ sendString ws $ encodeJson s.publishMsg
+      liftEffect $ debug $ "Message to publish: " <> s.publishMsg
+      for_ s.websocket $ \ws -> liftEffect $ sendString ws s.publishMsg
     pure $ s { lastSentMsg = Just s.publishMsg }
 
 publishMQTT

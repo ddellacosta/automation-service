@@ -8,8 +8,11 @@ module AutomationService.DeviceView
   )
 where
 
+import Debug (trace)
+
 import Prelude
 
+import Data.Argonaut (encodeJson, stringify)
 import AutomationService.Capability (BinaryProps, Capability(..), CapabilityBase,
                                      CompositeProps, EnumProps, ListProps,
                                      NumericProps, ValueOnOff(..), canGet, canSet,
@@ -21,7 +24,7 @@ import AutomationService.DeviceViewMessage (Message(..))
 import AutomationService.Helpers (maybeHtml)
 import AutomationService.MQTT as MQTT
 import AutomationService.React.SketchColor (sketchColor)
-import AutomationService.WebSocket (class WebSocket, sendString)
+import AutomationService.WebSocket (class WebSocket, sendJson, sendString)
 import Control.Alternative (guard)
 import Data.Argonaut.Core (stringify)
 import Data.Argonaut.Encode.Class (encodeJson)
@@ -58,7 +61,7 @@ initState dsUpdateTimers =
   , deviceStateUpdateTimers: dsUpdateTimers
   }
 
-init :: Ref DeviceStateUpdateTimers -> Transition Message State
+init :: forall a. Ref DeviceStateUpdateTimers -> Transition Message State
 init = pure <<< initState
 
 update :: forall ws. WebSocket ws => Maybe ws -> State -> Message -> Transition Message State
@@ -70,12 +73,12 @@ update ws s = case _ of
         let
           -- this needs to get passed in from parent state as config, or something
           subscribeMsg = MQTT.subscribe (deviceTopic d.name) "HTTP 8080" 
-          pingStateMsg = MQTT.publish (getTopic d.name) (encodeJson $ MQTT.state "")
+          pingStateMsg = MQTT.publish (getTopic d.name) $ MQTT.state ""
         debug $ "subscribing with: " <> (stringify $ encodeJson subscribeMsg)
         debug $ "pinging to get initial state: " <> (stringify $ encodeJson pingStateMsg)
         for_ ws $ \ws' -> do
-          sendString ws' <<< encodeJson $ subscribeMsg
-          sendString ws' <<< encodeJson $ pingStateMsg
+          sendJson ws' <<< encodeJson $ subscribeMsg
+          sendJson ws' <<< encodeJson $ pingStateMsg
     pure $ s { devices = foldMap (\d@{ id } -> M.singleton id d) newDevices }
 
   -- Currently unimplemented on the WS end
@@ -88,10 +91,12 @@ update ws s = case _ of
         }
 
   LoadDevicesFailed msg ->
-    (forkVoid $ liftEffect $ debug $ "LoadDevicesFailed with msg: " <> msg) *> pure s
+    -- (forkVoid $ liftEffect $ debug $ "LoadDevicesFailed with msg: " <> msg) *> pure s
+    pure s
 
   LoadDeviceStateFailed msg ->
-    (forkVoid $ liftEffect $ debug $ "LoadDeviceStateFailed with msg: " <> msg) *> pure s
+    -- (forkVoid $ liftEffect $ debug $ "LoadDeviceStateFailed with msg: " <> msg) *> pure s
+    pure s
 
   DeviceSelected deviceId -> do
     forkVoid $ liftEffect $ debug $ "device: " <> deviceId
@@ -101,14 +106,14 @@ update ws s = case _ of
     forkVoid $ liftEffect $ debug $ "unselecting any device"
     pure $ s { selectedDeviceId = Nothing }
 
-  PublishDeviceMsg topic msg -> do
+  PublishDeviceMsg msg -> do
     forkVoid $ liftEffect $ do
-      debug $ "Publishing msg '" <> stringify msg <> "' to topic: " <> topic
+      debug $ "Publishing with '" <> msg  -- <> "' to topic: " <> topic
       for_ ws $ \ws' ->
-        sendString ws' <<< encodeJson <<< MQTT.publish topic $ msg
+        sendString ws' msg 
     pure s
 
-view :: State -> Dispatch Message -> ReactElement
+view :: forall a. State -> Dispatch Message -> ReactElement
 view { devices, deviceStates, selectedDeviceId } dispatch =
   H.div "" -- "container mx-auto mt-5 d-flex flex-column justify-content-between"
   [ H.select_
@@ -198,7 +203,8 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
 
                 -- I should test cap.property, but probably in the guard? 
           , onChange: dispatch <| \_e ->
-                PublishDeviceMsg (setTopic s.name) <<< encodeJson <<< MQTT.state $ "TOGGLE"
+              PublishDeviceMsg $
+                MQTT.mkPublishMsg (setTopic s.name) $ MQTT.state "TOGGLE"
           }
         , H.label_
           "form-check-label"
@@ -220,8 +226,8 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
             "form-select"
             -- how with Elmish? aria-label="Default select example"
             { onChange: dispatch
-                <|  PublishDeviceMsg (setTopic s.name)
-                <<< MQTT.genericProp (fromMaybe "CHECK_YOUR_PROPERTY" cap.property)
+                <|  PublishDeviceMsg
+                <<< MQTT.mkGenericPublishMsg (setTopic s.name) (fromMaybe "CHECK_YOUR_PROPERTY" cap.property)
                 <<< E.selectSelectedValue
              }
             $ cap.values <#> \v -> H.option_ "" { value: v } v
@@ -265,10 +271,10 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
                  let
                    newValue = E.inputText e
                  in
-                   ds >>= \ds' -> Just
-                     <<< PublishDeviceMsg (setTopic ds'.device.friendlyName)
-                     <<< encodeJson
-                     <<< MQTT.genericProp propName $ newValue
+                   ds >>= \ds' ->
+                     Just $ PublishDeviceMsg $
+                       MQTT.mkGenericPublishMsg
+                         (setTopic ds'.device.friendlyName) propName newValue
             }
   
           , genericCap ds cap ""
@@ -289,10 +295,11 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
           { onChange: dispatch <?| \color -> do
                 hex <- O.lookup "hex" color 
                 ds' <- ds
-                Just
-                  <<< PublishDeviceMsg (setTopic ds'.device.friendlyName)
-                  <<< encodeJson
-                  <<< MQTT.hexColor $ hex 
+                let msg = PublishDeviceMsg 
+                          <<< MQTT.mkPublishMsg (setTopic ds'.device.friendlyName)
+                          <<< MQTT.hexColor $ hex 
+                    _ = trace ("heeey " <> show msg) $ \_ -> ""
+                Just msg
           }
         , genericCap ds cap $ ", features: " <> show cap.features
         ]
