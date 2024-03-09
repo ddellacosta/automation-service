@@ -6,6 +6,7 @@ import AutomationService.Device (decodeDevices) as Devices
 import AutomationService.DeviceView (DeviceStateUpdateTimers, State, initState, update,
                                      view)
   as Devices
+import AutomationService.DeviceState as DeviceState
 import AutomationService.DeviceViewMessage (Message(..)) as Devices
 import AutomationService.Helpers (allElements, maybeHtml)
 import AutomationService.Message (Message(..), Page(..), pageName, pageNameClass)
@@ -76,9 +77,24 @@ update s = case _ of
             jsonStr = unsafeFromForeign $ data_ msgEvt
             jsonBlob = parseJson jsonStr
             devices = Devices.decodeDevices =<< jsonBlob
+            deviceState = DeviceState.decodeDeviceState =<< jsonBlob
 
-            -- TODO ...see below re: state updates
-            -- deviceState = DeviceState.decodeDeviceState =<< jsonBlob
+          -- okay, one thing that is needed is a ux for when state hasn't
+          -- loaded yet
+
+          msgSink' $ either
+            (\jsonDecodeError ->
+              Devices.LoadDeviceStateFailed <<< show $ jsonDecodeError)
+            (\deviceState' -> Devices.LoadDeviceState deviceState')
+            deviceState
+
+          msgSink' $ either
+            (\jsonDecodeError ->
+              Devices.LoadDevicesFailed <<< show $ jsonDecodeError)
+            (\devices' -> Devices.LoadDevices devices')
+            devices
+
+          -- old comments, will revisit - 2024-02-29
 
           -- so it seems like we get a device state message as soon 
           -- as we update the device, for every change. some things I 
@@ -97,7 +113,7 @@ update s = case _ of
             
             
 
-          debug jsonStr
+          debug $ "This is getting called? " <> jsonStr
 
           --
           -- Probably going to abstract this pattern away.
@@ -119,18 +135,9 @@ update s = case _ of
           --  responsive enough to respond quickly to user feedback.
           --
           --
-          -- let
-          --   deviceStateMsg = either
-          --     (\jsonDecodeError ->
-          --       Devices.LoadDeviceStateFailed <<< show $ jsonDecodeError)
-          --     (\deviceState' -> Devices.LoadDeviceState deviceState')
-          --     deviceState
 
-          msgSink' $ either
-            (\jsonDecodeError ->
-              Devices.LoadDevicesFailed <<< show $ jsonDecodeError)
-            (\devices' -> Devices.LoadDevices devices')
-            devices
+            -- TODO ...see below re: state updates
+
 
       liftEffect $ addWSEventListener ws el
 

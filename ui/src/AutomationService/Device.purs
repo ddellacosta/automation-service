@@ -1,32 +1,40 @@
 module AutomationService.Device
   ( Capabilities
-  , Device
+  , CoverType(..)
+  , Device(..)
+  , DeviceDetails(..)
   , DeviceId
   , Devices
+  , LightType(..)
+  , Zigbee2MQTTDevice
   , decodeDevice
   , decodeDevices
   , deviceTopic
   , getTopic
+  , id
+  , name
   , setTopic
   )
 where
 
-import Prelude (bind, pure, ($), (<#>), (<>), (<<<))
+import Prelude (class Monoid, class Show, bind, pure, ($), (<#>), (<>), (<<<))
 
 import AutomationService.Capability (Capability, decodeCapability)
 import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, stringify, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Either (Either(..))
 import Data.Foldable (foldMap)
+import Data.Generic.Rep (class Generic)
 import Data.Map (Map)
 import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Show.Generic (genericShow)
 import Data.Traversable (for, sequence, traverse)
 
 type Capabilities = Array Capability
 
 type DeviceId = String
 
-type Device =
+type Zigbee2MQTTDevice =
   { id           :: DeviceId
   , name         :: String
   , category     :: String
@@ -34,6 +42,61 @@ type Device =
   , model        :: Maybe String
   , capabilities :: Maybe Capabilities
   }
+
+data DeviceDetails
+  = DeviceDetailsForZigbee Zigbee2MQTTDevice
+  | EmptyDetails
+  -- | DeviceDetailsForMatter MatterDevice
+
+derive instance Generic DeviceDetails _
+
+instance Show DeviceDetails where
+  show = genericShow
+
+data LightType
+  = OnOffLight
+  | DimmableLight
+  | ColorTemperatureLight
+  | ExtendedColorLight
+
+derive instance Generic LightType _
+
+instance Show LightType where
+  show = genericShow
+
+data CoverType
+  = WindowBlind
+
+derive instance Generic CoverType _
+
+instance Show CoverType where
+  show = genericShow
+
+data Device
+  = Light LightType DeviceDetails
+  | Cover CoverType DeviceDetails
+
+derive instance Generic Device _
+
+instance Show Device where
+  show = genericShow
+
+details :: Device -> DeviceDetails
+details = case _ of
+  Light _ d -> d
+  Cover _ d -> d
+  _ -> EmptyDetails
+
+name :: Device -> String
+name d = case details d of
+  (DeviceDetailsForZigbee d) -> d.name
+  _ -> "No name"
+
+id :: Device -> String
+id d = case details d of
+  (DeviceDetailsForZigbee d) -> d.id
+  _ -> "No name"
+
 
 type Devices = Map DeviceId Device
 
@@ -63,9 +126,16 @@ decodeDevice json = do
   -- definition == null. Also see
   -- https://www.zigbee2mqtt.io/guide/usage/mqtt_topics_and_messages.html#zigbee2mqtt-bridge-devices
   capabilities <- for definition decodeCapabilities
-  pure { id, name, category, manufacturer, model, capabilities }
+  let deviceDetails = { id, name, category, manufacturer, model, capabilities }
+  pure $ case isOnOffLight deviceDetails, isCover deviceDetails of
+    true, false -> Light OnOffLight $ DeviceDetailsForZigbee deviceDetails
+    false, true -> Cover WindowBlind $ DeviceDetailsForZigbee deviceDetails
+    _, _ -> Light OnOffLight $ DeviceDetailsForZigbee deviceDetails
 
   where
+    isOnOffLight deviceDetails = true
+    isCover deviceDetails = false
+
     decodeCapabilities :: Json -> Either JsonDecodeError Capabilities
     decodeCapabilities definition = do
       obj <- decodeJson definition

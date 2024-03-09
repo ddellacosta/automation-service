@@ -235,7 +235,7 @@ decodeCapability featureType capabilityJson = do
       :: forall r. (r -> Capability) -> Either JsonDecodeError r -> Capability
     fromRightCap = either (const $ GenericCap baseCap)
     _ = flip (maybe "") baseCap.featureType $ \ft ->
-         let _ = trace ("baseCap.featureType: " <> ft) $ \_ -> ""
+         let _ = trace ("baseCap.featureType: " <> ft <> ", baseCap.capType: " <> baseCap.capType <> ", baseCap.name: " <> baseCap.name) $ \_ -> ""
          in ft
 
   case baseCap.capType, mItemType, toArray =<< mFeatures of

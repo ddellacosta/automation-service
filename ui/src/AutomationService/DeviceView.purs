@@ -8,7 +8,7 @@ module AutomationService.DeviceView
   )
 where
 
-import Debug (trace)
+import Debug (trace, traceM)
 
 import Prelude
 
@@ -17,8 +17,9 @@ import AutomationService.Capability (BinaryProps, Capability(..), CapabilityBase
                                      CompositeProps, EnumProps, ListProps,
                                      NumericProps, ValueOnOff(..), canGet, canSet,
                                      isPublished)
-import AutomationService.Device (Capabilities, Device, DeviceId, Devices, deviceTopic,
-                                 getTopic, setTopic)
+import AutomationService.Device as Device
+import AutomationService.Device (Capabilities, Device(..), DeviceDetails(..), DeviceId,
+                                 Devices, deviceTopic, getTopic, setTopic)
 import AutomationService.DeviceState (DeviceState, DeviceStates)
 import AutomationService.DeviceViewMessage (Message(..))
 import AutomationService.Helpers (maybeHtml)
@@ -30,7 +31,7 @@ import Data.Argonaut.Core (stringify)
 import Data.Argonaut.Encode.Class (encodeJson)
 import Data.Array (catMaybes, sortBy)
 import Data.DateTime.Instant (Instant)
-import Data.Foldable (foldMap, intercalate)
+import Data.Foldable (foldr, intercalate)
 import Data.List as L
 import Data.Map as M
 import Data.Map (Map)
@@ -39,6 +40,7 @@ import Data.Traversable (for_)
 import Effect.Class (liftEffect)
 import Effect.Console (debug)
 import Effect.Ref (Ref)
+import Effect.Uncurried (mkEffectFn1)
 import Elmish (Transition, Dispatch, ReactElement, forkVoid, (<|), (<?|))
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
@@ -72,14 +74,20 @@ update ws s = case _ of
       liftEffect $ for_ newDevices $ \d -> do
         let
           -- this needs to get passed in from parent state as config, or something
-          subscribeMsg = MQTT.subscribe (deviceTopic d.name) "HTTP 8080" 
-          pingStateMsg = MQTT.publish (getTopic d.name) $ MQTT.state ""
+          subscribeMsg = MQTT.subscribe (deviceTopic (Device.name d)) "HTTP 8080"
+          pingStateMsg = MQTT.publish (getTopic (Device.name d)) $ MQTT.state ""
         debug $ "subscribing with: " <> (stringify $ encodeJson subscribeMsg)
         debug $ "pinging to get initial state: " <> (stringify $ encodeJson pingStateMsg)
         for_ ws $ \ws' -> do
           sendJson ws' <<< encodeJson $ subscribeMsg
           sendJson ws' <<< encodeJson $ pingStateMsg
-    pure $ s { devices = foldMap (\d@{ id } -> M.singleton id d) newDevices }
+    pure $
+      s { devices =
+             foldr
+               (\d ds -> M.insert (Device.id d) d ds)
+               M.empty
+               newDevices
+        }
 
   -- Currently unimplemented on the WS end
   LoadDeviceState deviceState -> do
@@ -124,8 +132,8 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
       } $
       [ H.option_ "" { value: "" } "No Device Selected" ]
       <>
-      (sortBy (\a b -> compare a.name b.name) devicesA <#> \d ->
-        H.option_ "" { value: d.id } d.name
+      (sortBy (\a b -> compare (Device.name a) (Device.name b)) devicesA <#> \d ->
+        H.option_ "" { value: Device.id d } $ Device.name d
       )
 
   , maybeHtml (flip M.lookup devices =<< selectedDeviceId) $
@@ -142,7 +150,19 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
     devicesA :: Array Device
     devicesA = L.toUnfoldable $ M.values devices
 
-    listDevice mDeviceState { id, name, category, model, manufacturer, capabilities } =
+    listDevice mDeviceState = case _ of
+      (Light _ (DeviceDetailsForZigbee deviceDetails)) ->
+        listDevice' mDeviceState deviceDetails
+      (Cover _ (DeviceDetailsForZigbee deviceDetails)) ->
+        listDevice' mDeviceState deviceDetails
+      _ ->
+        H.div "card mt-2"
+        [ H.div "card-body"
+          [ H.p "" "hey"
+          ]
+        ]
+
+    listDevice' mDeviceState { id, name, category, model, manufacturer, capabilities } =
       H.div "card mt-2"
       [ H.div "card-body"
         [ H.h4 "" name
@@ -254,6 +274,8 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
             "color_temp_startup" -> ds'.colorTempStartup
             _ -> Nothing
 
+          showMaybe alt = show <<< fromMaybe alt
+
         in
           H.div ""
           [ H.label_ "form-label" { htmlFor: idStr } $
@@ -262,10 +284,10 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
           , H.input_
             "form-range"
             { type: "range"
-            , min: show $ fromMaybe 0 cap.valueMin
-            , max: show $ fromMaybe 255 cap.valueMax
-            , step: show $ fromMaybe 1 cap.valueStep
-            , value: show $ fromMaybe 100 (getProp propName =<< ds)
+            , min: showMaybe 0 cap.valueMin
+            , max: showMaybe 255 cap.valueMax
+            , step: showMaybe 1 cap.valueStep
+            , value: showMaybe 100 (getProp propName =<< ds)
             , id: idStr
             , onChange: dispatch <?| \e ->
                  let
@@ -293,13 +315,9 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
         H.div ""
         [ sketchColor
           { onChange: dispatch <?| \color -> do
-                hex <- O.lookup "hex" color 
-                ds' <- ds
-                let msg = PublishDeviceMsg 
-                          <<< MQTT.mkPublishMsg (setTopic ds'.device.friendlyName)
-                          <<< MQTT.hexColor $ hex 
-                    _ = trace ("heeey " <> show msg) $ \_ -> ""
-                Just msg
+               hex <- O.lookup "hex" color
+               topic <- setTopic <<< _.device.friendlyName <$> ds
+               pure <<< PublishDeviceMsg $ MQTT.mkPublishMsg topic $ MQTT.hexColor hex
           }
         , genericCap ds cap $ ", features: " <> show cap.features
         ]
