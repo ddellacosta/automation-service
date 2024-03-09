@@ -34,7 +34,7 @@ instance WebSocket WS.WebSocket where
   addWSEventListener ws eventListener =
     ET.addEventListener onMessage eventListener false (toEventTarget ws)
 
-connectToWS :: forall a. Command Aff (Main.Message WS.WebSocket)
+connectToWS :: Command Aff (Main.Message WS.WebSocket)
 connectToWS msgSink = do
   -- hey this needs to be configurable
   ws <- liftEffect $ create "ws://192.168.1.235:8080" []

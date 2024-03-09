@@ -8,11 +8,8 @@ module AutomationService.DeviceView
   )
 where
 
-import Debug (trace, traceM)
-
 import Prelude
 
-import Data.Argonaut (encodeJson, stringify)
 import AutomationService.Capability (BinaryProps, Capability(..), CapabilityBase,
                                      CompositeProps, EnumProps, ListProps,
                                      NumericProps, ValueOnOff(..), canGet, canSet,
@@ -40,7 +37,6 @@ import Data.Traversable (for_)
 import Effect.Class (liftEffect)
 import Effect.Console (debug)
 import Effect.Ref (Ref)
-import Effect.Uncurried (mkEffectFn1)
 import Elmish (Transition, Dispatch, ReactElement, forkVoid, (<|), (<?|))
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
@@ -63,7 +59,7 @@ initState dsUpdateTimers =
   , deviceStateUpdateTimers: dsUpdateTimers
   }
 
-init :: forall a. Ref DeviceStateUpdateTimers -> Transition Message State
+init :: Ref DeviceStateUpdateTimers -> Transition Message State
 init = pure <<< initState
 
 update :: forall ws. WebSocket ws => Maybe ws -> State -> Message -> Transition Message State
@@ -98,11 +94,11 @@ update ws s = case _ of
              M.insert deviceState.device.ieeeAddr deviceState s.deviceStates
         }
 
-  LoadDevicesFailed msg ->
+  LoadDevicesFailed _msg ->
     -- (forkVoid $ liftEffect $ debug $ "LoadDevicesFailed with msg: " <> msg) *> pure s
     pure s
 
-  LoadDeviceStateFailed msg ->
+  LoadDeviceStateFailed _msg ->
     -- (forkVoid $ liftEffect $ debug $ "LoadDeviceStateFailed with msg: " <> msg) *> pure s
     pure s
 
@@ -121,7 +117,7 @@ update ws s = case _ of
         sendString ws' msg 
     pure s
 
-view :: forall a. State -> Dispatch Message -> ReactElement
+view :: State -> Dispatch Message -> ReactElement
 view { devices, deviceStates, selectedDeviceId } dispatch =
   H.div "" -- "container mx-auto mt-5 d-flex flex-column justify-content-between"
   [ H.select_

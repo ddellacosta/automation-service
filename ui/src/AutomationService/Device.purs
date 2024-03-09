@@ -17,7 +17,7 @@ module AutomationService.Device
   )
 where
 
-import Prelude (class Monoid, class Show, bind, pure, ($), (<#>), (<>), (<<<))
+import Prelude (class Show, bind, pure, ($), (<#>), (<>), (<<<))
 
 import AutomationService.Capability (Capability, decodeCapability)
 import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, stringify, toArray)
@@ -76,6 +76,8 @@ data Device
   = Light LightType DeviceDetails
   | Cover CoverType DeviceDetails
 
+type Devices = Map DeviceId Device
+
 derive instance Generic Device _
 
 instance Show Device where
@@ -85,20 +87,17 @@ details :: Device -> DeviceDetails
 details = case _ of
   Light _ d -> d
   Cover _ d -> d
-  _ -> EmptyDetails
+  -- _ -> EmptyDetails
 
 name :: Device -> String
 name d = case details d of
-  (DeviceDetailsForZigbee d) -> d.name
+  (DeviceDetailsForZigbee d') -> d'.name
   _ -> "No name"
 
 id :: Device -> String
 id d = case details d of
-  (DeviceDetailsForZigbee d) -> d.id
+  (DeviceDetailsForZigbee d') -> d'.id
   _ -> "No name"
-
-
-type Devices = Map DeviceId Device
 
 decodeDevices :: Json -> Either JsonDecodeError (Array Device)
 decodeDevices devicesJson = do
@@ -116,8 +115,8 @@ decodeDevices devicesJson = do
 decodeDevice :: Json -> Either JsonDecodeError Device
 decodeDevice json = do
   obj <- decodeJson json
-  id <- obj .: "ieee_address"
-  name <- obj .: "friendly_name"
+  id' <- obj .: "ieee_address"
+  name' <- obj .: "friendly_name"
   category <- obj .: "type"
   manufacturer <- obj .:? "manufacturer"
   model <- obj .:? "model_id"
@@ -126,15 +125,24 @@ decodeDevice json = do
   -- definition == null. Also see
   -- https://www.zigbee2mqtt.io/guide/usage/mqtt_topics_and_messages.html#zigbee2mqtt-bridge-devices
   capabilities <- for definition decodeCapabilities
-  let deviceDetails = { id, name, category, manufacturer, model, capabilities }
+  let
+    deviceDetails =
+      DeviceDetailsForZigbee
+      { id: id'
+      , name: name'
+      , category
+      , manufacturer
+      , model
+      , capabilities
+      }
   pure $ case isOnOffLight deviceDetails, isCover deviceDetails of
-    true, false -> Light OnOffLight $ DeviceDetailsForZigbee deviceDetails
-    false, true -> Cover WindowBlind $ DeviceDetailsForZigbee deviceDetails
-    _, _ -> Light OnOffLight $ DeviceDetailsForZigbee deviceDetails
+    true, false -> Light OnOffLight $ deviceDetails
+    false, true -> Cover WindowBlind $ deviceDetails
+    _, _ -> Light OnOffLight $ deviceDetails
 
   where
-    isOnOffLight deviceDetails = true
-    isCover deviceDetails = false
+    isOnOffLight _deviceDetails = true
+    isCover _deviceDetails = false
 
     decodeCapabilities :: Json -> Either JsonDecodeError Capabilities
     decodeCapabilities definition = do
@@ -167,10 +175,10 @@ decodeDevice json = do
       pure $ { featureType, features: fromMaybe [] $ toArray features }
 
 deviceTopic :: String -> String
-deviceTopic name = "zigbee2mqtt/" <> name
+deviceTopic name' = "zigbee2mqtt/" <> name'
 
 setTopic :: String -> String
-setTopic name = deviceTopic name <> "/set"
+setTopic name' = deviceTopic name' <> "/set"
 
 getTopic :: String -> String
-getTopic name = deviceTopic name <> "/get"
+getTopic name' = deviceTopic name' <> "/get"
