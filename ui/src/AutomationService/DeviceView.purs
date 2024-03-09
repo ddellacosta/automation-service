@@ -147,9 +147,9 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
     devicesA = L.toUnfoldable $ M.values devices
 
     listDevice mDeviceState = case _ of
-      (Light _ (DeviceDetailsForZigbee deviceDetails)) ->
+      (OnOffLight (DeviceDetailsForZigbee deviceDetails)) ->
         listDevice' mDeviceState deviceDetails
-      (Cover _ (DeviceDetailsForZigbee deviceDetails)) ->
+      (WindowCovering (DeviceDetailsForZigbee deviceDetails)) ->
         listDevice' mDeviceState deviceDetails
       _ ->
         H.div "card mt-2"

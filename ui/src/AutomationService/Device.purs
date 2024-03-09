@@ -1,11 +1,9 @@
 module AutomationService.Device
   ( Capabilities
-  , CoverType(..)
   , Device(..)
   , DeviceDetails(..)
   , DeviceId
   , Devices
-  , LightType(..)
   , Zigbee2MQTTDevice
   , decodeDevice
   , decodeDevices
@@ -53,28 +51,12 @@ derive instance Generic DeviceDetails _
 instance Show DeviceDetails where
   show = genericShow
 
-data LightType
-  = OnOffLight
-  | DimmableLight
-  | ColorTemperatureLight
-  | ExtendedColorLight
-
-derive instance Generic LightType _
-
-instance Show LightType where
-  show = genericShow
-
-data CoverType
-  = WindowBlind
-
-derive instance Generic CoverType _
-
-instance Show CoverType where
-  show = genericShow
-
 data Device
-  = Light LightType DeviceDetails
-  | Cover CoverType DeviceDetails
+  = OnOffLight DeviceDetails
+  | DimmableLight DeviceDetails
+  | ColorTemperatureLight DeviceDetails
+  | ExtendedColorLight DeviceDetails
+  | WindowCovering DeviceDetails
 
 type Devices = Map DeviceId Device
 
@@ -85,9 +67,9 @@ instance Show Device where
 
 details :: Device -> DeviceDetails
 details = case _ of
-  Light _ d -> d
-  Cover _ d -> d
-  -- _ -> EmptyDetails
+  OnOffLight d -> d
+  WindowCovering d -> d
+  _ -> EmptyDetails
 
 name :: Device -> String
 name d = case details d of
@@ -136,9 +118,9 @@ decodeDevice json = do
       , capabilities
       }
   pure $ case isOnOffLight deviceDetails, isCover deviceDetails of
-    true, false -> Light OnOffLight $ deviceDetails
-    false, true -> Cover WindowBlind $ deviceDetails
-    _, _ -> Light OnOffLight $ deviceDetails
+    true, false -> OnOffLight deviceDetails
+    false, true -> WindowCovering deviceDetails
+    _, _ -> OnOffLight deviceDetails
 
   where
     isOnOffLight _deviceDetails = true
