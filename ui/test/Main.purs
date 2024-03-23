@@ -1,5 +1,15 @@
 module Test.Main where
 
+import Debug (traceM)
+import Data.Generic.Rep (class Generic)
+import Data.Show.Generic (genericShow)
+import Data.Newtype (class Newtype, unwrap)
+import Data.Lens (Iso', Lens', view)
+import Data.Lens.Record as R
+import Data.Lens.Iso.Newtype (_Newtype)
+import Record (get)
+import Type.Proxy (Proxy(..))
+
 import Prelude
 
 import AutomationService.Message (Message(..))
@@ -19,12 +29,20 @@ import Elmish.Test.Events (change, click)
 import Main as Main
 import Test.Spec (Spec, before, describe, it)
 import Test.Spec.Assertions (shouldEqual)
-import Test.Spec.Reporter (consoleReporter)
-import Test.Spec.Runner (runSpec)
 
+type Norf =
+  { a :: String
+  , b :: Int
+  }
 
-main :: Effect Unit
-main = launchAff_ $ runSpec [consoleReporter] spec
+newtype Bean = Bean Norf
+
+derive instance Generic Bean _
+derive instance Newtype Bean _
+
+instance Show Bean where
+  show = genericShow
+
 
 newtype TestWS = TestWS (Ref String)
 
@@ -45,6 +63,15 @@ spec :: Spec Unit
 spec = before setup $
   describe "Main app" $
     it "Can navigate to different pages" $ \wsState -> do
+      let
+        bean = Bean { a: "hey", b: 2 }
+        _un :: Iso' Bean Norf
+        _un = _Newtype
+        _a = R.prop (Proxy :: Proxy "a")
+
+      traceM $ (_.a <<< unwrap) bean
+      traceM $ view (_un <<< _a) bean
+
       let mqttMsg = "{\"start\": \"test\"}"
 
       newDsUpdateTimers <- liftEffect $ Ref.new M.empty

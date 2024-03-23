@@ -42,7 +42,7 @@ package:
       - spec
       - web-dom
       - web-html
-    main: Test.Main
+    main: Test.Runner
 
 workspace:
   package_set:

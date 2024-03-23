@@ -174,6 +174,14 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
         ]
       ]
 
+    capHeader :: forall r. CapabilityBase r -> ReactElement -> ReactElement
+    capHeader { capType, name } capView =
+      H.div ""
+      [ H.div "" name
+      , H.div "" capType
+      , capView
+      ]
+
     listCapabilities
       :: Maybe DeviceState
       -> { id :: String
@@ -186,15 +194,15 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
       -> ReactElement
     listCapabilities ds s cs =
       H.div "" $
-      [ H.span "display-block" "capabilities: " ]
+      [ H.div "" "capabilities: " ]
       <>
       (cs <#> case _ of
-          BinaryCap cap -> binaryCap ds s cap
-          EnumCap cap -> enumCap ds s cap
-          NumericCap cap -> numericCap ds s cap
-          CompositeCap cap -> compositeCap ds s cap
-          ListCap cap -> listCap ds s cap
-          GenericCap cap -> genericCap ds cap ""
+          BinaryCap cap -> capHeader cap $ binaryCap ds s cap
+          EnumCap cap -> capHeader cap $ enumCap ds s cap
+          NumericCap cap -> capHeader cap $ numericCap ds s cap
+          CompositeCap cap -> capHeader cap $ compositeCap ds s cap
+          ListCap cap -> capHeader cap $ listCap ds s cap
+          GenericCap cap -> capHeader cap $ genericCap ds cap ""
       )
 
     binaryCap

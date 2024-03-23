@@ -181,6 +181,11 @@ publishMQTT s dispatch =
         [ H.div "text-info fst-italic text-opacity-50 mb-0" "Last sent:"
         , H.div "mt-0" msg
         ]
+
+  , H.div "mt-4 p-3 border border-info text-info bg-dark rounded"
+    [ H.h5 "" "Examples"
+    , H.code "" "{\"publish\": {\"start\": \"basementMirrorLight\"}, \"topic\": \"automation-service/set\"}" 
+    ]
   ]
 
 view :: forall ws. WebSocket ws => (State ws) -> Dispatch (Message ws) -> ReactElement
