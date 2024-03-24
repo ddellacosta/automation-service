@@ -4,7 +4,6 @@ module AutomationService.Exposes
   , CompositeProps
   , EnumProps
   , ListProps
-  , NullProps
   , NumericProps
   , SubProps(..)
   , ValueOnOff(..)
@@ -75,7 +74,11 @@ type BinaryProps =
   , valueToggle :: Maybe String
   } 
 
+type CompositeProps = Array Exposes
+
 type EnumProps = { values :: Array String }
+
+type ListProps = { itemType :: Exposes }
 
 type NumericProps =
   { valueMax  :: Maybe Int
@@ -84,14 +87,12 @@ type NumericProps =
   , unit      :: Maybe String
   }
 
-type NullProps = Record ()
-
 data SubProps
   = Binary BinaryProps
   | Composite CompositeProps
   | Enum EnumProps
   | List ListProps
-  | Null NullProps
+  | Null
   | Numeric NumericProps
 
 derive instance Generic SubProps _
@@ -115,39 +116,35 @@ type Exposes =
   , subProps    :: SubProps
   }
 
-type CompositeProps = Array Exposes
-
-type ListProps = { itemType :: Exposes }
-
 decodeBaseExposes
   :: Maybe String -> Json -> Either JsonDecodeError Exposes
-decodeBaseExposes featureType capabilityJson = do
-  obj <- decodeJson capabilityJson
+decodeBaseExposes featureType exposesJson = do
+  obj <- decodeJson exposesJson
   type' <- obj .: "type"
   name <- obj .: "name"
   description <- obj .:? "description"
   label <- obj .: "label"
   property <- obj .:? "property"
   access <- obj .: "access"
-  pure { type: type', featureType, name, description, label, property, access, subProps: Null {} }
+  pure { type: type', featureType, name, description, label, property, access, subProps: Null }
 
 decodeBinary :: Json -> Either JsonDecodeError BinaryProps
-decodeBinary capabilityJson = do
-  obj <- decodeJson capabilityJson
+decodeBinary exposesJson = do
+  obj <- decodeJson exposesJson
   valueOn <- obj .: "value_on"
   valueOff <- obj .: "value_off"
   valueToggle <- obj .:? "value_toggle"
   pure { valueOn, valueOff, valueToggle }
 
 decodeEnum :: Json -> Either JsonDecodeError EnumProps
-decodeEnum capabilityJson = do
-  obj <- decodeJson capabilityJson
+decodeEnum exposesJson = do
+  obj <- decodeJson exposesJson
   values <- obj .: "values"
   pure { values }
 
 decodeNumeric :: Json -> Either JsonDecodeError NumericProps
-decodeNumeric capabilityJson = do
-  obj <- decodeJson capabilityJson
+decodeNumeric exposesJson = do
+  obj <- decodeJson exposesJson
   valueMax <- obj .:? "value_max"
   valueMin <- obj .:? "value_min"
   valueStep <- obj .:? "value_step"
@@ -156,11 +153,20 @@ decodeNumeric capabilityJson = do
 
 decodeExposes :: Maybe String -> Array Json -> Either JsonDecodeError (Array Exposes)
 decodeExposes featureType exposesJson = do
+  --
+  -- This flattens out the features array into the same array that
+  -- individual 'exposes' entries are returned in. Zigbee2MQTT
+  -- distinguishes these as 'specific' (the former) vs. 'generic' (the
+  -- latter). However, I don't see much value in separating them like
+  -- this given how we'll be looking this data up.
+  --
+  -- https://www.zigbee2mqtt.io/guide/usage/exposes.html
+  --
   fold <$>
     --
     -- for
     --   :: Array exposesJson
-    --   -> (exposesJson -> Either JsonDecodeError (Array Exposes)
+    --   -> (exposesJson -> Either JsonDecodeError (Array Exposes))
     --   -> Either JsonDecodeError (Array (Array Exposes))
     --
     (for exposesJson $ \e -> do
@@ -197,4 +203,4 @@ decodeExposes featureType exposesJson = do
           traceM itemType
           listSubProps <- decodeExposes' Nothing itemType
           pure $ exposed { subProps = List { itemType: listSubProps } }
-        _, _, _ -> pure $ exposed { subProps = Null {} }
+        _, _, _ -> pure exposed -- subProps = Null - decodeBaseExposes

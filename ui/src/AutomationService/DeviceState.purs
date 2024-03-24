@@ -10,8 +10,8 @@ where
 
 import Prelude
 
-import AutomationService.Capability (ValueOnOff)
 import AutomationService.Device (DeviceId)
+import AutomationService.Exposes (ValueOnOff)
 import Control.Alternative ((<|>))
 import Data.Argonaut (Json, JsonDecodeError, decodeJson)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
