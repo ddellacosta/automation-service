@@ -165,7 +165,7 @@ decodeExposes featureType exposesJson = do
     --
     (for exposesJson $ \e -> do
         obj <- decodeJson e
-        features :: Maybe (Array Json) <- obj .:? "features"
+        features <- obj .:? "features"
         featureType' <- obj .:? "type"
         case features of
           Just features' -> for features' $ decodeExposes' featureType'
@@ -177,8 +177,8 @@ decodeExposes featureType exposesJson = do
     decodeExposes' featureType exposesJson = do
       obj <- decodeJson exposesJson
       exposed <- decodeBaseExposes featureType exposesJson
-      mFeatures :: Maybe (Array Json) <- obj .:? "features"
-      mItemType :: Maybe Json <- obj .:? "item_type"
+      mFeatures <- obj .:? "features"
+      mItemType <- obj .:? "item_type"
 
       case exposed.type, mFeatures, mItemType of
         "binary", _, _ -> do
