@@ -3,9 +3,12 @@ module AutomationService.DeviceViewMessage
  )
 where
 
+import Prelude (class Show)
+
 import AutomationService.Device (Device, DeviceId)
 import AutomationService.DeviceState (DeviceState)
-import Data.Argonaut.Core (Json)
+import Data.Generic.Rep (class Generic)
+import Data.Show.Generic (genericShow)
 
 data Message
   = LoadDevices (Array Device)
@@ -14,4 +17,9 @@ data Message
   | LoadDeviceStateFailed String
   | DeviceSelected DeviceId
   | NoDeviceSelected
-  | PublishDeviceMsg String Json
+  | PublishDeviceMsg String
+
+derive instance Generic Message _
+
+instance Show Message where
+  show = genericShow

@@ -2,11 +2,11 @@ module Main where
 
 import Prelude
 
-import Data.Argonaut.Encode.Class (encodeJson)
 import AutomationService.Device (decodeDevices) as Devices
 import AutomationService.DeviceView (DeviceStateUpdateTimers, State, initState, update,
                                      view)
   as Devices
+import AutomationService.DeviceState as DeviceState
 import AutomationService.DeviceViewMessage (Message(..)) as Devices
 import AutomationService.Helpers (allElements, maybeHtml)
 import AutomationService.Message (Message(..), Page(..), pageName, pageNameClass)
@@ -77,11 +77,43 @@ update s = case _ of
             jsonStr = unsafeFromForeign $ data_ msgEvt
             jsonBlob = parseJson jsonStr
             devices = Devices.decodeDevices =<< jsonBlob
+            deviceState = DeviceState.decodeDeviceState =<< jsonBlob
 
-            -- TODO ...see below re: state updates
-            -- deviceState = DeviceState.decodeDeviceState =<< jsonBlob
+          -- okay, one thing that is needed is a ux for when state hasn't
+          -- loaded yet
 
-          -- debug jsonStr
+          msgSink' $ either
+            (\jsonDecodeError ->
+              Devices.LoadDeviceStateFailed <<< show $ jsonDecodeError)
+            (\deviceState' -> Devices.LoadDeviceState deviceState')
+            deviceState
+
+          msgSink' $ either
+            (\jsonDecodeError ->
+              Devices.LoadDevicesFailed <<< show $ jsonDecodeError)
+            (\devices' -> Devices.LoadDevices devices')
+            devices
+
+          -- old comments, will revisit - 2024-02-29
+
+          -- so it seems like we get a device state message as soon 
+          -- as we update the device, for every change. some things I 
+          -- want
+          -- * it should be easy enough to determine if we need to 
+          --   update simply by comparing the stored device state 
+          --   with the new device state. So, we'll need a place to 
+          --   store the device data, which we already have I think
+          -- * each device state should be easily comparable _somehow_ 
+          --   to the current device state. So, we need some sort of 
+          --   abstraction for comparing a device's state to the 
+          --   device type's state and effect any relevant change 
+          --   that is needed. I guess this is almost like an 
+          --   abstraction of the same simply json-diff check we'd do 
+          --   first (?)
+            
+            
+
+          debug $ "This is getting called? " <> jsonStr
 
           --
           -- Probably going to abstract this pattern away.
@@ -103,18 +135,9 @@ update s = case _ of
           --  responsive enough to respond quickly to user feedback.
           --
           --
-          -- let
-          --   deviceStateMsg = either
-          --     (\jsonDecodeError ->
-          --       Devices.LoadDeviceStateFailed <<< show $ jsonDecodeError)
-          --     (\deviceState' -> Devices.LoadDeviceState deviceState')
-          --     deviceState
 
-          msgSink' $ either
-            (\jsonDecodeError ->
-              Devices.LoadDevicesFailed <<< show $ jsonDecodeError)
-            (\devices' -> Devices.LoadDevices devices')
-            devices
+            -- TODO ...see below re: state updates
+
 
       liftEffect $ addWSEventListener ws el
 
@@ -124,8 +147,8 @@ update s = case _ of
 
   Publish -> do
     forkVoid $ do
-      liftEffect $ debug $ "Message to publish: " <> (show s.publishMsg)
-      for_ s.websocket $ \ws -> liftEffect $ sendString ws $ encodeJson s.publishMsg
+      liftEffect $ debug $ "Message to publish: " <> s.publishMsg
+      for_ s.websocket $ \ws -> liftEffect $ sendString ws s.publishMsg
     pure $ s { lastSentMsg = Just s.publishMsg }
 
 publishMQTT
@@ -158,6 +181,11 @@ publishMQTT s dispatch =
         [ H.div "text-info fst-italic text-opacity-50 mb-0" "Last sent:"
         , H.div "mt-0" msg
         ]
+
+  , H.div "mt-4 p-3 border border-info text-info bg-dark rounded"
+    [ H.h5 "" "Examples"
+    , H.code "" "{\"publish\": {\"start\": \"basementMirrorLight\"}, \"topic\": \"automation-service/set\"}" 
+    ]
   ]
 
 view :: forall ws. WebSocket ws => (State ws) -> Dispatch (Message ws) -> ReactElement

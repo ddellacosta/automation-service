@@ -1,20 +1,18 @@
 module AutomationService.MQTT
  ( brightness
- , genericProp
  , hexColor
+ , mkGenericPublishMsg
+ , mkPublishMsg
  , publish
  , subscribe
  , state
  )
 where
 
-import Data.Argonaut.Core (Json, jsonNull)
-import Data.Argonaut.Encode.Class (encodeJson)
-import Data.Argonaut.Parser (jsonParser)
-import Data.Either (Either(..))
-import Prelude ((<>))
+import Data.Argonaut (class EncodeJson, encodeJson, stringify)
+import Prelude (($), (<<<), (<>))
 
--- JSON helpers for generating MQTT messages to send to devices
+-- helpers for generating MQTT messages to send to devices
 
 type SetState = { state :: String }
 
@@ -32,12 +30,12 @@ type Brightness = { brightness :: String }
 brightness :: String -> Brightness
 brightness = { brightness: _ }
 
-type PublishMsg =
+type PublishMsg a =
   { topic :: String
-  , publish :: Json
+  , publish :: a
   }
 
-publish :: String -> Json -> PublishMsg
+publish :: forall a. String -> a -> PublishMsg a
 publish topic msg = { topic, publish: msg }
 
 type SubscribeMsg =
@@ -49,11 +47,12 @@ subscribe :: String -> String -> SubscribeMsg
 subscribe topic autoName = { subscribe: autoName, topic }
 
 -- not sure how to do this better yet
-genericProp :: String -> String -> Json
-genericProp propName propVal = encodeJson parsed
-  where
-    jsonStr = "{\"" <> propName <> "\":\"" <> propVal <> "\"}"
+mkGenericPublishMsg :: String -> String -> String -> String
+mkGenericPublishMsg topic propName propVal =
+  "{\"topic\": \"" <> topic <>
+  "\", \"publish\": \"" <>
+  propName <> "\":\"" <>
+  propVal <> "\"}"
 
-    parsed = case jsonParser jsonStr of
-      Right parsed' -> parsed'
-      Left _fail -> jsonNull
+mkPublishMsg :: forall a. (EncodeJson a) => String -> a -> String
+mkPublishMsg topic msg = stringify <<< encodeJson $ publish topic msg
