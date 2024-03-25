@@ -15,10 +15,6 @@ module AutomationService.Exposes
   )
 where
 
-import Debug (trace, traceM)
-
-import Prelude (class Eq, class Show, bind, const, discard, pure, show, (<<<), ($), (<$>), (=<<), (>), flip, (<>))
-
 import Control.Alternative ((<|>))
 import Data.Argonaut (Json, JsonDecodeError, decodeJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
@@ -31,9 +27,9 @@ import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..), maybe)
 import Data.Show.Generic (genericShow)
 import Data.Traversable (for, sequence)
+import Prelude (class Eq, class Show, bind, const, discard, pure, show, (<<<), ($), (<$>), (=<<), (>), flip, (<>))
 import Record (delete, merge)
 import Type.Proxy (Proxy(..))
-
 
 --
 -- access https://www.zigbee2mqtt.io/guide/usage/exposes.html#access
@@ -78,7 +74,7 @@ type CompositeProps = Array Exposes
 
 type EnumProps = { values :: Array String }
 
-type ListProps = { itemType :: Exposes }
+type ListProps = Exposes
 
 type NumericProps =
   { valueMax  :: Maybe Int
@@ -197,10 +193,9 @@ decodeExposes featureType exposesJson = do
           numeric <- Numeric <$> decodeNumeric exposesJson
           pure $ exposed { subProps = numeric }
         "composite", Just features, _ -> do
-          composite <- for features $ decodeExposes' Nothing
-          pure $ exposed { subProps = Composite $ composite }
+          composite <- Composite <$> (for features $ decodeExposes' Nothing)
+          pure $ exposed { subProps = composite }
         "list", _, Just itemType -> do
-          traceM itemType
-          listSubProps <- decodeExposes' Nothing itemType
-          pure $ exposed { subProps = List { itemType: listSubProps } }
-        _, _, _ -> pure exposed -- subProps = Null - decodeBaseExposes
+          list <- List <$> decodeExposes' Nothing itemType
+          pure $ exposed { subProps = list }
+        _, _, _ -> pure exposed -- subProps = Null per decodeBaseExposes
