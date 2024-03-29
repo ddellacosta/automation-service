@@ -30,8 +30,8 @@ spec =
         prop cap przm = cap ^? (_Just <<< przm)
         mProp cap przm = cap ^? (_Just <<< przm <<< _Just)
 
-        -- I can't seem to compose these with mProp without a type
-        -- error about not matching String, but it highlights the
+        -- I can't seem to compose these with prop/mProp without a
+        -- type error about not matching String, but it highlights the
         -- `ix` call for some reason?
         featureType = signeExposes ^? _Right <<< ix 1 <<< _featureType <<< _Just
         type' = signeExposes ^? _Right <<< ix 1 <<< _type
