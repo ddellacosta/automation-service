@@ -1,23 +1,10 @@
 module Test.Main where
 
-import Debug (traceM)
-import Data.Generic.Rep (class Generic)
-import Data.Show.Generic (genericShow)
-import Data.Newtype (class Newtype, unwrap)
-import Data.Lens (Iso', Lens', view)
-import Data.Lens.Record as R
-import Data.Lens.Iso.Newtype (_Newtype)
-import Record (get)
-import Type.Proxy (Proxy(..))
-
-import Prelude
-
 import AutomationService.Message (Message(..))
 import AutomationService.WebSocket (class WebSocket)
 import Data.Argonaut.Core (stringify)
 import Data.Map as M
-import Effect (Effect)
-import Effect.Aff (Aff, launchAff_)
+import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
 import Effect.Console (log)
 import Effect.Ref (Ref)
@@ -27,22 +14,9 @@ import Elmish.Test (find, prop, testComponent, text, (>>))
 import Elmish.Test.DomProps as P
 import Elmish.Test.Events (change, click)
 import Main as Main
+import Prelude (Unit, (<<<), ($), (>>=), (<>), bind, discard)
 import Test.Spec (Spec, before, describe, it)
 import Test.Spec.Assertions (shouldEqual)
-
-type Norf =
-  { a :: String
-  , b :: Int
-  }
-
-newtype Bean = Bean Norf
-
-derive instance Generic Bean _
-derive instance Newtype Bean _
-
-instance Show Bean where
-  show = genericShow
-
 
 newtype TestWS = TestWS (Ref String)
 
@@ -63,15 +37,6 @@ spec :: Spec Unit
 spec = before setup $
   describe "Main app" $
     it "Can navigate to different pages" $ \wsState -> do
-      let
-        bean = Bean { a: "hey", b: 2 }
-        _un :: Iso' Bean Norf
-        _un = _Newtype
-        _a = R.prop (Proxy :: Proxy "a")
-
-      traceM $ (_.a <<< unwrap) bean
-      traceM $ view (_un <<< _a) bean
-
       let mqttMsg = "{\"start\": \"test\"}"
 
       newDsUpdateTimers <- liftEffect $ Ref.new M.empty
