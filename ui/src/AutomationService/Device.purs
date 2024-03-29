@@ -3,27 +3,37 @@ module AutomationService.Device
   , DeviceDetails
   , DeviceId
   , Devices
+  , _category
+  , _deviceDetails
+  , _exposes
+  , _id
+  , _manufacturer
+  , _model
+  , _name
   , decodeDevice
   , decodeDevices
   , details
   , deviceTopic
   , getTopic
+  , setDetails
   , setTopic
   )
 where
-
-import Prelude (class Show, bind, pure, ($), (<#>), (<>), (<<<))
 
 import AutomationService.Exposes (Exposes, decodeExposes)
 import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, stringify, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Either (Either(..))
-import Data.Foldable (foldMap)
 import Data.Generic.Rep (class Generic)
+import Data.Lens (Lens, Lens', lens')
+import Data.Lens.Record (prop)
 import Data.Map (Map)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Show.Generic (genericShow)
-import Data.Traversable (for, sequence, traverse)
+import Data.Traversable (traverse)
+import Data.Tuple (Tuple(..))
+import Prelude (class Show, bind, flip, pure, ($), (<>), (<<<))
+import Type.Proxy (Proxy(..))
 
 type DeviceId = String
 
@@ -38,8 +48,33 @@ type DeviceDetails =
   , category     :: String
   , manufacturer :: Maybe String
   , model        :: Maybe String
-  , exposes      :: Array Exposes
+  , exposes      :: Exposes
   }
+
+
+
+--
+-- lens boilerplate...I miss TemplateHaskell here
+--
+_id :: forall a b r. Lens { id :: a | r } { id :: b | r } a b
+_id = prop (Proxy :: Proxy "id")
+
+_name :: forall a b r. Lens { name :: a | r } { name :: b | r } a b
+_name = prop (Proxy :: Proxy "name")
+
+_category :: forall a b r. Lens { category :: a | r } { category :: b | r } a b
+_category = prop (Proxy :: Proxy "category")
+
+_manufacturer
+  :: forall a b r. Lens { manufacturer :: a | r } { manufacturer :: b | r } a b
+_manufacturer = prop (Proxy :: Proxy "manufacturer")
+
+_model :: forall a b r. Lens { model :: a | r } { model :: b | r } a b
+_model = prop (Proxy :: Proxy "model")
+
+_exposes :: forall a b r. Lens { exposes :: a | r } { exposes :: b | r } a b
+_exposes = prop (Proxy :: Proxy "exposes")
+
 
 --
 -- e.g. One possible model, although it may be better to generalize
@@ -54,6 +89,21 @@ type DeviceDetails =
 --
 -- instance Show DeviceDetails where
 --   show = genericShow
+--
+--
+-- For now the strategy I'm taking is to simplify the device and
+-- assume everything is a Zigbee2MQTT device as far as DeviceDetails
+-- are concerned, but to generalize the way I reference the
+-- capabilities of the Device (which for now just means the stuff
+-- inside of DeviceDetails's exposes field, directly from
+-- https://www.zigbee2mqtt.io/guide/usage/exposes.html). The Device
+-- constructors are modeled after Matter 1.2 spec Device types, and
+-- I'll be adding them as I have use for them unless other people
+-- start using this for some reason and ask for it (or contribute it
+-- themselves).
+--
+-- In the future I hope that means both Matter devices as well as
+-- ESPHome devices.
 --
 
 data Device
@@ -77,6 +127,17 @@ details = case _ of
   ColorTemperatureLight d -> d
   ExtendedColorLight d -> d
   WindowCovering d -> d
+
+setDetails :: DeviceDetails -> Device -> Device
+setDetails d = case _ of
+  OnOffLight _ -> OnOffLight d
+  DimmableLight _ -> DimmableLight d
+  ColorTemperatureLight _ -> ColorTemperatureLight d
+  ExtendedColorLight _ -> ExtendedColorLight d
+  WindowCovering _ -> WindowCovering d
+
+_deviceDetails :: Lens' Device DeviceDetails
+_deviceDetails = lens' $ \d -> Tuple (details d) (flip setDetails d)
 
 decodeDevices :: Json -> Either JsonDecodeError (Array Device)
 decodeDevices devicesJson = do
@@ -112,7 +173,7 @@ getTopic :: String -> String
 getTopic name' = deviceTopic name' <> "/get"
 
 
-decodeBaseDevice :: Json -> Array Exposes -> Either JsonDecodeError DeviceDetails
+decodeBaseDevice :: Json -> Exposes -> Either JsonDecodeError DeviceDetails
 decodeBaseDevice deviceJson exposes = do
   obj <- decodeJson deviceJson
   id' <- obj .: "ieee_address"

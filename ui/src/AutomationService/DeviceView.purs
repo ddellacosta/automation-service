@@ -10,7 +10,6 @@ where
 
 import Prelude
 
-import AutomationService.Device as Device
 import AutomationService.Device (Device(..), DeviceDetails(..), DeviceId,
                                  Devices, details, deviceTopic, getTopic,
                                  setTopic)
@@ -182,7 +181,7 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
          , model :: Maybe String
          , manufacturer :: Maybe String
          }
-      -> Array Exposes
+      -> Exposes
       -> ReactElement
     listExposes ds s allExposes =
       H.div "" $

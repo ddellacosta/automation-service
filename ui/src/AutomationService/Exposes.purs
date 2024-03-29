@@ -1,14 +1,26 @@
 module AutomationService.Exposes
   ( BinaryProps
-  , Exposes
+  , Capability
+  , CapType(..)
   , CompositeProps
   , EnumProps
+  , Exposes
+  , FeatureType(..)
   , ListProps
   , NumericProps
   , SubProps(..)
   , ValueOnOff(..)
+  , _access
+  , _description
+  , _featureType
+  , _label
+  , _name
+  , _property
+  , _subProps
+  , _type
   , canGet
   , canSet
+  , decodeCapability
   , decodeExposes
   , isPublished
   , serializeValueOnOff
@@ -16,36 +28,103 @@ module AutomationService.Exposes
 where
 
 import Control.Alternative ((<|>))
-import Data.Argonaut (Json, JsonDecodeError, decodeJson, toArray)
+import Data.Argonaut (Json, JsonDecodeError, decodeJson)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Argonaut.Decode.Class (class DecodeJson)
 import Data.Argonaut.Decode.Decoders (decodeBoolean, decodeString)
 import Data.Int.Bits ((.&.))
-import Data.Either (Either, fromRight, either)
+import Data.Either (Either)
 import Data.Foldable (fold)
 import Data.Generic.Rep (class Generic)
-import Data.Maybe (Maybe(..), maybe)
+import Data.Lens (Lens)
+import Data.Lens.Record (prop)
+import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
-import Data.Traversable (for, sequence)
-import Prelude (class Eq, class Show, bind, const, discard, pure, show, (<<<), ($), (<$>), (=<<), (>), flip, (<>))
-import Record (delete, merge)
+import Data.Traversable (for)
+import Prelude (class Eq, class Show, ($), (<$>), (>>=), (>), bind, pure, show)
 import Type.Proxy (Proxy(..))
 
---
--- access https://www.zigbee2mqtt.io/guide/usage/exposes.html#access
---
+
+-- Capability.type
+
+data CapType
+  = Binary'
+  | Composite'
+  | Enum'
+  | List'
+  | Numeric'
+  | UnknownCT String
+
+derive instance Generic CapType _
+derive instance Eq CapType
+
+instance Show CapType where
+  show = genericShow
+
+instance DecodeJson CapType where
+  decodeJson :: Json -> Either JsonDecodeError CapType
+  decodeJson json = decodeString json >>= \ct ->
+    pure $ case ct of
+      "binary" -> Binary'
+      "composite" -> Composite'
+      "enum" -> Enum'
+      "list" -> List'
+      "numeric" -> Numeric'
+      unknown -> UnknownCT unknown
+
+
+-- Capability.featureType
+
+data FeatureType
+  = Cover
+  | Light
+  | UnknownFT String
+
+derive instance Generic FeatureType _
+derive instance Eq FeatureType
+
+instance Show FeatureType where
+  show = genericShow
+
+instance DecodeJson FeatureType where
+  decodeJson :: Json -> Either JsonDecodeError FeatureType
+  decodeJson json = decodeString json >>= \ft ->
+    pure $ case ft of
+      "cover" -> Cover
+      "light" -> Light
+      unknown -> UnknownFT unknown
+
+
+-- Capability.access
+
+-- |
+-- | https://www.zigbee2mqtt.io/guide/usage/exposes.html#access
+-- |
 isPublished :: Int -> Boolean
 isPublished a = 1 .&. a > 0
 
+-- |
+-- | https://www.zigbee2mqtt.io/guide/usage/exposes.html#access
+-- |
 canSet :: Int -> Boolean
 canSet a = 2 .&. a > 0
 
--- this implies isPublished
+-- |
+-- | canGet implies isPublished
+-- |
+-- | https://www.zigbee2mqtt.io/guide/usage/exposes.html#access
+-- |
 canGet :: Int -> Boolean
 canGet a = 4 .&. a > 0
 
--- https://www.zigbee2mqtt.io/guide/usage/exposes.html#binary
 
+-- Capability.subProps
+
+-- |
+-- | "Why can't you just be normal?"
+-- |
+-- | https://www.zigbee2mqtt.io/guide/usage/exposes.html#binary
+-- |
 data ValueOnOff = ValueOnOffBool Boolean | ValueOnOffString String
 
 derive instance Generic ValueOnOff _
@@ -70,11 +149,11 @@ type BinaryProps =
   , valueToggle :: Maybe String
   } 
 
-type CompositeProps = Array Exposes
+type CompositeProps = Array Capability
 
 type EnumProps = { values :: Array String }
 
-type ListProps = Exposes
+type ListProps = Capability
 
 type NumericProps =
   { valueMax  :: Maybe Int
@@ -92,6 +171,7 @@ data SubProps
   | Numeric NumericProps
 
 derive instance Generic SubProps _
+derive instance Eq SubProps
 
 instance Show SubProps where
   -- apparently due to the fact that SubProps can be recursive
@@ -100,9 +180,12 @@ instance Show SubProps where
   -- though (TODO)
   show sp = genericShow sp
 
-type Exposes =
-  { type        :: String
-  , featureType :: Maybe String
+
+-- Capability
+
+type Capability =
+  { type        :: CapType
+  , featureType :: Maybe FeatureType
   , name        :: String
   , description :: Maybe String
   , label       :: String
@@ -112,90 +195,145 @@ type Exposes =
   , subProps    :: SubProps
   }
 
-decodeBaseExposes
-  :: Maybe String -> Json -> Either JsonDecodeError Exposes
-decodeBaseExposes featureType exposesJson = do
-  obj <- decodeJson exposesJson
+--
+-- lens boilerplate
+--
+_type
+  :: forall a b r. Lens { type :: a | r } { type :: b | r } a b
+_type = prop (Proxy :: Proxy "type")
+
+_featureType
+  :: forall a b r. Lens { featureType :: a | r } { featureType :: b | r } a b
+_featureType = prop (Proxy :: Proxy "featureType")
+
+_name
+  :: forall a b r. Lens { name :: a | r } { name :: b | r } a b
+_name = prop (Proxy :: Proxy "name")
+
+_description
+  :: forall a b r. Lens { description :: a | r } { description :: b | r } a b
+_description = prop (Proxy :: Proxy "description")
+
+_label
+  :: forall a b r. Lens { label :: a | r } { label :: b | r } a b
+_label = prop (Proxy :: Proxy "label")
+
+_property
+  :: forall a b r. Lens { property :: a | r } { property :: b | r } a b
+_property = prop (Proxy :: Proxy "property")
+
+_access
+  :: forall a b r. Lens { access :: a | r } { access :: b | r } a b
+_access = prop (Proxy :: Proxy "access")
+
+_subProps
+  :: forall a b r. Lens { subProps :: a | r } { subProps :: b | r } a b
+_subProps = prop (Proxy :: Proxy "subProps")
+
+--
+
+-- Exposes
+
+type Exposes = Array Capability
+
+
+--
+-- Parsing
+--
+
+decodeBaseCapability
+  :: Maybe FeatureType -> Json -> Either JsonDecodeError Capability
+decodeBaseCapability featureType capabilityJson = do
+  obj <- decodeJson capabilityJson
   type' <- obj .: "type"
   name <- obj .: "name"
   description <- obj .:? "description"
   label <- obj .: "label"
   property <- obj .:? "property"
   access <- obj .: "access"
-  pure { type: type', featureType, name, description, label, property, access, subProps: Null }
+  pure
+    { type: type'
+    , featureType
+    , name
+    , description
+    , label
+    , property
+    , access
+    , subProps: Null
+    }
 
 decodeBinary :: Json -> Either JsonDecodeError BinaryProps
-decodeBinary exposesJson = do
-  obj <- decodeJson exposesJson
+decodeBinary capabilityJson = do
+  obj <- decodeJson capabilityJson
   valueOn <- obj .: "value_on"
   valueOff <- obj .: "value_off"
   valueToggle <- obj .:? "value_toggle"
   pure { valueOn, valueOff, valueToggle }
 
 decodeEnum :: Json -> Either JsonDecodeError EnumProps
-decodeEnum exposesJson = do
-  obj <- decodeJson exposesJson
+decodeEnum capabilityJson = do
+  obj <- decodeJson capabilityJson
   values <- obj .: "values"
   pure { values }
 
 decodeNumeric :: Json -> Either JsonDecodeError NumericProps
-decodeNumeric exposesJson = do
-  obj <- decodeJson exposesJson
+decodeNumeric capabilityJson = do
+  obj <- decodeJson capabilityJson
   valueMax <- obj .:? "value_max"
   valueMin <- obj .:? "value_min"
   valueStep <- obj .:? "value_step"
   unit <- obj .:? "unit"
   pure { valueMax, valueMin, valueStep, unit }
 
-decodeExposes :: Maybe String -> Array Json -> Either JsonDecodeError (Array Exposes)
+decodeCapability :: Maybe FeatureType -> Json -> Either JsonDecodeError Capability
+decodeCapability featureType capabilityJson = do
+  obj <- decodeJson capabilityJson
+  exposed <- decodeBaseCapability featureType capabilityJson
+  mFeatures <- obj .:? "features"
+  mItemType <- obj .:? "item_type"
+
+  case exposed.type, mFeatures, mItemType of
+    Binary', _, _ -> do
+      binary <- Binary <$> decodeBinary capabilityJson
+      pure $ exposed { subProps = binary }
+    Enum', _, _ -> do
+      enum <- Enum <$> decodeEnum capabilityJson
+      pure $ exposed { subProps = enum }
+    Numeric', _, _ -> do
+      numeric <- Numeric <$> decodeNumeric capabilityJson
+      pure $ exposed { subProps = numeric }
+    Composite', Just features, _ -> do
+      composite <- Composite <$> (for features $ decodeCapability Nothing)
+      pure $ exposed { subProps = composite }
+    List', _, Just itemType -> do
+      list <- List <$> decodeCapability Nothing itemType
+      pure $ exposed { subProps = list }
+    _, _, _ -> pure exposed -- subProps = Null per decodeBaseCapability
+
+-- |
+-- | This flattens out the features array into the same array that
+-- | individual 'exposes' entries are returned in. Zigbee2MQTT
+-- | distinguishes these as 'specific' (the former) vs. 'generic' (the
+-- | latter). However, I don't see much value in separating them like
+-- | this given how we'll be looking this data up.
+-- |
+-- | https://www.zigbee2mqtt.io/guide/usage/exposes.html
+-- |
+decodeExposes
+  :: Maybe FeatureType -> Array Json -> Either JsonDecodeError Exposes
 decodeExposes featureType exposesJson = do
-  --
-  -- This flattens out the features array into the same array that
-  -- individual 'exposes' entries are returned in. Zigbee2MQTT
-  -- distinguishes these as 'specific' (the former) vs. 'generic' (the
-  -- latter). However, I don't see much value in separating them like
-  -- this given how we'll be looking this data up.
-  --
-  -- https://www.zigbee2mqtt.io/guide/usage/exposes.html
-  --
   fold <$>
     --
     -- for
-    --   :: Array exposesJson
-    --   -> (exposesJson -> Either JsonDecodeError (Array Exposes))
-    --   -> Either JsonDecodeError (Array (Array Exposes))
+    --   :: Array capabilityJson
+    --   -> (capabilityJson -> Either JsonDecodeError Exposes)
+    --   -> Either JsonDecodeError (Array Exposes))
     --
     (for exposesJson $ \e -> do
         obj <- decodeJson e
         features <- obj .:? "features"
         featureType' <- obj .:? "type"
         case features of
-          Just features' -> for features' $ decodeExposes' featureType'
-          _ -> for [e] $ decodeExposes' featureType
+          Just features' -> for features' $ decodeCapability featureType'
+          _ -> for [e] $ decodeCapability featureType
     )
-
-  where
-    decodeExposes' :: Maybe String -> Json -> Either JsonDecodeError Exposes
-    decodeExposes' featureType exposesJson = do
-      obj <- decodeJson exposesJson
-      exposed <- decodeBaseExposes featureType exposesJson
-      mFeatures <- obj .:? "features"
-      mItemType <- obj .:? "item_type"
-
-      case exposed.type, mFeatures, mItemType of
-        "binary", _, _ -> do
-          binary <- Binary <$> decodeBinary exposesJson
-          pure $ exposed { subProps = binary }
-        "enum", _, _ -> do
-          enum <- Enum <$> decodeEnum exposesJson
-          pure $ exposed { subProps = enum }
-        "numeric", _, _ -> do
-          numeric <- Numeric <$> decodeNumeric exposesJson
-          pure $ exposed { subProps = numeric }
-        "composite", Just features, _ -> do
-          composite <- Composite <$> (for features $ decodeExposes' Nothing)
-          pure $ exposed { subProps = composite }
-        "list", _, Just itemType -> do
-          list <- List <$> decodeExposes' Nothing itemType
-          pure $ exposed { subProps = list }
-        _, _, _ -> pure exposed -- subProps = Null per decodeBaseExposes

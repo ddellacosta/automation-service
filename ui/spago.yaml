@@ -28,6 +28,7 @@ package:
     - numbers
     - ordered-collections
     - prelude
+    - profunctor-lenses
     - record
     - refs
     - spec
