@@ -10,34 +10,32 @@ where
 
 import Prelude
 
-import AutomationService.Device (Device(..), DeviceDetails(..), DeviceId,
-                                 Devices, details, deviceTopic, getTopic,
-                                 setTopic)
+import AutomationService.Device (Device(..), DeviceId, Devices, details, deviceTopic,
+                                 getTopic)
 import AutomationService.DeviceState (DeviceState, DeviceStates)
 import AutomationService.DeviceViewMessage (Message(..))
 import AutomationService.Exposes (Exposes)
 import AutomationService.Helpers (maybeHtml)
 import AutomationService.MQTT as MQTT
-import AutomationService.React.SketchColor (sketchColor)
+-- import AutomationService.React.SketchColor (sketchColor)
 import AutomationService.WebSocket (class WebSocket, sendJson, sendString)
-import Control.Alternative (guard)
+-- import Control.Alternative (guard)
 import Data.Argonaut.Core (stringify)
 import Data.Argonaut.Encode.Class (encodeJson)
-import Data.Array (catMaybes, sortBy)
+import Data.Array (sortBy)
 import Data.DateTime.Instant (Instant)
-import Data.Foldable (foldr, intercalate)
+import Data.Foldable (foldr)
 import Data.List as L
 import Data.Map as M
 import Data.Map (Map)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..))
 import Data.Traversable (for_)
 import Effect.Class (liftEffect)
 import Effect.Console (debug)
 import Effect.Ref (Ref)
-import Elmish (Transition, Dispatch, ReactElement, forkVoid, (<|), (<?|))
+import Elmish (Transition, Dispatch, ReactElement, forkVoid, (<|))
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
-import Foreign.Object as O
 
 type DeviceStateUpdateTimers = Map DeviceId Instant
 
@@ -132,6 +130,8 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
   , maybeHtml (flip M.lookup devices =<< selectedDeviceId) $
     listDevice (flip M.lookup deviceStates =<< selectedDeviceId)
 
+  , H.div "row" $
+      listDeviceSummary <$> devicesA
   ]
 
   where
@@ -148,12 +148,58 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
         listDevice' mDeviceState deviceDetails
       (WindowCovering deviceDetails) ->
         listDevice' mDeviceState deviceDetails
+      (UnknownDevice deviceDetails) ->
+        listDevice' mDeviceState deviceDetails
       _ ->
         H.div "card mt-2"
         [ H.div "card-body"
           [ H.p "" "hey"
           ]
         ]
+
+    listDeviceSummary :: Device -> ReactElement
+    listDeviceSummary = case _ of
+      (ExtendedColorLight d) ->
+        H.div "col" $
+          H.div "card mt-2"
+          [ H.div "card-body text-bg-danger p-3" $
+              H.text $ "ExtendedColorLight" <> d.name
+          ]
+
+      (ColorTemperatureLight d) ->
+        H.div "col" $
+          H.div "card mt-2"
+          [ H.div "card-body text-bg-light p-3" $
+              H.text $ "ColorTemperatureLight" <> d.name
+          ]
+
+      (DimmableLight d) ->
+        H.div "col" $
+          H.div "card mt-2"
+          [ H.div "card-body text-bg-dark p-3" $
+              H.text $ "DimmableLight" <> d.name
+          ]
+
+      (OnOffLight d) ->
+        H.div "col" $
+          H.div "card mt-2"
+          [ H.div "card-body text-bg-primary p-3" $
+              H.text $ "OnOffLight" <> d.name
+          ]
+
+      (WindowCovering d) ->
+        H.div "col" $
+          H.div "card mt-2"
+          [ H.div "card-body text-bg-warning p-3" $
+              H.text $ "WindowCovering" <> d.name
+          ]
+
+      (UnknownDevice d) ->
+        H.div "col" $
+          H.div "card mt-2"
+          [ H.div "card-body text-bg-secondary p-3" $
+              H.text $ "UnknownDevice: " <> d.name
+          ]
 
     listDevice' mDeviceState { id, name, category, model, manufacturer, exposes } =
       H.div "card mt-2"
@@ -183,7 +229,7 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
          }
       -> Exposes
       -> ReactElement
-    listExposes ds s allExposes =
+    listExposes _ds s allExposes =
       H.div "" $
       [ H.div "" $ "name: " <> s.name
       , H.div "" $ "exposes: " <> (show allExposes)

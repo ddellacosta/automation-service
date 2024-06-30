@@ -20,19 +20,21 @@ module AutomationService.Device
   )
 where
 
-import AutomationService.Exposes (Exposes, decodeExposes)
+import AutomationService.Exposes (CapType(..), Exposes, FeatureType(..), decodeExposes)
 import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, stringify, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
-import Data.Either (Either(..))
+import Data.Array (filter)
+import Data.Array.NonEmpty (fromArray, head, sort)
+import Data.Either (Either(..), isRight)
 import Data.Generic.Rep (class Generic)
 import Data.Lens (Lens, Lens', lens')
 import Data.Lens.Record (prop)
 import Data.Map (Map)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
-import Data.Traversable (traverse)
+import Data.Traversable (for, sequence)
 import Data.Tuple (Tuple(..))
-import Prelude (class Show, bind, flip, pure, ($), (<>), (<<<))
+import Prelude (class Eq, class Ord, class Show, bind, flip, map, pure, ($), (<$>), (<<<), (<>), (=<<))
 import Type.Proxy (Proxy(..))
 
 type DeviceId = String
@@ -106,16 +108,34 @@ _exposes = prop (Proxy :: Proxy "exposes")
 -- ESPHome devices.
 --
 
+--
+-- This is just a flat list of all Matter device types, added as I
+-- get around to it/am motivated to do so by wanting to use a given
+-- device/on the off chance someone else actually wants to make a PR.
+--
+-- The Ord instance means that these are ordered in reverse order
+-- according to feature set of any given group of items, with the
+-- assumption being made that there will be no meaningful overlap
+-- between features across device sets (e.g. Lights vs. Sensors vs.
+-- Switches vs. etc.) such that if we identify multiple possible
+-- Device types based on what comes back in Exposes, a sort will
+-- always pop the most feature-full type to the top.
+--
+-- We'll see if that assumption holds...
+--
 data Device
-  = OnOffLight DeviceDetails
-  | DimmableLight DeviceDetails
+  = ExtendedColorLight DeviceDetails
   | ColorTemperatureLight DeviceDetails
-  | ExtendedColorLight DeviceDetails
+  | DimmableLight DeviceDetails
+  | OnOffLight DeviceDetails
   | WindowCovering DeviceDetails
+  | UnknownDevice DeviceDetails
 
 type Devices = Map DeviceId Device
 
+derive instance Eq Device
 derive instance Generic Device _
+derive instance Ord Device
 
 instance Show Device where
   show = genericShow
@@ -127,6 +147,7 @@ details = case _ of
   ColorTemperatureLight d -> d
   ExtendedColorLight d -> d
   WindowCovering d -> d
+  UnknownDevice d -> d
 
 setDetails :: DeviceDetails -> Device -> Device
 setDetails d = case _ of
@@ -135,6 +156,7 @@ setDetails d = case _ of
   ColorTemperatureLight _ -> ColorTemperatureLight d
   ExtendedColorLight _ -> ExtendedColorLight d
   WindowCovering _ -> WindowCovering d
+  UnknownDevice _ -> UnknownDevice d
 
 _deviceDetails :: Lens' Device DeviceDetails
 _deviceDetails = lens' $ \d -> Tuple (details d) (flip setDetails d)
@@ -142,7 +164,7 @@ _deviceDetails = lens' $ \d -> Tuple (details d) (flip setDetails d)
 decodeDevices :: Json -> Either JsonDecodeError (Array Device)
 decodeDevices devicesJson = do
   case toArray devicesJson of
-    Just ds -> traverse decodeDevice ds
+    Just ds -> sequence $ filter isRight $ decodeDevice <$> ds
     Nothing ->
       Left <<< TypeMismatch $ "Expected device array, got " <> stringify devicesJson
 
@@ -194,8 +216,56 @@ decodeDevice deviceJson = do
   mDefinition <- obj .:? "definition"
   exposes <- case mDefinition of
     Just definition -> do
-      exposes' <- definition .:? "exposes"
-      decodeExposes Nothing (fromMaybe [] exposes')
-    Nothing -> pure []
+      exposes <- definition .:? "exposes"
+      case fromArray =<< exposes of
+        Just exposes' -> decodeExposes Nothing exposes'
+        _ -> Left (TypeMismatch $ "Empty exposes list")
+    Nothing -> Left (TypeMismatch $ "No definition")
   baseDevice <- decodeBaseDevice deviceJson exposes
-  pure $ OnOffLight baseDevice
+  devices <- map sort $ for exposes $ \e ->
+    Right $ case e.featureType, e.type, e.name of
+      Just Light, Composite', "color_xy" -> ExtendedColorLight baseDevice
+      Just Light, Composite', "hue" -> ExtendedColorLight baseDevice
+      Just Light, Numeric', "color_temp" -> ColorTemperatureLight baseDevice
+      Just Light, Numeric', "brightness" -> DimmableLight baseDevice
+      Just Light, Binary', _ -> OnOffLight baseDevice
+      _, _, _ -> UnknownDevice baseDevice
+
+  -- see the comment above the definition for the Device data type to
+  -- understand what the sort above implies
+  pure $ head devices
+
+--
+-- Matter device requirements. Each item following the previous inherits the previous item's requirements:
+--
+-- OnOffLight
+-- - on/off switching
+--
+-- DimmableLight
+-- - light level control
+--
+-- ColorTemperatureLight
+-- - color temperature level control
+--
+-- ExtendedColorLight
+-- - color control w/hue&saturation, enhanced hue (?), XY, color looping (?)
+--
+-- WindowCovering
+-- - up/down for covering?
+
+--
+-- what about...
+--
+-- ## sensors
+--
+-- - humidity/temperature
+-- - humidity/temp/air
+-- - motion sensors
+-- - door opening sensor
+--
+-- ## controls
+--
+-- - lighting on/off dimmer
+-- - multi-control remote
+--
+

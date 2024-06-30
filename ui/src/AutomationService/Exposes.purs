@@ -28,20 +28,21 @@ module AutomationService.Exposes
 where
 
 import Control.Alternative ((<|>))
-import Data.Argonaut (Json, JsonDecodeError, decodeJson)
+import Data.Argonaut (Json, JsonDecodeError(..), decodeJson)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Argonaut.Decode.Class (class DecodeJson)
 import Data.Argonaut.Decode.Decoders (decodeBoolean, decodeString)
+import Data.Array.NonEmpty (NonEmptyArray, cons, cons', fromArray, head, snoc, tail)
 import Data.Int.Bits ((.&.))
-import Data.Either (Either)
-import Data.Foldable (fold)
+import Data.Either (Either(..))
+import Data.Foldable (foldM)
 import Data.Generic.Rep (class Generic)
 import Data.Lens (Lens)
 import Data.Lens.Record (prop)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Show.Generic (genericShow)
 import Data.Traversable (for)
-import Prelude (class Eq, class Show, ($), (<$>), (>>=), (>), bind, pure, show)
+import Prelude (class Eq, class Ord, class Show, ($), (<>), (<$>), (>>=), (=<<), (>), bind, pure, show)
 import Type.Proxy (Proxy(..))
 
 
@@ -55,8 +56,9 @@ data CapType
   | Numeric'
   | UnknownCT String
 
-derive instance Generic CapType _
 derive instance Eq CapType
+derive instance Generic CapType _
+derive instance Ord CapType -- for Device's Ord
 
 instance Show CapType where
   show = genericShow
@@ -80,8 +82,9 @@ data FeatureType
   | Light
   | UnknownFT String
 
-derive instance Generic FeatureType _
 derive instance Eq FeatureType
+derive instance Generic FeatureType _
+derive instance Ord FeatureType -- for Device's Ord
 
 instance Show FeatureType where
   show = genericShow
@@ -127,8 +130,9 @@ canGet a = 4 .&. a > 0
 -- |
 data ValueOnOff = ValueOnOffBool Boolean | ValueOnOffString String
 
-derive instance Generic ValueOnOff _
 derive instance Eq ValueOnOff
+derive instance Generic ValueOnOff _
+derive instance Ord ValueOnOff -- for Device's Ord
 
 instance DecodeJson ValueOnOff where
   decodeJson :: Json -> Either JsonDecodeError ValueOnOff
@@ -170,8 +174,9 @@ data SubProps
   | Null
   | Numeric NumericProps
 
-derive instance Generic SubProps _
 derive instance Eq SubProps
+derive instance Generic SubProps _
+derive instance Ord SubProps -- for Device's Ord
 
 instance Show SubProps where
   -- apparently due to the fact that SubProps can be recursive
@@ -234,7 +239,7 @@ _subProps = prop (Proxy :: Proxy "subProps")
 
 -- Exposes
 
-type Exposes = Array Capability
+type Exposes = NonEmptyArray Capability
 
 
 --
@@ -320,20 +325,22 @@ decodeCapability featureType capabilityJson = do
 -- | https://www.zigbee2mqtt.io/guide/usage/exposes.html
 -- |
 decodeExposes
-  :: Maybe FeatureType -> Array Json -> Either JsonDecodeError Exposes
+  :: Maybe FeatureType -> NonEmptyArray Json -> Either JsonDecodeError Exposes
 decodeExposes featureType exposesJson = do
-  fold <$>
-    --
-    -- for
-    --   :: Array capabilityJson
-    --   -> (capabilityJson -> Either JsonDecodeError Exposes)
-    --   -> Either JsonDecodeError (Array Exposes))
-    --
-    (for exposesJson $ \e -> do
-        obj <- decodeJson e
-        features <- obj .:? "features"
-        featureType' <- obj .:? "type"
-        case features of
-          Just features' -> for features' $ decodeCapability featureType'
-          _ -> for [e] $ decodeCapability featureType
-    )
+  --
+  -- for
+  --   :: Array capabilityJson
+  --   -> (capabilityJson -> Either JsonDecodeError Exposes)
+  --   -> Either JsonDecodeError (NonEmptyArray Exposes))
+  --
+  exposesArrays <- for exposesJson $ \e -> do
+    obj <- decodeJson e
+    features <- obj .:? "features"
+    featureType' <- obj .:? "type"
+    case fromArray =<< features of
+      Just features' -> for features' $ decodeCapability featureType'
+      _ -> for (e `cons'` []) $ decodeCapability featureType'
+
+  foldM (\exposes nextExposes -> Right $ exposes <> nextExposes)
+    (head exposesArrays)
+    (tail exposesArrays)

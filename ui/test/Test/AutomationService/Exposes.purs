@@ -5,13 +5,15 @@ import AutomationService.Exposes (CapType(..), FeatureType(..), SubProps(..),
                                   _property, _subProps, _type, canGet, canSet,
                                   isPublished, decodeExposes)
 import Data.Argonaut.Decode ((.:), (.:?), fromJsonString)
+import Data.Array.NonEmpty (fromArray)
 import Data.Lens ((^?), _Just, _Right, folded, lengthOf)
 import Data.Lens.Index (ix)
-import Data.Maybe (Maybe(..), fromMaybe)
-import Prelude (Unit, ($), (<<<), (<$>), bind, discard)
+import Data.Maybe (Maybe(..), fromJust)
+import Prelude (Unit, ($), (<<<), (<$>), (=<<), bind, discard)
 import Test.Fixtures (signeFixture)
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual)
+import Partial.Unsafe (unsafePartial)
 
 
 spec :: Spec Unit
@@ -24,7 +26,8 @@ spec =
           obj <- fromJsonString signeFixture
           definition <- obj .: "definition"
           exposes' <- definition .:? "exposes"
-          decodeExposes Nothing (fromMaybe [] exposes')
+          decodeExposes Nothing $
+            unsafePartial $ fromJust $ fromArray =<< exposes'
 
         brightness = signeExposes ^? _Right <<< ix 1
         prop cap przm = cap ^? (_Just <<< przm)
