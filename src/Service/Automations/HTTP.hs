@@ -24,7 +24,7 @@ import qualified Service.Automation as Automation
 import Service.Automation (Automation (..), ClientMsg (..), Message (..))
 import qualified Service.AutomationName as AutomationName
 import Service.AutomationName (Port)
-import Service.Env (Env, LogLevel (..), daemonBroadcast, devicesRawJSON, logger)
+import Service.Env (Env, LogLevel (..), daemonBroadcast, devicesRawJSON, groupsRawJSON, logger)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import UnliftIO.Async (concurrently_)
 import UnliftIO.STM (TChan, TVar, atomically, dupTChan, readTChan, readTVarIO, writeTChan)
@@ -60,7 +60,8 @@ mkRunAutomation port broadcastChan = do
   debug $ "Beginning run of HTTP"
 
   devices <- view devicesRawJSON
-  web' <- liftIO $ web devices
+  groups <- view groupsRawJSON
+  web' <- liftIO $ web devices groups
 
   logger' <- view logger
   daemonBroadcast' <- view daemonBroadcast
@@ -71,28 +72,41 @@ mkRunAutomation port broadcastChan = do
   liftIO $
     Warp.runSettings settings $
       WaiWs.websocketsOr WS.defaultConnectionOptions
-        (ws logger' devices daemonBroadcast')
+        (ws logger' devices groups daemonBroadcast')
         web'
 
   where
-    web :: TVar (ByteString) -> IO Wai.Application
-    web devices = scottyApp $ do
+    web :: TVar ByteString -> TVar ByteString -> IO Wai.Application
+    web devices groups = scottyApp $ do
       middleware $ staticPolicy $ addBase "ui"
+
       get "/" $ file "ui/index.html"
+
       get "/devices" $ do
         setHeader "Content-Type" "application/json; charset=utf-8"
         raw =<< readTVarIO devices
 
-    ws :: (Logger logger) => logger -> TVar (ByteString) -> TChan Daemon.Message -> WS.ServerApp
-    ws logger' devices daemonBC pending  = do
+      get "/groups" $ do
+        setHeader "Content-Type" "application/json; charset=utf-8"
+        raw =<< readTVarIO groups
+
+    ws
+      :: (Logger logger)
+      => logger
+      -> TVar ByteString
+      -> TVar ByteString
+      -> TChan Daemon.Message
+      -> WS.ServerApp
+    ws logger' devices groups daemonBC pending  = do
       logDebugMsg logger' "WebSockets connected"
       conn <- WS.acceptRequest pending
 
       -- initialize device data
       logDebugMsg logger' "Sending Device data to client"
       WS.sendTextData conn =<< readTVarIO devices
-      logDebugMsg logger' "(TODO) Sending Group data to client"
-      -- WS.sendTextData conn =<< readTVarIO groups
+
+      logDebugMsg logger' "Sending Group data to client"
+      WS.sendTextData conn =<< readTVarIO groups
 
       broadcastChanCopy <- atomically . dupTChan $ broadcastChan
 

@@ -10,11 +10,12 @@ where
 
 import Prelude
 
-import AutomationService.Device (Device(..), DeviceId, Devices, details, deviceTopic,
-                                 getTopic)
+import AutomationService.Device (Device(..), DeviceDetails, DeviceId, Devices, details,
+                                 deviceTopic, getTopic, setTopic)
 import AutomationService.DeviceState (DeviceState, DeviceStates)
 import AutomationService.DeviceViewMessage (Message(..))
-import AutomationService.Exposes (Exposes)
+import AutomationService.Exposes (Exposes, canSet, isOn)
+import AutomationService.Lighting (getOnOffSwitch)
 import AutomationService.Helpers (maybeHtml)
 import AutomationService.MQTT as MQTT
 -- import AutomationService.React.SketchColor (sketchColor)
@@ -115,7 +116,8 @@ update ws s = case _ of
 view :: State -> Dispatch Message -> ReactElement
 view { devices, deviceStates, selectedDeviceId } dispatch =
   H.div "" -- "container mx-auto mt-5 d-flex flex-column justify-content-between"
-  [ H.select_
+  [ H.div "" $ H.text $ "Device count: " <> (show $ L.length $ M.values devices)
+  , H.select_
       "device-select"
       { onChange: dispatch <| \e -> case E.selectSelectedValue e of
            "" -> NoDeviceSelected
@@ -130,8 +132,9 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
   , maybeHtml (flip M.lookup devices =<< selectedDeviceId) $
     listDevice (flip M.lookup deviceStates =<< selectedDeviceId)
 
-  , H.div "row" $
-      listDeviceSummary <$> devicesA
+  ,
+    H.div "row" $
+      deviceSummary deviceStates <$> devicesA
   ]
 
   where
@@ -142,6 +145,9 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
     -- ...maybe there's a better way?
     devicesA :: Array Device
     devicesA = L.toUnfoldable $ M.values devices
+
+    getDeviceState :: DeviceStates -> DeviceId -> Maybe DeviceState
+    getDeviceState = flip M.lookup
 
     listDevice mDeviceState = case _ of
       (OnOffLight deviceDetails) ->
@@ -157,48 +163,44 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
           ]
         ]
 
-    listDeviceSummary :: Device -> ReactElement
-    listDeviceSummary = case _ of
-      (ExtendedColorLight d) ->
+    deviceSummary :: DeviceStates -> Device -> ReactElement
+    deviceSummary states device =
+      let
+        mDeviceState = getDeviceState states $ _.id <<< details $ device
+      in
         H.div "col" $
           H.div "card mt-2"
-          [ H.div "card-body text-bg-danger p-3" $
-              H.text $ "ExtendedColorLight" <> d.name
-          ]
+          [ H.div "card-body text-bg-light p-3"
+            [ H.div "card-title" $ _.name <<< details $ device
+            , case mDeviceState, device of
+              Nothing, _ ->
+                H.fragment [ H.p "" "No device state" ]
 
-      (ColorTemperatureLight d) ->
-        H.div "col" $
-          H.div "card mt-2"
-          [ H.div "card-body text-bg-light p-3" $
-              H.text $ "ColorTemperatureLight" <> d.name
-          ]
+              Just deviceState, (ExtendedColorLight deviceDetails) ->
+                H.fragment
+                [ onOffSwitch deviceState deviceDetails
+                ]
 
-      (DimmableLight d) ->
-        H.div "col" $
-          H.div "card mt-2"
-          [ H.div "card-body text-bg-dark p-3" $
-              H.text $ "DimmableLight" <> d.name
-          ]
+              Just deviceState, (ColorTemperatureLight deviceDetails) ->
+                H.fragment
+                [ onOffSwitch deviceState deviceDetails
+                ]
 
-      (OnOffLight d) ->
-        H.div "col" $
-          H.div "card mt-2"
-          [ H.div "card-body text-bg-primary p-3" $
-              H.text $ "OnOffLight" <> d.name
-          ]
+              Just deviceState, (DimmableLight deviceDetails) ->
+                H.fragment
+                [ onOffSwitch deviceState deviceDetails
+                ]
 
-      (WindowCovering d) ->
-        H.div "col" $
-          H.div "card mt-2"
-          [ H.div "card-body text-bg-warning p-3" $
-              H.text $ "WindowCovering" <> d.name
-          ]
+              Just deviceState, (OnOffLight deviceDetails) ->
+                H.fragment
+                [ onOffSwitch deviceState deviceDetails
+                ]
 
-      (UnknownDevice d) ->
-        H.div "col" $
-          H.div "card mt-2"
-          [ H.div "card-body text-bg-secondary p-3" $
-              H.text $ "UnknownDevice: " <> d.name
+              Just _deviceState, (WindowCovering _deviceDetails) -> H.fragment []
+
+              Just _deviceState, (UnknownDevice _deviceDetails) -> H.fragment []
+
+            ]
           ]
 
     listDevice' mDeviceState { id, name, category, model, manufacturer, exposes } =
@@ -235,71 +237,58 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
       , H.div "" $ "exposes: " <> (show allExposes)
       ]
 
---      <>
---      (exposes <#> case e.subProps of
---          Binary sp -> binary ds s e
---          Enum sp -> enum ds s e
---          Numeric sp -> numeric ds s e
---          Composite sp -> composite ds s e
---          List sp -> list ds s e
---          Null -> generic ds e ""
---      )
---
---    binary
---      :: forall r. Maybe DeviceState
---      -> { name :: String | r}
---      -> CapabilityBase BinaryProps
---      -> ReactElement
---    binary ds s cap
---      | not (canSet cap.access) = H.div "" $ H.text "hey"
---      | otherwise =
---        H.div_ "form-check form-switch" {}
---        [ H.input_
---          "form-check-input"
---          { type: "checkbox"
---          , role: "switch"
---          , id: "flexSwitchCheckDefault"
---          , checked:
---              case (fromMaybe (ValueOnOffString "OFF") $ _.state =<< ds) of
---                isChecked |
---                  ValueOnOffString "ON" == isChecked -> true
---                _ -> false
---
---                -- I should test cap.property, but probably in the guard? 
---          , onChange: dispatch <| \_e ->
---              PublishDeviceMsg $
---                MQTT.mkPublishMsg (setTopic s.name) $ MQTT.state "TOGGLE"
---          }
---        , H.label_
---          "form-check-label"
---          { htmlFor: "flexSwitchCheckDefault" } $
---          H.text $ "set state for " <> cap.name
---        ]
---
---    enum
---      :: forall r. Maybe DeviceState
---      -> { name :: String | r}
---      -> CapabilityBase EnumProps
---      -> ReactElement
---    enum ds s cap
---      | not (canSet cap.access) = H.div "" $ H.text "hey"
---      | otherwise =
---        H.div "border rounded p-2 m-2"
---        [ H.strong "" cap.name
---        , H.select_
---            "form-select"
---            -- how with Elmish? aria-label="Default select example"
---            { onChange: dispatch
---                <|  PublishDeviceMsg
---                <<< MQTT.mkGenericPublishMsg (setTopic s.name) (fromMaybe "CHECK_YOUR_PROPERTY" cap.property)
---                <<< E.selectSelectedValue
---             }
---            $ cap.values <#> \v -> H.option_ "" { value: v } v
---        , H.p "" $ H.text $ fromMaybe "" cap.description
---        , H.p "" $ H.text $ listAccess cap.access
---        , generic ds cap ""
---        ]
---
+    onOffSwitch :: DeviceState -> DeviceDetails -> ReactElement
+    onOffSwitch state device =
+      case getOnOffSwitch device of
+        Nothing ->
+          H.div "" $ H.text "Not a light?"
+
+        Just cap
+          | not (canSet cap.access) ->
+            H.div "" $ H.text "Not allowed to turn this one on chief"
+          | otherwise ->
+            H.div_ "form-check form-switch" {}
+            [ H.input_
+              "form-check-input"
+              { type: "checkbox"
+              , role: "switch"
+              , id: "flexSwitchCheckDefault"
+              , checked:
+                case state.state of
+                  Just onOffValue -> isOn onOffValue
+                  _ -> false
+              , onChange: dispatch <| \_e ->
+                  PublishDeviceMsg $
+                    MQTT.mkPublishMsg (setTopic device.name) $ MQTT.state "TOGGLE"
+              }
+            , H.label_
+              "form-check-label"
+              { htmlFor: "flexSwitchCheckDefault" } $
+              H.text $ "on/off"
+            ]
+
+    -- enum :: DeviceState -> DeviceDetails -> ReactElement
+    -- enum mDeviceState device
+    --   | not (canSet cap.access) = H.div "" $ H.text "hey"
+    --   | otherwise =
+    --     H.div "border rounded p-2 m-2"
+    --     [ H.strong "" cap.name
+    --     , H.select_
+    --         "form-select"
+    --         -- how with Elmish? aria-label="Default select example"
+    --         { onChange: dispatch
+    --             <|  PublishDeviceMsg
+    --             <<< MQTT.mkGenericPublishMsg (setTopic s.name) (fromMaybe "CHECK_YOUR_PROPERTY" cap.property)
+    --             <<< E.selectSelectedValue
+    --          }
+    --         $ cap.values <#> \v -> H.option_ "" { value: v } v
+    --     , H.p "" $ H.text $ fromMaybe "" cap.description
+    --     , H.p "" $ H.text $ listAccess cap.access
+    --     , generic ds cap ""
+    --     ]
+
+
+
 --    numeric
 --      :: forall r
 --       . Maybe DeviceState
@@ -347,7 +336,7 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
 --          ]
 --
 --      Nothing -> generic ds cap ""
---
+
 --    -- these two are...under-implemented for now
 --    composite
 --      :: forall s. Maybe DeviceState
@@ -367,7 +356,7 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
 --        ]
 --      | otherwise =
 --        generic ds cap $ ", features: " <> show cap.features
---
+
 --    list
 --      :: forall s. Maybe DeviceState
 --      -> s
@@ -375,7 +364,7 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
 --      -> ReactElement
 --    list ds _s cap =
 --      generic ds cap $ ", item_type: " <> show cap.itemType
---
+
 --    generic
 --      :: forall r. Maybe DeviceState
 --      -> CapabilityBase r
@@ -392,7 +381,7 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
 --        <> ", access: " <> listAccess cap.access
 --        <> capFieldsStr
 --      ]
---
+
 --    listAccess :: Int -> String
 --    listAccess a = intercalate ", " $
 --      catMaybes

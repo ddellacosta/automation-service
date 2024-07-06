@@ -21,7 +21,7 @@ module AutomationService.Device
 where
 
 import AutomationService.Exposes (CapType(..), Exposes, FeatureType(..), decodeExposes)
-import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, stringify, toArray)
+import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Array (filter)
 import Data.Array.NonEmpty (fromArray, head, sort)
@@ -34,7 +34,7 @@ import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
 import Data.Traversable (for, sequence)
 import Data.Tuple (Tuple(..))
-import Prelude (class Eq, class Ord, class Show, bind, flip, map, pure, ($), (<$>), (<<<), (<>), (=<<))
+import Prelude (class Eq, class Ord, class Show, bind, flip, map, pure, ($), (<$>), (<>), (=<<))
 import Type.Proxy (Proxy(..))
 
 type DeviceId = String
@@ -164,9 +164,13 @@ _deviceDetails = lens' $ \d -> Tuple (details d) (flip setDetails d)
 decodeDevices :: Json -> Either JsonDecodeError (Array Device)
 decodeDevices devicesJson = do
   case toArray devicesJson of
-    Just ds -> sequence $ filter isRight $ decodeDevice <$> ds
+    Just ds ->
+      -- REPORT THESE FAILURES! Either isn't really enough for what I want here?
+      case (filter isRight $ decodeDevice <$> ds) of
+        [] -> Left (UnexpectedValue devicesJson)
+        ds' -> sequence ds'
     Nothing ->
-      Left <<< TypeMismatch $ "Expected device array, got " <> stringify devicesJson
+      Left (UnexpectedValue devicesJson)
 
 --
 -- TODO: make this store failures on as granular a level as possible,
@@ -193,7 +197,6 @@ setTopic name' = deviceTopic name' <> "/set"
 
 getTopic :: String -> String
 getTopic name' = deviceTopic name' <> "/get"
-
 
 decodeBaseDevice :: Json -> Exposes -> Either JsonDecodeError DeviceDetails
 decodeBaseDevice deviceJson exposes = do

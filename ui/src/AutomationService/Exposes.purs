@@ -22,6 +22,7 @@ module AutomationService.Exposes
   , canSet
   , decodeCapability
   , decodeExposes
+  , isOn
   , isPublished
   , serializeValueOnOff
   )
@@ -41,8 +42,9 @@ import Data.Lens (Lens)
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Show.Generic (genericShow)
+import Data.String.Common as String
 import Data.Traversable (for)
-import Prelude (class Eq, class Ord, class Show, ($), (<>), (<$>), (>>=), (=<<), (>), bind, pure, show)
+import Prelude (class Eq, class Ord, class Show, ($), (<>), (<$>), (>>=), (=<<), (>), (<<<), bind, pure, show)
 import Type.Proxy (Proxy(..))
 
 
@@ -146,6 +148,19 @@ serializeValueOnOff :: ValueOnOff -> String
 serializeValueOnOff = case _ of
   ValueOnOffBool b -> show b
   ValueOnOffString s -> s
+
+isOn :: ValueOnOff -> Boolean
+isOn = case _ of
+  -- I just have no idea what is possible, based on this:
+  -- https://www.zigbee2mqtt.io/guide/usage/exposes.html#binary
+  ValueOnOffString "on" -> true
+  ValueOnOffString "On" -> true
+  ValueOnOffString "ON" -> true
+  ValueOnOffString "off" -> false
+  ValueOnOffString "Off" -> false
+  ValueOnOffString "OFF" -> false
+  ValueOnOffString _ -> false
+  ValueOnOffBool bool -> bool
 
 type BinaryProps =
   { valueOn     :: ValueOnOff

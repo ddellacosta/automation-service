@@ -79,6 +79,10 @@ update s = case _ of
             devices = Devices.decodeDevices =<< jsonBlob
             deviceState = DeviceState.decodeDeviceState =<< jsonBlob
 
+          debug $ show devices
+          debug jsonStr
+
+
           -- okay, one thing that is needed is a ux for when state hasn't
           -- loaded yet
 
