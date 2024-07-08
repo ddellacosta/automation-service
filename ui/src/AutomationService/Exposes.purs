@@ -22,6 +22,7 @@ module AutomationService.Exposes
   , canSet
   , decodeCapability
   , decodeExposes
+  , enumValues
   , isOn
   , isPublished
   , serializeValueOnOff
@@ -29,22 +30,21 @@ module AutomationService.Exposes
 where
 
 import Control.Alternative ((<|>))
-import Data.Argonaut (Json, JsonDecodeError(..), decodeJson)
+import Data.Argonaut (Json, JsonDecodeError, decodeJson)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Argonaut.Decode.Class (class DecodeJson)
 import Data.Argonaut.Decode.Decoders (decodeBoolean, decodeString)
-import Data.Array.NonEmpty (NonEmptyArray, cons, cons', fromArray, head, snoc, tail)
+import Data.Array.NonEmpty (NonEmptyArray, cons', fromArray, head, tail)
 import Data.Int.Bits ((.&.))
 import Data.Either (Either(..))
 import Data.Foldable (foldM)
 import Data.Generic.Rep (class Generic)
 import Data.Lens (Lens)
 import Data.Lens.Record (prop)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
-import Data.String.Common as String
 import Data.Traversable (for)
-import Prelude (class Eq, class Ord, class Show, ($), (<>), (<$>), (>>=), (=<<), (>), (<<<), bind, pure, show)
+import Prelude (class Eq, class Ord, class Show, ($), (<>), (<$>), (>>=), (=<<), (>), (==), bind, const, pure, show)
 import Type.Proxy (Proxy(..))
 
 
@@ -149,18 +149,10 @@ serializeValueOnOff = case _ of
   ValueOnOffBool b -> show b
   ValueOnOffString s -> s
 
-isOn :: ValueOnOff -> Boolean
-isOn = case _ of
-  -- I just have no idea what is possible, based on this:
-  -- https://www.zigbee2mqtt.io/guide/usage/exposes.html#binary
-  ValueOnOffString "on" -> true
-  ValueOnOffString "On" -> true
-  ValueOnOffString "ON" -> true
-  ValueOnOffString "off" -> false
-  ValueOnOffString "Off" -> false
-  ValueOnOffString "OFF" -> false
-  ValueOnOffString _ -> false
-  ValueOnOffBool bool -> bool
+isOn :: Capability -> ValueOnOff -> Boolean
+isOn { subProps } = case subProps of
+  Binary { valueOn } -> (_ == valueOn)
+  _ -> const false
 
 type BinaryProps =
   { valueOn     :: ValueOnOff
@@ -171,6 +163,11 @@ type BinaryProps =
 type CompositeProps = Array Capability
 
 type EnumProps = { values :: Array String }
+
+enumValues :: Capability -> Array String
+enumValues { subProps } = case subProps of
+  Enum { values } -> values
+  _ -> []
 
 type ListProps = Capability
 
@@ -330,6 +327,11 @@ decodeCapability featureType capabilityJson = do
       pure $ exposed { subProps = list }
     _, _, _ -> pure exposed -- subProps = Null per decodeBaseCapability
 
+
+--
+-- WHY DOES THIS TAKE featureType !?!?!
+--
+
 -- |
 -- | This flattens out the features array into the same array that
 -- | individual 'exposes' entries are returned in. Zigbee2MQTT
@@ -341,7 +343,7 @@ decodeCapability featureType capabilityJson = do
 -- |
 decodeExposes
   :: Maybe FeatureType -> NonEmptyArray Json -> Either JsonDecodeError Exposes
-decodeExposes featureType exposesJson = do
+decodeExposes _featureType' exposesJson = do
   --
   -- for
   --   :: Array capabilityJson

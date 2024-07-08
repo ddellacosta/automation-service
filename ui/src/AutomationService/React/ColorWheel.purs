@@ -6,10 +6,11 @@ where
 import Effect.Uncurried (EffectFn1)
 import Elmish.React (createElement')
 import Elmish.React.Import (ImportedReactComponentConstructor, ImportedReactComponent)
+import Foreign (Foreign)
 import Foreign.Object (Object)
 import Prelude (Unit)
 
-type Props = ( onChange :: EffectFn1 (Object String) Unit )
+type Props = ( onChange :: EffectFn1 (Object (Object Number)) Unit )
 
 colorWheel :: ImportedReactComponentConstructor Props
 colorWheel = createElement' colorWheel_

@@ -6,6 +6,7 @@ package:
     - argonaut-codecs
     - arrays
     - bifunctors
+    - colors
     - console
     - control
     - datetime

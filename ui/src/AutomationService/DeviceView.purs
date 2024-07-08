@@ -10,33 +10,35 @@ where
 
 import Prelude
 
-import AutomationService.Device (Device(..), DeviceDetails, DeviceId, Devices, details,
-                                 deviceTopic, getTopic, setTopic)
+import AutomationService.Device (Device(..), DeviceDetails, DeviceId, Devices,
+                                 details, deviceTopic, getTopic, setTopic)
 import AutomationService.DeviceState (DeviceState, DeviceStates)
 import AutomationService.DeviceViewMessage (Message(..))
-import AutomationService.Exposes (Exposes, canSet, isOn)
-import AutomationService.Lighting (getOnOffSwitch)
+import AutomationService.Exposes (Exposes, canSet, enumValues, isOn)
+import AutomationService.Lighting (ColorSetter(..), getColorSetter, getOnOffSwitch,
+                                   getPreset)
 import AutomationService.Helpers (maybeHtml)
 import AutomationService.MQTT as MQTT
--- import AutomationService.React.SketchColor (sketchColor)
+import AutomationService.React.ColorWheel (colorWheel)
 import AutomationService.WebSocket (class WebSocket, sendJson, sendString)
--- import Control.Alternative (guard)
+import Color as Color
 import Data.Argonaut.Core (stringify)
 import Data.Argonaut.Encode.Class (encodeJson)
-import Data.Array (sortBy)
+import Data.Array (drop, sortBy, take)
 import Data.DateTime.Instant (Instant)
 import Data.Foldable (foldr)
 import Data.List as L
 import Data.Map as M
 import Data.Map (Map)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Traversable (for_)
 import Effect.Class (liftEffect)
 import Effect.Console (debug)
 import Effect.Ref (Ref)
-import Elmish (Transition, Dispatch, ReactElement, forkVoid, (<|))
+import Elmish (Transition, Dispatch, ReactElement, forkVoid, (<|), (<?|))
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
+import Foreign.Object as O
 
 type DeviceStateUpdateTimers = Map DeviceId Instant
 
@@ -132,9 +134,9 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
   , maybeHtml (flip M.lookup devices =<< selectedDeviceId) $
     listDevice (flip M.lookup deviceStates =<< selectedDeviceId)
 
-  ,
-    H.div "row" $
-      deviceSummary deviceStates <$> devicesA
+  , H.fragment $
+      deviceSummaryRows [] $
+        (\d -> deviceSummary (getDeviceState deviceStates d) d) <$> devicesA
   ]
 
   where
@@ -146,8 +148,18 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
     devicesA :: Array Device
     devicesA = L.toUnfoldable $ M.values devices
 
-    getDeviceState :: DeviceStates -> DeviceId -> Maybe DeviceState
-    getDeviceState = flip M.lookup
+    deviceSummaryRows
+      :: Array ReactElement
+      -> Array ReactElement
+      -> Array ReactElement
+    deviceSummaryRows elems [] = elems
+    deviceSummaryRows elems summaries =
+      deviceSummaryRows
+        (elems <> [ H.div "row" $ take 3 summaries])
+        (drop 3 summaries)
+
+    getDeviceState :: DeviceStates -> Device -> Maybe DeviceState
+    getDeviceState deviceStates' = flip M.lookup deviceStates' <<< _.id <<< details
 
     listDevice mDeviceState = case _ of
       (OnOffLight deviceDetails) ->
@@ -161,47 +173,46 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
         [ H.div "card-body"
           [ H.p "" "hey"
           ]
+
         ]
 
-    deviceSummary :: DeviceStates -> Device -> ReactElement
-    deviceSummary states device =
-      let
-        mDeviceState = getDeviceState states $ _.id <<< details $ device
-      in
-        H.div "col" $
-          H.div "card mt-2"
-          [ H.div "card-body text-bg-light p-3"
-            [ H.div "card-title" $ _.name <<< details $ device
-            , case mDeviceState, device of
-              Nothing, _ ->
-                H.fragment [ H.p "" "No device state" ]
-
-              Just deviceState, (ExtendedColorLight deviceDetails) ->
-                H.fragment
-                [ onOffSwitch deviceState deviceDetails
-                ]
-
-              Just deviceState, (ColorTemperatureLight deviceDetails) ->
-                H.fragment
-                [ onOffSwitch deviceState deviceDetails
-                ]
-
-              Just deviceState, (DimmableLight deviceDetails) ->
-                H.fragment
-                [ onOffSwitch deviceState deviceDetails
-                ]
-
-              Just deviceState, (OnOffLight deviceDetails) ->
-                H.fragment
-                [ onOffSwitch deviceState deviceDetails
-                ]
-
-              Just _deviceState, (WindowCovering _deviceDetails) -> H.fragment []
-
-              Just _deviceState, (UnknownDevice _deviceDetails) -> H.fragment []
-
+    deviceSummary :: Maybe DeviceState -> Device -> ReactElement
+    deviceSummary mDeviceState device =
+      H.div "col" $
+      H.div "card mt-2"
+      [ H.div "card-body text-bg-light p-3"
+        [ H.div "card-title" $ _.name <<< details $ device
+          -- I don't know why, but this `case` seems to mess up
+          -- emacs's PureScript parsing from this point onward
+        , case device of
+          (ExtendedColorLight deviceDetails) ->
+            H.fragment
+            [ onOffSwitch mDeviceState deviceDetails
+            , enumSelector "effect" mDeviceState deviceDetails
+            , colorSelector mDeviceState deviceDetails
             ]
-          ]
+
+          (ColorTemperatureLight deviceDetails) ->
+            H.fragment
+            [ onOffSwitch mDeviceState deviceDetails
+            , enumSelector "effect" mDeviceState deviceDetails
+            ]
+
+          (DimmableLight deviceDetails) ->
+            H.fragment
+            [ onOffSwitch mDeviceState deviceDetails
+            ]
+
+          (OnOffLight deviceDetails) ->
+            H.fragment
+            [ onOffSwitch mDeviceState deviceDetails
+            ]
+
+          (WindowCovering _deviceDetails) -> H.fragment []
+
+          (UnknownDevice _deviceDetails) -> H.fragment []
+        ]
+      ]
 
     listDevice' mDeviceState { id, name, category, model, manufacturer, exposes } =
       H.div "card mt-2"
@@ -237,8 +248,8 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
       , H.div "" $ "exposes: " <> (show allExposes)
       ]
 
-    onOffSwitch :: DeviceState -> DeviceDetails -> ReactElement
-    onOffSwitch state device =
+    onOffSwitch :: Maybe DeviceState -> DeviceDetails -> ReactElement
+    onOffSwitch mDeviceState device =
       case getOnOffSwitch device of
         Nothing ->
           H.div "" $ H.text "Not a light?"
@@ -246,6 +257,7 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
         Just cap
           | not (canSet cap.access) ->
             H.div "" $ H.text "Not allowed to turn this one on chief"
+
           | otherwise ->
             H.div_ "form-check form-switch" {}
             [ H.input_
@@ -254,40 +266,105 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
               , role: "switch"
               , id: "flexSwitchCheckDefault"
               , checked:
-                case state.state of
-                  Just onOffValue -> isOn onOffValue
+                case mDeviceState >>= _.state of
+                  Just onOffValue -> isOn cap onOffValue
                   _ -> false
               , onChange: dispatch <| \_e ->
                   PublishDeviceMsg $
                     MQTT.mkPublishMsg (setTopic device.name) $ MQTT.state "TOGGLE"
               }
+
             , H.label_
               "form-check-label"
               { htmlFor: "flexSwitchCheckDefault" } $
               H.text $ "on/off"
             ]
 
-    -- enum :: DeviceState -> DeviceDetails -> ReactElement
-    -- enum mDeviceState device
-    --   | not (canSet cap.access) = H.div "" $ H.text "hey"
-    --   | otherwise =
-    --     H.div "border rounded p-2 m-2"
-    --     [ H.strong "" cap.name
-    --     , H.select_
-    --         "form-select"
-    --         -- how with Elmish? aria-label="Default select example"
-    --         { onChange: dispatch
-    --             <|  PublishDeviceMsg
-    --             <<< MQTT.mkGenericPublishMsg (setTopic s.name) (fromMaybe "CHECK_YOUR_PROPERTY" cap.property)
-    --             <<< E.selectSelectedValue
-    --          }
-    --         $ cap.values <#> \v -> H.option_ "" { value: v } v
-    --     , H.p "" $ H.text $ fromMaybe "" cap.description
-    --     , H.p "" $ H.text $ listAccess cap.access
-    --     , generic ds cap ""
-    --     ]
+    colorSelector :: Maybe DeviceState -> DeviceDetails -> ReactElement
+    colorSelector _mDeviceState device =
+      case getColorSetter device of
+        Nothing ->
+          H.div "" $ H.text "this doesn't support color selection"
 
+        Just (XYSetter _) ->
+          H.div ""
+          [ colorWheel
+            { onChange: dispatch <?| \color -> do
+                --
+                -- yeah had problems reading rgb/rgba (NaN everywhere)
+                -- and hex/hexa (everything was 0.0) so parsing hs
+                -- from hsv and using color to generate hex string
+                --
+                -- thinking I wrote the EffectFn1 sig wrong for
+                -- onChange in colorWheel, maybe should try Foreign,
+                -- or Json?
+                --
+                --
+                hsv <- O.lookup "hsv" color
+                h <- O.lookup "h" hsv
+                s <- O.lookup "s" hsv
+                let
+                  topic = setTopic device.name
+                  -- 0.5 for lightness was a guess, I don't
+                  -- understand hsl yet
+                  color' = Color.hsl h s 0.5
+                pure $
+                  PublishDeviceMsg $
+                    MQTT.mkPublishMsg topic $
+                      MQTT.hexColor $ Color.toHexString color'
+            }
+          ]
 
+        Just (HueSatSetter _) ->
+          H.div ""
+          [ colorWheel
+            { onChange: dispatch <?| \color -> do
+                --
+                -- All of these values are available coming back from
+                -- colorWheel according to a key dump, at least:
+                --
+                -- ["rgb","hsl","hsv","rgba","hsla","hsva","hex","hexa"]
+                --
+                -- hsl and hsv both seem to barf when I try to read the
+                -- 'l' and 'v' values respectively, and hsl for some
+                -- reason doesn't seem to even populate the saturation
+                -- ¯\_(ツ)_/¯
+                --
+                hsv <- O.lookup "hsv" color
+                h <- O.lookup "h" hsv
+                s <- O.lookup "s" hsv
+                let topic = setTopic device.name
+                pure $ PublishDeviceMsg $
+                  MQTT.mkPublishMsg topic $ MQTT.hslColor { h, s }
+            }
+          ]
+
+    enumSelector :: String -> Maybe DeviceState -> DeviceDetails -> ReactElement
+    enumSelector presetName _deviceState device =
+      case getPreset presetName device of
+        Nothing ->
+          H.div "" $ H.text "oh, sad"
+
+        Just preset
+          | not (canSet preset.access) ->
+              H.div "" $ H.text "no can do buddy"
+
+          | otherwise ->
+              H.div "border rounded p-2 m-2"
+              [ H.strong "" preset.name
+              , H.select_
+                "form-select"
+                -- how with Elmish? aria-label="Default select example"
+                { onChange: dispatch
+                   <|  PublishDeviceMsg
+                   <<< MQTT.mkGenericPublishMsg
+                        (setTopic device.name)
+                        (fromMaybe "CHECK_YOUR_PROPERTY" preset.property)
+                   <<< E.selectSelectedValue
+                }
+                $ enumValues preset <#> \v -> H.option_ "" { value: v } v
+              , H.p "" $ H.text $ fromMaybe "" preset.description
+              ]
 
 --    numeric
 --      :: forall r
@@ -382,6 +459,9 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
 --        <> capFieldsStr
 --      ]
 
+--
+-- import Control.Alternative (guard)
+--
 --    listAccess :: Int -> String
 --    listAccess a = intercalate ", " $
 --      catMaybes

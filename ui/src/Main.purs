@@ -79,8 +79,8 @@ update s = case _ of
             devices = Devices.decodeDevices =<< jsonBlob
             deviceState = DeviceState.decodeDeviceState =<< jsonBlob
 
-          debug $ show devices
-          debug jsonStr
+          -- debug $ show devices
+          -- debug jsonStr
 
 
           -- okay, one thing that is needed is a ux for when state hasn't
@@ -117,7 +117,7 @@ update s = case _ of
             
             
 
-          debug $ "This is getting called? " <> jsonStr
+          -- debug $ "This is getting called? " <> jsonStr
 
           --
           -- Probably going to abstract this pattern away.

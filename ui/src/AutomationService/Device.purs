@@ -54,7 +54,6 @@ type DeviceDetails =
   }
 
 
-
 --
 -- lens boilerplate...I miss TemplateHaskell here
 --
