@@ -14,17 +14,19 @@ import AutomationService.Device (Device(..), DeviceDetails, DeviceId, Devices,
                                  details, deviceTopic, getTopic, setTopic)
 import AutomationService.DeviceState (DeviceState, DeviceStates)
 import AutomationService.DeviceViewMessage (Message(..))
-import AutomationService.Exposes (Exposes, canSet, enumValues, isOn)
-import AutomationService.Lighting (ColorSetter(..), getColorSetter, getOnOffSwitch,
-                                   getPreset)
+import AutomationService.Exposes (Exposes, SubProps(..), canGet, canSet, enumValues, isOn, isPublished)
+import AutomationService.Lighting (ColorSetter(..), getColorSetter, getNumericCap,
+                                   getOnOffSwitch, getPreset)
 import AutomationService.Helpers (maybeHtml)
 import AutomationService.MQTT as MQTT
+import AutomationService.React.Bootstrap as Bootstrap
 import AutomationService.React.ColorWheel (colorWheel)
 import AutomationService.WebSocket (class WebSocket, sendJson, sendString)
 import Color as Color
+import Control.Alternative (guard)
 import Data.Argonaut.Core (stringify)
 import Data.Argonaut.Encode.Class (encodeJson)
-import Data.Array (drop, sortBy, take)
+import Data.Array (catMaybes, drop, intercalate, sortBy, take)
 import Data.DateTime.Instant (Instant)
 import Data.Foldable (foldr)
 import Data.List as L
@@ -60,7 +62,12 @@ initState dsUpdateTimers =
 init :: Ref DeviceStateUpdateTimers -> Transition Message State
 init = pure <<< initState
 
-update :: forall ws. WebSocket ws => Maybe ws -> State -> Message -> Transition Message State
+update
+  :: forall ws. WebSocket ws
+  => Maybe ws
+  -> State
+  -> Message
+  -> Transition Message State
 update ws s = case _ of
   LoadDevices newDevices -> do
     forkVoid $ liftEffect $ debug $ "loaded devices: " <> show newDevices
@@ -68,10 +75,15 @@ update ws s = case _ of
       liftEffect $ for_ newDevices $ \d -> do
         let
           -- this needs to get passed in from parent state as config, or something
-          subscribeMsg = MQTT.subscribe (deviceTopic (_.name <<< details $ d)) "HTTP 8080"
-          pingStateMsg = MQTT.publish (getTopic (_.name <<< details $ d)) $ MQTT.state ""
+          subscribeMsg =
+            MQTT.subscribe (deviceTopic (_.name <<< details $ d)) "HTTP 8080"
+          pingStateMsg =
+            MQTT.publish (getTopic (_.name <<< details $ d)) $ MQTT.state ""
+
         debug $ "subscribing with: " <> (stringify $ encodeJson subscribeMsg)
-        debug $ "pinging to get initial state: " <> (stringify $ encodeJson pingStateMsg)
+        debug $
+          "pinging to get initial state: " <> (stringify $ encodeJson pingStateMsg)
+
         for_ ws $ \ws' -> do
           sendJson ws' <<< encodeJson $ subscribeMsg
           sendJson ws' <<< encodeJson $ pingStateMsg
@@ -118,25 +130,16 @@ update ws s = case _ of
 view :: State -> Dispatch Message -> ReactElement
 view { devices, deviceStates, selectedDeviceId } dispatch =
   H.div "" -- "container mx-auto mt-5 d-flex flex-column justify-content-between"
-  [ H.div "" $ H.text $ "Device count: " <> (show $ L.length $ M.values devices)
-  , H.select_
-      "device-select"
-      { onChange: dispatch <| \e -> case E.selectSelectedValue e of
-           "" -> NoDeviceSelected
-           deviceId -> DeviceSelected deviceId
-      } $
-      [ H.option_ "" { value: "" } "No Device Selected" ]
-      <>
-      (sortBy (\a b -> compare (_.name <<< details $ a) (_.name <<< details $ b)) devicesA <#> \d ->
-        H.option_ "" { value: _.id <<< details $ d } $ _.name <<< details $ d
-      )
-
-  , maybeHtml (flip M.lookup devices =<< selectedDeviceId) $
-    listDevice (flip M.lookup deviceStates =<< selectedDeviceId)
-
+  [ H.div "" $ H.text $ "Count: " <> (show $ L.length $ M.values devices)
   , H.fragment $
-      deviceSummaryRows [] $
-        (\d -> deviceSummary (getDeviceState deviceStates d) d) <$> devicesA
+--      deviceSummaryRows [] $
+       (\d -> deviceSummary (getDeviceState deviceStates d) d)
+        <$>
+        sortBy
+          (\deviceA deviceB ->
+            compare (_.name <<< details $ deviceA) (_.name <<< details $ deviceB)
+          )
+          devicesA
   ]
 
   where
@@ -161,92 +164,117 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
     getDeviceState :: DeviceStates -> Device -> Maybe DeviceState
     getDeviceState deviceStates' = flip M.lookup deviceStates' <<< _.id <<< details
 
-    listDevice mDeviceState = case _ of
-      (OnOffLight deviceDetails) ->
-        listDevice' mDeviceState deviceDetails
-      (WindowCovering deviceDetails) ->
-        listDevice' mDeviceState deviceDetails
-      (UnknownDevice deviceDetails) ->
-        listDevice' mDeviceState deviceDetails
-      _ ->
-        H.div "card mt-2"
-        [ H.div "card-body"
-          [ H.p "" "hey"
-          ]
+    deviceTitle :: DeviceDetails -> ReactElement
+    deviceTitle { name } = H.div "card-title" name
 
-        ]
+    listAccess :: Int -> String
+    listAccess a = intercalate ", " $
+      catMaybes
+      [ guard (isPublished a) *> Just "published"
+      , guard (canSet a) *> Just "set"
+      , guard (canGet a) *> Just "get"
+      ]
 
     deviceSummary :: Maybe DeviceState -> Device -> ReactElement
     deviceSummary mDeviceState device =
       H.div "col" $
-      H.div "card mt-2"
-      [ H.div "card-body text-bg-light p-3"
-        [ H.div "card-title" $ _.name <<< details $ device
-          -- I don't know why, but this `case` seems to mess up
-          -- emacs's PureScript parsing from this point onward
-        , case device of
-          (ExtendedColorLight deviceDetails) ->
-            H.fragment
-            [ onOffSwitch mDeviceState deviceDetails
-            , enumSelector "effect" mDeviceState deviceDetails
-            , colorSelector mDeviceState deviceDetails
-            ]
+      H.div "card mt-2" $
+        H.div "card-body text-bg-light p-3" $
+          case device of
+            ExtendedColorLight deviceDetails ->
+              genericOnOffWithDetails mDeviceState deviceDetails
+              [ enumSelector "effect" mDeviceState deviceDetails
+              , numberSlider "brightness" mDeviceState deviceDetails
+              , numberSlider "color_temp" mDeviceState deviceDetails
+              , numberSlider "color_temp_startup" mDeviceState deviceDetails
+              , colorSelector mDeviceState deviceDetails
+              ]
 
-          (ColorTemperatureLight deviceDetails) ->
-            H.fragment
-            [ onOffSwitch mDeviceState deviceDetails
-            , enumSelector "effect" mDeviceState deviceDetails
-            ]
+            ColorTemperatureLight deviceDetails ->
+              genericOnOffWithDetails mDeviceState deviceDetails
+              [ enumSelector "effect" mDeviceState deviceDetails
+              , numberSlider "brightness" mDeviceState deviceDetails
+              , numberSlider "color_temp" mDeviceState deviceDetails
+              , numberSlider "color_temp_startup" mDeviceState deviceDetails
+              ]
 
-          (DimmableLight deviceDetails) ->
-            H.fragment
-            [ onOffSwitch mDeviceState deviceDetails
-            ]
+            DimmableLight deviceDetails ->
+              genericOnOffWithDetails mDeviceState deviceDetails
+              [ numberSlider "brightness" mDeviceState deviceDetails ]
 
-          (OnOffLight deviceDetails) ->
-            H.fragment
-            [ onOffSwitch mDeviceState deviceDetails
-            ]
+            OnOffLight deviceDetails ->
+              genericOnOffWithDetails mDeviceState deviceDetails []
 
-          (WindowCovering _deviceDetails) -> H.fragment []
+            WindowCovering deviceDetails ->
+              genericWithDetails mDeviceState deviceDetails [] []
 
-          (UnknownDevice _deviceDetails) -> H.fragment []
-        ]
-      ]
+            UnknownDevice deviceDetails ->
+              genericWithDetails mDeviceState deviceDetails [] []
 
-    listDevice' mDeviceState { id, name, category, model, manufacturer, exposes } =
-      H.div "card mt-2"
-      [ H.div "card-body"
-        [ H.h4 "" name
-        , H.ul ""
-          [ H.li "" $ "id: " <> id
-          , H.li "" $ "category: " <> category
-          , maybeHtml model $ \model' -> H.li "" $ "model: " <> model'
-          , maybeHtml manufacturer $ \m -> H.li "" $ "manufacturer: " <> m
-          , H.li "" $
-              listExposes
-                mDeviceState
-                { id, name, category, model, manufacturer }
-                exposes
-          ]
-        ]
-      ]
+    genericOnOffWithDetails
+      :: Maybe DeviceState -> DeviceDetails -> Array ReactElement -> ReactElement
+    genericOnOffWithDetails mDeviceState deviceDetails featureComponents =
+      genericWithDetails
+        mDeviceState
+        deviceDetails
+        [ onOffSwitch mDeviceState deviceDetails ]
+        featureComponents
 
-    listExposes
+    --
+    -- I want something like this, but see comment in
+    -- AutomationService.React.Bootstrap.iconToggle
+    --
+    -- Bootstrap.accordion { defaultActiveKey: 0 }
+    -- [
+    --   Bootstrap.card {}
+    --   [ Bootstrap.cardHeader {} $
+    --       H.div "d-flex flex-row"
+    --       [ Bootstrap.iconToggle { eventKey: 0 } "bi bi-sliders"
+    --       , deviceTitle device
+    --       , onOffSwitch mDeviceState deviceDetails
+    --       ]
+    --   , Bootstrap.accordionCollapse { eventKey: 0 } $
+    --       Bootstrap.cardBody {}
+    --       [ enumSelector "effect" mDeviceState deviceDetails
+    --       , colorSelector mDeviceState deviceDetails
+    --       ]
+    --   ]
+    -- ]
+    --
+
+    genericWithDetails
       :: Maybe DeviceState
-      -> { id :: String
-         , name :: String
-         , category :: String
-         , model :: Maybe String
-         , manufacturer :: Maybe String
-         }
-      -> Exposes
+      -> DeviceDetails
+      -> Array ReactElement
+      -> Array ReactElement
       -> ReactElement
-    listExposes _ds s allExposes =
-      H.div "" $
-      [ H.div "" $ "name: " <> s.name
-      , H.div "" $ "exposes: " <> (show allExposes)
-      ]
+    genericWithDetails mDeviceState deviceDetails headerComponents featureComponents =
+      Bootstrap.accordion {} $
+        Bootstrap.accordionItem { eventKey: 0 }
+        [
+          H.div_ "card-header d-flex flex-row justify-content-between"
+          { style: H.css { minWidth: "11.5em" } } $
+          [ deviceTitle deviceDetails ] <> headerComponents
+        , Bootstrap.accordionHeader {} "detailed settings"
+        , Bootstrap.accordionBody {} $
+          [ deviceInfo deviceDetails ] <> featureComponents
+        ]
+
+    deviceInfo :: DeviceDetails -> ReactElement
+    deviceInfo { id, name, category, manufacturer, model }  =
+      let
+        mkRow k v = H.tr "" [ H.td "py-1 px-2" (k <> ": "), H.td "py-1 px-2" v ]
+      in
+       H.div "" $
+       [ H.table "m-2" $
+           H.tbody ""
+           [ mkRow "name" name
+           , mkRow "id" id
+           , mkRow "category" category
+           , mkRow "manufacturer" (fromMaybe "" manufacturer)
+           , mkRow "model" (fromMaybe "" model)
+           ]
+       ]
 
     onOffSwitch :: Maybe DeviceState -> DeviceDetails -> ReactElement
     onOffSwitch mDeviceState device =
@@ -259,7 +287,7 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
             H.div "" $ H.text "Not allowed to turn this one on chief"
 
           | otherwise ->
-            H.div_ "form-check form-switch" {}
+            H.div "form-check form-switch"
             [ H.input_
               "form-check-input"
               { type: "checkbox"
@@ -277,70 +305,74 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
             , H.label_
               "form-check-label"
               { htmlFor: "flexSwitchCheckDefault" } $
-              H.text $ "on/off"
+              H.empty
             ]
 
     colorSelector :: Maybe DeviceState -> DeviceDetails -> ReactElement
     colorSelector _mDeviceState device =
-      case getColorSetter device of
-        Nothing ->
-          H.div "" $ H.text "this doesn't support color selection"
+      -- let
+      --   hsColor = fromMaybe 1 _mDeviceState
+      --   xyColor = fromMaybe 1 _mDeviceState
+      -- in
+       case getColorSetter device of
+         Nothing ->
+           H.div "" $ H.text "this doesn't support color selection"
 
-        Just (XYSetter _) ->
-          H.div ""
-          [ colorWheel
-            { onChange: dispatch <?| \color -> do
-                --
-                -- yeah had problems reading rgb/rgba (NaN everywhere)
-                -- and hex/hexa (everything was 0.0) so parsing hs
-                -- from hsv and using color to generate hex string
-                --
-                -- thinking I wrote the EffectFn1 sig wrong for
-                -- onChange in colorWheel, maybe should try Foreign,
-                -- or Json?
-                --
-                --
-                hsv <- O.lookup "hsv" color
-                h <- O.lookup "h" hsv
-                s <- O.lookup "s" hsv
-                let
-                  topic = setTopic device.name
-                  -- 0.5 for lightness was a guess, I don't
-                  -- understand hsl yet
-                  color' = Color.hsl h s 0.5
-                pure $
-                  PublishDeviceMsg $
-                    MQTT.mkPublishMsg topic $
-                      MQTT.hexColor $ Color.toHexString color'
-            }
-          ]
+         Just (XYSetter _) ->
+           H.div "m-1 p-2 border border-secondary-subtle"
+           [ colorWheel
+             { onChange: dispatch <?| \color -> do
+                 --
+                 -- yeah had problems reading rgb/rgba (NaN everywhere)
+                 -- and hex/hexa (everything was 0.0) so parsing hs
+                 -- from hsv and using color to generate hex string
+                 --
+                 -- thinking I wrote the EffectFn1 sig wrong for
+                 -- onChange in colorWheel, maybe should try Foreign,
+                 -- or Json?
+                 --
+                 --
+                 hsv <- O.lookup "hsv" color
+                 h <- O.lookup "h" hsv
+                 s <- O.lookup "s" hsv
+                 let
+                   topic = setTopic device.name
+                   -- 0.5 for lightness was a guess, I don't
+                   -- understand hsl yet
+                   color' = Color.hsl h s 0.5
+                 pure $
+                   PublishDeviceMsg $
+                     MQTT.mkPublishMsg topic $
+                       MQTT.hexColor $ Color.toHexString color'
+             }
+           ]
 
-        Just (HueSatSetter _) ->
-          H.div ""
-          [ colorWheel
-            { onChange: dispatch <?| \color -> do
-                --
-                -- All of these values are available coming back from
-                -- colorWheel according to a key dump, at least:
-                --
-                -- ["rgb","hsl","hsv","rgba","hsla","hsva","hex","hexa"]
-                --
-                -- hsl and hsv both seem to barf when I try to read the
-                -- 'l' and 'v' values respectively, and hsl for some
-                -- reason doesn't seem to even populate the saturation
-                -- ¯\_(ツ)_/¯
-                --
-                hsv <- O.lookup "hsv" color
-                h <- O.lookup "h" hsv
-                s <- O.lookup "s" hsv
-                let topic = setTopic device.name
-                pure $ PublishDeviceMsg $
-                  MQTT.mkPublishMsg topic $ MQTT.hslColor { h, s }
-            }
-          ]
+         Just (HueSatSetter _) ->
+           H.div "m-2 border border-primary-subtle"
+           [ colorWheel
+             { onChange: dispatch <?| \color -> do
+                 --
+                 -- All of these values are available coming back from
+                 -- colorWheel according to a key dump, at least:
+                 --
+                 -- ["rgb","hsl","hsv","rgba","hsla","hsva","hex","hexa"]
+                 --
+                 -- hsl and hsv both seem to barf when I try to read the
+                 -- 'l' and 'v' values respectively, and hsl for some
+                 -- reason doesn't seem to even populate the saturation
+                 -- ¯\_(ツ)_/¯
+                 --
+                 hsv <- O.lookup "hsv" color
+                 h <- O.lookup "h" hsv
+                 s <- O.lookup "s" hsv
+                 let topic = setTopic device.name
+                 pure $ PublishDeviceMsg $
+                   MQTT.mkPublishMsg topic $ MQTT.hslColor { h, s }
+             }
+           ]
 
     enumSelector :: String -> Maybe DeviceState -> DeviceDetails -> ReactElement
-    enumSelector presetName _deviceState device =
+    enumSelector presetName _mDeviceState device =
       case getPreset presetName device of
         Nothing ->
           H.div "" $ H.text "oh, sad"
@@ -366,106 +398,51 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
               , H.p "" $ H.text $ fromMaybe "" preset.description
               ]
 
---    numeric
---      :: forall r
---       . Maybe DeviceState
---      -> { id :: DeviceId | r }
---      -> Exposes
---      -> ReactElement
---    numeric ds s exposes = case cap.property of
---      Just propName ->
---        let
---          idStr = "numericRange_" <> s.id
---
---          getProp :: String -> DeviceState -> Maybe Int
---          getProp propName' ds' = case propName' of
---            "brightness" -> ds'.brightness
---            "color_temp" -> ds'.colorTemp
---            "color_temp_startup" -> ds'.colorTempStartup
---            _ -> Nothing
---
---          showMaybe alt = show <<< fromMaybe alt
---
---        in
---          H.div ""
---          [ H.label_ "form-label" { htmlFor: idStr } $
---              H.text cap.name
---    
---          , H.input_
---            "form-range"
---            { type: "range"
---            , min: showMaybe 0 cap.valueMin
---            , max: showMaybe 255 cap.valueMax
---            , step: showMaybe 1 cap.valueStep
---            , value: showMaybe 100 (getProp propName =<< ds)
---            , id: idStr
---            , onChange: dispatch <?| \e ->
---                 let
---                   newValue = E.inputText e
---                 in
---                   ds >>= \ds' ->
---                     Just $ PublishDeviceMsg $
---                       MQTT.mkGenericPublishMsg
---                         (setTopic ds'.device.friendlyName) propName newValue
---            }
---  
---          , generic ds cap ""
---          ]
---
---      Nothing -> generic ds cap ""
+    numberSlider :: String -> Maybe DeviceState -> DeviceDetails -> ReactElement
+    numberSlider propName mDeviceState device =
+      case getNumericCap propName device of
+        Just cap@{ subProps: (Numeric numProps) } ->
+          let
+            idStr = "numericRange_" <> device.id
 
---    -- these two are...under-implemented for now
---    composite
---      :: forall s. Maybe DeviceState
---      -> s
---      -> CapabilityBase CompositeProps
---      -> ReactElement
---    composite ds _s cap
---      | cap.property == Just "color" =
---        H.div ""
---        [ sketchColor
---          { onChange: dispatch <?| \color -> do
---               hex <- O.lookup "hex" color
---               topic <- setTopic <<< _.device.friendlyName <$> ds
---               pure <<< PublishDeviceMsg $ MQTT.mkPublishMsg topic $ MQTT.hexColor hex
---          }
---        , generic ds cap $ ", features: " <> show cap.features
---        ]
---      | otherwise =
---        generic ds cap $ ", features: " <> show cap.features
+            getProp :: String -> DeviceState -> Maybe Int
+            getProp propName' ds' = case propName' of
+              "brightness" -> ds'.brightness
+              "color_temp" -> ds'.colorTemp
+              "color_temp_startup" -> ds'.colorTempStartup
+              _ -> Nothing
 
---    list
---      :: forall s. Maybe DeviceState
---      -> s
---      -> CapabilityBase ListProps
---      -> ReactElement
---    list ds _s cap =
---      generic ds cap $ ", item_type: " <> show cap.itemType
+            showMaybe alt = show <<< fromMaybe alt
 
---    generic
---      :: forall r. Maybe DeviceState
---      -> CapabilityBase r
---      -> String
---      -> ReactElement
---    generic _ds cap capFieldsStr =
---      H.div "" $
---      [ H.text $ "name: " <> cap.name
---        <> ", description: " <> fromMaybe "" cap.description
---        <> ", type: " <> cap.capType
---        <> ", feature type: " <> fromMaybe "n/a" cap.featureType
---        <> ", label: " <> cap.label
---        <> ", property: " <> show cap.property
---        <> ", access: " <> listAccess cap.access
---        <> capFieldsStr
---      ]
+          in
+           H.div ""
+           [ H.label_ "form-label" { htmlFor: idStr } $
+               H.text cap.name
 
---
--- import Control.Alternative (guard)
---
---    listAccess :: Int -> String
---    listAccess a = intercalate ", " $
---      catMaybes
---      [ guard (isPublished a) *> Just "published"
---      , guard (canSet a) *> Just "set"
---      , guard (canGet a) *> Just "get"
---      ]
+           , H.input_
+             "form-range"
+             { type: "range"
+             , min: showMaybe 0 numProps.valueMin
+             , max: showMaybe 255 numProps.valueMax
+             , step: showMaybe 1 numProps.valueStep
+             , value: showMaybe 100 (getProp propName =<< mDeviceState)
+             , id: idStr
+             , onChange: dispatch <?| \e -> do
+                 ds <- mDeviceState
+                 Just $ PublishDeviceMsg $
+                   MQTT.mkGenericPublishMsg
+                     (setTopic device.name)
+                     propName $
+                     E.inputText e
+             }
+           ]
+
+        Just { subProps: _ } ->
+          H.div "" $ H.text unsupported
+
+        Nothing ->
+          H.div "" $ H.text unsupported
+
+      where
+        unsupported =
+          "Capability " <> propName <> " is not supported for this device."

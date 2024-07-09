@@ -2,6 +2,7 @@ module AutomationService.Lighting
   ( ColorSetter(..)
   , getColorSetter
   , getOnOffSwitch
+  , getNumericCap
   , getPreset
   , isColor
   , isOnOffSwitch
@@ -66,3 +67,13 @@ getColor { name, subProps } =
       Just $ XYSetter caps
 
     _, _ -> Nothing
+
+getNumericCap :: String -> DeviceDetails -> Maybe Capability
+getNumericCap capName { exposes } =
+  head $
+    filter
+      (case _ of
+        { name, subProps: Numeric _numProps } -> capName == name
+        _ -> false
+      )
+      exposes
