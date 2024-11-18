@@ -3,11 +3,13 @@ module Main where
 import Prelude
 
 import AutomationService.Device (decodeDevices) as Devices
-import AutomationService.DeviceView (DeviceStateUpdateTimers, State, initState, update,
-                                     view)
-  as Devices
+import AutomationService.DeviceMessage (Message(..)) as Devices
+import AutomationService.DeviceView (DeviceStateUpdateTimers) as Devices
 import AutomationService.DeviceState as DeviceState
-import AutomationService.DeviceViewMessage (Message(..)) as Devices
+import AutomationService.Group (decodeGroups) as Groups
+import AutomationService.GroupMessage (Message(..)) as Groups
+import AutomationService.ResourceMessage (Message(..)) as Resources
+import AutomationService.ResourceView (State, initState, update, view) as Resources
 import AutomationService.Helpers (allElements, maybeHtml)
 import AutomationService.Message (Message(..), Page(..), pageName, pageNameClass)
 import AutomationService.WebSocket (class WebSocket, addWSEventListener, connectToWS, sendString)
@@ -35,8 +37,7 @@ import Web.Socket.Event.MessageEvent (data_, fromEvent)
 
 type State ws =
   { currentPage :: Page
-  , devices :: Devices.State
-  , websocket :: Maybe ws
+  , resources :: Resources.State ws
   , publishMsg :: String
   , lastSentMsg :: Maybe String
   }
@@ -51,8 +52,7 @@ init newDsUpdateTimers connectToWS = do
   forks connectToWS
   pure
     { currentPage: Devices
-    , devices: Devices.initState newDsUpdateTimers
-    , websocket: Nothing
+    , resources: Resources.initState newDsUpdateTimers 0
     , publishMsg: "{}"
     , lastSentMsg: Nothing
     }
@@ -66,10 +66,19 @@ update s = case _ of
   SetPage newPage -> pure $ s { currentPage = newPage }
 
   DeviceMsg deviceMsg ->
-    Devices.update s.websocket s.devices deviceMsg # bimap DeviceMsg (s { devices = _ })
+    Resources.update s.resources deviceMsg #
+      bimap DeviceMsg (s { resources = _ })
+
+  GroupMsg groupMsg ->
+    Resources.update s.resources groupMsg #
+      bimap GroupMsg (s { resources = _ })
+
+  UpdateCnt updateMsg ->
+    Resources.update s.resources updateMsg #
+      bimap UpdateCnt (s { resources = _ })
 
   InitWS ws -> do
-    forks $ \msgSink -> do
+    forks $ \{ dispatch: msgSink } -> do
       let msgSink' = msgSink <<< DeviceMsg
       el <- liftEffect $ eventListener $ \evt -> do
         for_ (fromEvent evt) \msgEvt -> do
@@ -78,6 +87,7 @@ update s = case _ of
             jsonBlob = parseJson jsonStr
             devices = Devices.decodeDevices =<< jsonBlob
             deviceState = DeviceState.decodeDeviceState =<< jsonBlob
+            groups = Groups.decodeGroups =<< jsonBlob
 
           -- debug $ show devices
           -- debug jsonStr
@@ -88,15 +98,28 @@ update s = case _ of
 
           msgSink' $ either
             (\jsonDecodeError ->
-              Devices.LoadDeviceStateFailed <<< show $ jsonDecodeError)
-            (\deviceState' -> Devices.LoadDeviceState deviceState')
+              Resources.DeviceMsg <<< Devices.LoadDeviceStateFailed <<< show $
+                jsonDecodeError)
+            (\deviceState' ->
+              Resources.DeviceMsg <<< Devices.LoadDeviceState $ deviceState')
             deviceState
 
           msgSink' $ either
             (\jsonDecodeError ->
-              Devices.LoadDevicesFailed <<< show $ jsonDecodeError)
-            (\devices' -> Devices.LoadDevices devices')
+              Resources.DeviceMsg <<< Devices.LoadDevicesFailed <<< show $
+                jsonDecodeError)
+            (\devices' ->
+              Resources.DeviceMsg <<< Devices.LoadDevices $ devices')
             devices
+
+          msgSink <<< GroupMsg $ either
+            (\jsonDecodeError ->
+              Resources.GroupMsg <<< Groups.LoadGroupsFailed <<< show $
+                jsonDecodeError)
+            (\groups' -> Resources.GroupMsg <<< Groups.LoadGroups $ groups')
+            groups
+
+          msgSink $ UpdateCnt Resources.UpdateCnt
 
           -- old comments, will revisit - 2024-02-29
 
@@ -145,14 +168,14 @@ update s = case _ of
 
       liftEffect $ addWSEventListener ws el
 
-    pure $ s { websocket = Just ws }
+    pure $ s { resources { websocket = Just ws } }
 
   PublishMsgChanged msg -> pure $ s { publishMsg = msg }
 
   Publish -> do
     forkVoid $ do
       liftEffect $ debug $ "Message to publish: " <> s.publishMsg
-      for_ s.websocket $ \ws -> liftEffect $ sendString ws s.publishMsg
+      for_ s.resources.websocket $ \ws -> liftEffect $ sendString ws s.publishMsg
     pure $ s { lastSentMsg = Just s.publishMsg }
 
 publishMQTT
@@ -215,8 +238,19 @@ view state@{ currentPage } dispatch =
 
     page :: WebSocket ws => Page -> State ws -> ReactElement
     page pg s = case pg of
-      PublishMQTT -> publishMQTT s dispatch
-      Devices -> Devices.view s.devices (dispatch <<< DeviceMsg)
+      PublishMQTT ->
+        publishMQTT
+          { lastSentMsg: s.lastSentMsg
+          , websocket: s.resources.websocket
+          }
+          dispatch
+
+      Devices -> Resources.view s.resources \msg ->
+        dispatch $
+          case msg of
+            Resources.DeviceMsg _deviceMsg -> DeviceMsg msg
+            Resources.GroupMsg _groupMsg -> GroupMsg msg
+            Resources.UpdateCnt -> UpdateCnt msg
 
 main :: Effect Unit
 main = do

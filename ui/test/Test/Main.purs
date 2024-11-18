@@ -28,7 +28,7 @@ instance WebSocket TestWS where
   addWSEventListener _ws _el = log "hey"
 
 connectToWS :: Ref String -> Command Aff (Message TestWS)
-connectToWS wsState msgSink =
+connectToWS wsState { dispatch: msgSink } =
   liftEffect <<< msgSink <<< InitWS <<< TestWS $ wsState
 
 -- 

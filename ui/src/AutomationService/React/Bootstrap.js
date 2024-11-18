@@ -1,21 +1,23 @@
-import Accordion from 'react-bootstrap/Accordion';
-import AccordionItem from 'react-bootstrap/AccordionItem';
-import AccordionHeader from 'react-bootstrap/AccordionHeader';
-import AccordionBody from 'react-bootstrap/AccordionBody';
-import AccordionButton, { useAccordionButton } from 'react-bootstrap/AccordionButton';
-import AccordionCollapse from 'react-bootstrap/AccordionCollapse';
-
-import Card from 'react-bootstrap/Card';
-import CardBody from 'react-bootstrap/CardBody';
-import CardFooter from 'react-bootstrap/CardFooter';
-import CardHeader from 'react-bootstrap/CardHeader';
-import CardImg from 'react-bootstrap/CardImg';
-import CardImgOverlay from 'react-bootstrap/CardImgOverlay';
-import CardLink from 'react-bootstrap/CardLink';
-import CardSubtitle from 'react-bootstrap/CardSubtitle';
-import CardText from 'react-bootstrap/CardText';
-import CardTitle from 'react-bootstrap/CardTitle';
-import CardGroup from 'react-bootstrap/CardGroup';
+import {
+  Accordion,
+  AccordionBody,
+  AccordionButton,
+  AccordionCollapse,
+  AccordionHeader,
+  AccordionItem,
+  Card,
+  CardBody,
+  CardFooter,
+  CardGroup,
+  CardHeader,
+  CardImg,
+  CardImgOverlay,
+  CardLink,
+  CardSubtitle,
+  CardText,
+  CardTitle,
+  useAccordionButton
+} from 'react-bootstrap';
 
 // Accordion
 

@@ -12,8 +12,8 @@ import Prelude
 
 import AutomationService.Device (Device(..), DeviceDetails, DeviceId, Devices,
                                  details, deviceTopic, getTopic, setTopic)
-import AutomationService.DeviceState (DeviceState, DeviceStates)
-import AutomationService.DeviceViewMessage (Message(..))
+import AutomationService.DeviceMessage (Message(..))
+import AutomationService.DeviceState (DeviceState, DeviceStates, getDeviceState)
 import AutomationService.Exposes (Exposes, SubProps(..), canGet, canSet, enumValues, isOn, isPublished)
 import AutomationService.Lighting (ColorSetter(..), getColorSetter, getNumericCap,
                                    getOnOffSwitch, getPreset)
@@ -130,16 +130,15 @@ update ws s = case _ of
 view :: State -> Dispatch Message -> ReactElement
 view { devices, deviceStates, selectedDeviceId } dispatch =
   H.div "" -- "container mx-auto mt-5 d-flex flex-column justify-content-between"
-  [ H.div "" $ H.text $ "Count: " <> (show $ L.length $ M.values devices)
+  [ H.div "" $ H.text $ (show $ L.length $ M.values devices) <> " Devices"
   , H.fragment $
---      deviceSummaryRows [] $
-       (\d -> deviceSummary (getDeviceState deviceStates d) d)
-        <$>
-        sortBy
-          (\deviceA deviceB ->
-            compare (_.name <<< details $ deviceA) (_.name <<< details $ deviceB)
-          )
-          devicesA
+    (\d -> deviceSummary (getDeviceState deviceStates d) d)
+    <$>
+    sortBy
+      (\deviceA deviceB ->
+        compare (_.name <<< details $ deviceA) (_.name <<< details $ deviceB)
+      )
+      devicesA
   ]
 
   where
@@ -150,19 +149,6 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
     -- ...maybe there's a better way?
     devicesA :: Array Device
     devicesA = L.toUnfoldable $ M.values devices
-
-    deviceSummaryRows
-      :: Array ReactElement
-      -> Array ReactElement
-      -> Array ReactElement
-    deviceSummaryRows elems [] = elems
-    deviceSummaryRows elems summaries =
-      deviceSummaryRows
-        (elems <> [ H.div "row" $ take 3 summaries])
-        (drop 3 summaries)
-
-    getDeviceState :: DeviceStates -> Device -> Maybe DeviceState
-    getDeviceState deviceStates' = flip M.lookup deviceStates' <<< _.id <<< details
 
     deviceTitle :: DeviceDetails -> ReactElement
     deviceTitle { name } = H.div "card-title" name
@@ -184,6 +170,7 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
             ExtendedColorLight deviceDetails ->
               genericOnOffWithDetails mDeviceState deviceDetails
               [ enumSelector "effect" mDeviceState deviceDetails
+              , enumSelector "gradient_scene" mDeviceState deviceDetails
               , numberSlider "brightness" mDeviceState deviceDetails
               , numberSlider "color_temp" mDeviceState deviceDetails
               , numberSlider "color_temp_startup" mDeviceState deviceDetails
@@ -292,7 +279,7 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
               "form-check-input"
               { type: "checkbox"
               , role: "switch"
-              , id: "flexSwitchCheckDefault"
+              , id: "flexSwitchCheckDefault_" <> device.id
               , checked:
                 case mDeviceState >>= _.state of
                   Just onOffValue -> isOn cap onOffValue
@@ -374,8 +361,7 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
     enumSelector :: String -> Maybe DeviceState -> DeviceDetails -> ReactElement
     enumSelector presetName _mDeviceState device =
       case getPreset presetName device of
-        Nothing ->
-          H.div "" $ H.text "oh, sad"
+        Nothing -> H.empty
 
         Just preset
           | not (canSet preset.access) ->

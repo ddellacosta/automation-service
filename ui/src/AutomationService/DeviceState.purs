@@ -5,12 +5,11 @@ module AutomationService.DeviceState
  , DeviceSummary
  , Update
  , decodeDeviceState
+ , getDeviceState
  )
 where
 
-import Prelude
-
-import AutomationService.Device (DeviceId)
+import AutomationService.Device (Device, DeviceId, details)
 import AutomationService.Exposes (ValueOnOff)
 import Control.Alternative ((<|>))
 import Data.Argonaut (Json, JsonDecodeError, decodeJson)
@@ -18,10 +17,15 @@ import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Argonaut.Decode.Decoders (decodeNumber, decodeString)
 import Data.Either (Either (..))
 import Data.Map (Map)
+import Data.Map as M
 import Data.Maybe (Maybe)
 import Data.Traversable (for, traverse)
+import Prelude ((<<<), (<$>), (>>=), (=<<), bind, flip, pure)
 
 type DeviceStates = Map DeviceId DeviceState
+
+getDeviceState :: DeviceStates -> Device -> Maybe DeviceState
+getDeviceState deviceStates' = flip M.lookup deviceStates' <<< _.id <<< details
 
 type Color =
   { x :: Number

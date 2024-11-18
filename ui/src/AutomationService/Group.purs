@@ -1,7 +1,13 @@
-module Group where
+module AutomationService.Group
+  ( Group
+  , GroupDevice
+  , GroupScene
+  , decodeGroups
+  )
+where
 
 import AutomationService.Device (DeviceId)
-import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, toArray)
+import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, encodeJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:))
 import Data.Array (filter)
 import Data.Either (Either(..), isRight)
@@ -9,18 +15,17 @@ import Data.Foldable (foldM)
 import Data.Map as M
 import Data.Map (Map)
 import Data.Maybe (Maybe(..))
-import Data.Traversable (sequence)
-import Prelude (($), (<$>), (=<<), bind, pure)
+import Data.Traversable (sequence, traverse)
+import Prelude (($), (<$>), (=<<), (<#>), bind, map, pure)
 
-type SceneId = Int
-type SceneName = String
-type DeviceEndpoint = Int
+type GroupScene = { id :: Int, name :: String }
+type GroupDevice = { id :: String, endpoint :: Int }
 
 type Group =
   { name :: String
   , id :: Int
-  , members :: Map DeviceId DeviceEndpoint
-  , scenes :: Map SceneId SceneName
+  , members :: Array GroupDevice
+  , scenes :: Array GroupScene
   }
 
 decodeGroups :: Json -> Either JsonDecodeError (Array Group)
@@ -39,37 +44,29 @@ decodeGroup groupJson = do
   obj <- decodeJson groupJson
   name <- obj .: "friendly_name"
   id <- obj .: "id"
-  members <- decodeMembers =<< obj .: "members"
-  scenes <- decodeScenes =<< obj .: "scenes"
-  pure $ { name, id, members, scenes }
+  members <- decodeGroupResource decodeMember =<< obj .: "members"
+  scenes <- decodeGroupResource decodeScene =<< obj .: "scenes"
+  pure { name, id, members, scenes }
 
   where
-    decodeMembers
-      :: Array Json
-      -> Either JsonDecodeError (Map DeviceId DeviceEndpoint)
-    decodeMembers = foldM decodeMember M.empty
+    decodeGroupResource
+      :: forall a. (Json -> Either JsonDecodeError a)
+      -> Array Json
+      -> Either JsonDecodeError (Array a)
+    decodeGroupResource decodeFn grs = case (filter isRight $ decodeFn <$> grs) of
+      [] -> Right []
+      grs' -> sequence grs'
 
-    decodeMember
-      :: Map DeviceId DeviceEndpoint
-      -> Json
-      -> Either JsonDecodeError (Map DeviceId DeviceEndpoint)
-    decodeMember members memberJson = do
+    decodeMember :: Json -> Either JsonDecodeError GroupDevice
+    decodeMember memberJson = do
       obj <- decodeJson memberJson
       endpoint <- obj .: "endpoint"
-      deviceId <- obj .: "ieee_address"
-      pure $ M.insert deviceId endpoint members
+      id <- obj .: "ieee_address"
+      pure { id, endpoint }
 
-    decodeScenes
-      :: Array Json
-      -> Either JsonDecodeError (Map SceneId SceneName)
-    decodeScenes = foldM decodeScene M.empty
-
-    decodeScene
-      :: Map SceneId SceneName
-      -> Json
-      -> Either JsonDecodeError (Map SceneId SceneName)
-    decodeScene scenes sceneJson = do
+    decodeScene :: Json -> Either JsonDecodeError GroupScene
+    decodeScene sceneJson = do
       obj <- decodeJson sceneJson
-      sceneId <- obj .: "id"
-      sceneName <- obj .: "name"
-      pure $ M.insert sceneId sceneName scenes
+      id <- obj .: "id"
+      name <- obj .: "name"
+      pure { id, name }

@@ -210,12 +210,14 @@ decodeBaseDevice deviceJson exposes = do
 decodeDevice :: Json -> Either JsonDecodeError Device
 decodeDevice deviceJson = do
   obj <- decodeJson deviceJson
+
   --
   -- What I've seen at least is that only the Controller has
   -- definition == null. Also see
   -- https://www.zigbee2mqtt.io/guide/usage/mqtt_topics_and_messages.html#zigbee2mqtt-bridge-devices
   --
   mDefinition <- obj .:? "definition"
+
   exposes <- case mDefinition of
     Just definition -> do
       exposes <- definition .:? "exposes"
@@ -223,7 +225,28 @@ decodeDevice deviceJson = do
         Just exposes' -> decodeExposes Nothing exposes'
         _ -> Left (TypeMismatch $ "Empty exposes list")
     Nothing -> Left (TypeMismatch $ "No definition")
+
   baseDevice <- decodeBaseDevice deviceJson exposes
+
+  --
+  -- Arguably this should be doing more comprehensive checks to
+  -- ensure that e.g. a device with a numeric brightness capability
+  -- also definitely has an on/off binary capability too. And it
+  -- probably will...some day. For now I'm relying on the idea that
+  -- these capabilities imply a hierarchy of functionality that
+  -- wouldn't mean much otherwise, and is implied by the device types
+  -- described in the Matter 1.2 protocol (which I think it's
+  -- reasonable to expect zigbee-compatibile devices to roughly
+  -- adhere to, both based on my experience looking at their feature
+  -- set along with the fact that the Zigbee Alliance is a major
+  -- contributer to Matter).
+  --
+  -- More practically speaking this also pushes a lot of the
+  -- responsibility for confirming functionality to the view layer,
+  -- and that's fine for now; the view layer has to manage a lot of
+  -- changing conditions regardless so it's not a bad tradeoff to
+  -- simplify this parsing code in return.
+  --
   devices <- map sort $ for exposes $ \e ->
     Right $ case e.featureType, e.type, e.name of
       Just Light, Composite', "color_xy" -> ExtendedColorLight baseDevice

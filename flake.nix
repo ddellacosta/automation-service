@@ -6,8 +6,11 @@
   description = "automation-service";
 
   inputs = {
-    # for PureScript 0.15.11
-    nixpkgs.url = "nixpkgs/9957cd48326fe8dbd52fdc50dd2502307f188b0d";
+    # updated 2024-10-20
+    # # for PureScript 0.15.11
+    # nixpkgs.url = "nixpkgs/9957cd48326fe8dbd52fdc50dd2502307f188b0d";
+    # PureScript 0.15.15
+    nixpkgs.url = "nixpkgs/4eb33fe664af7b41a4c446f87d20c9a0a6321fa3";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -17,7 +20,7 @@
       let
         t = lib.trivial;
         hl = haskell.lib;
-        haskellPackages = haskell.packages.ghc927;
+        haskellPackages = haskell.packages.ghc964;
 
         name = "automation-service";
 
@@ -25,7 +28,7 @@
           let
             addBuildTools = (t.flip hl.addBuildTools) (devTools ++ [
               pkgs.purescript
-              pkgs.nodejs_18
+              pkgs.nodejs_22
               pkgs.esbuild
               pkgs.sass
               zlib
@@ -56,13 +59,20 @@
               ];
             };
 
-        # should I bump this? - 2023-10-19
+        #
+        # # should I bump this? - 2023-10-19
+        #
+        # last bumped 2024-10-20
+        # - imageDigest = "sha256:31b808456afccc2a419507ea112e152cf27e9bd2527517b0b6ca8639cc423501";
+        # - sha256 = "0bbw3r0civlcm3inj23fq8f25aw63rnaay09qjbrvfjd7pcfbyqn";
+        # - finalImageTag = "2.15.0";
+        #
         nixFromDockerHub = pkgs.dockerTools.pullImage {
           imageName = "nixos/nix";
-          imageDigest = "sha256:31b808456afccc2a419507ea112e152cf27e9bd2527517b0b6ca8639cc423501";
-          sha256 = "0bbw3r0civlcm3inj23fq8f25aw63rnaay09qjbrvfjd7pcfbyqn";
+          imageDigest = "sha256:fd7a5c67d396fe6bddeb9c10779d97541ab3a1b2a9d744df3754a99add4046f1";
+          sha256 = "1izbcfac0cac0jg1q3x834lkdqc0q2dh670bj0zsyadhn0m7f3v6";
           finalImageName = "nixos/nix";
-          finalImageTag = "2.15.0";
+          finalImageTag = "2.24.9";
         };
 
       in {
@@ -107,7 +117,9 @@
           ghc-events
           ghcid
           jq
+          lua
           mosquitto
+          skopeo # for calculating sha256 of docker image
           stylish-haskell
           # marked as broken :-(
           # threadscope

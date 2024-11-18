@@ -237,16 +237,16 @@ run' threadMapTV = do
     tryRestoreRunningAutomations
       :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => m ()
     tryRestoreRunningAutomations = do
-      rc <- view restartConditions
-      rc' <- atomically . readTVar $ rc
-      case rc' of
+      rcTVar <- view restartConditions
+      rc <- atomically . readTVar $ rcTVar
+      case rc of
         (RestartConditions True True True) -> do
           daemonBroadcast' <- view daemonBroadcast
           priorRunning <- view startupMessages
           atomically $ do
             priorRunning' <- readTVar priorRunning
             for_ priorRunning' $ writeTChan daemonBroadcast'
-            writeTVar rc $ rc' & notAlreadyRestarted .~ False
+            writeTVar rcTVar $ rc & notAlreadyRestarted .~ False
         _ -> pure ()
 
     initializeAndRunAutomation
