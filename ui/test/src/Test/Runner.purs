@@ -4,10 +4,9 @@ import Effect (Effect)
 import Prelude (Unit, discard)
 import Test.AutomationService.Device as Test.AutomationService.Device
 import Test.AutomationService.Exposes as Test.AutomationService.Exposes
+import Test.AutomationService.Spec (Spec)
 import Test.Main as Test.Main
-import Test.Spec (Spec)
-import Test.Spec.Reporter (consoleReporter)
-import Test.Spec.Runner.Node (runSpecAndExitProcess)
+import Test.Spec.Mocha (runMocha)
 
 spec :: Spec Unit
 spec = do
@@ -16,4 +15,4 @@ spec = do
   Test.Main.spec
 
 main :: Effect Unit
-main = runSpecAndExitProcess [consoleReporter] spec
+main = runMocha spec

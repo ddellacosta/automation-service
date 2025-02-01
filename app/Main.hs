@@ -16,13 +16,6 @@ import Service.MQTT.Client (initMQTTClient, mqttClientCallback)
 import System.Log.FastLogger (TimedFastLogger, newTimedFastLogger)
 import UnliftIO.STM (TVar, readTVarIO)
 
-
--- this needs to be more intelligent, in particular in terms of how we
--- expect it to interact with Docker, if that is a main way we expect
--- folks to run this
-
--- TODO probably need to provide a way to configure the config file path
--- as an argument
 configFilePath :: FilePath
 configFilePath = "config.dhall"
 

@@ -7,23 +7,16 @@ module AutomationService.ResourceView
   )
 where
 
-import AutomationService.ResourceMessage (Message(..))
-import AutomationService.DeviceMessage (Message(..)) as Devices
-import AutomationService.Group (Group)
-import AutomationService.GroupView (State, init, initState, update, view) as Groups
 import AutomationService.DeviceView (DeviceStateUpdateTimers, State, initState, update, view) as Devices
-import AutomationService.GroupMessage (Message(..)) as Groups
+import AutomationService.GroupView (State, initState, update, view) as Groups
+import AutomationService.ResourceMessage (Message(..))
 import AutomationService.WebSocket (class WebSocket)
-import Data.Array as A
 import Data.Bifunctor (bimap)
 import Data.Maybe (Maybe(..))
 import Effect.Ref (Ref)
-import Elmish (Transition, Dispatch, ReactElement, forkVoid, (<|), (<?|))
-import Elmish.HTML.Events as E
+import Elmish (Transition, Dispatch, ReactElement)
 import Elmish.HTML.Styled as H
-import Prelude (($), (<<<), (<>), (#), (+), bind, pure, show)
-
-import Debug (traceM)
+import Prelude (($), (<<<), (<>), (#), (+), pure, show)
 
 type State ws =
   { deviceState :: Devices.State

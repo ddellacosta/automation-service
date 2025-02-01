@@ -43,11 +43,17 @@ package:
     - web-events
     - web-html
     - web-socket
+    - web-storage
+  bundle:
+    module: Main
+    outfile: "index.js"
+    platform: browser
+    type: "app"
   test:
+    main: Test.Main
     dependencies:
       - elmish-testing-library
       - spec-node
-    main: Test.Runner
 
 workspace:
   packageSet:

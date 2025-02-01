@@ -14,10 +14,10 @@ import AutomationService.Device (Device(..), DeviceDetails, DeviceId, Devices,
                                  details, deviceTopic, getTopic, setTopic)
 import AutomationService.DeviceMessage (Message(..))
 import AutomationService.DeviceState (DeviceState, DeviceStates, getDeviceState)
-import AutomationService.Exposes (Exposes, SubProps(..), canGet, canSet, enumValues, isOn, isPublished)
+import AutomationService.Exposes (SubProps(..), canGet, canSet, enumValues, isOn, isPublished)
 import AutomationService.Lighting (ColorSetter(..), getColorSetter, getNumericCap,
                                    getOnOffSwitch, getPreset)
-import AutomationService.Helpers (maybeHtml)
+import AutomationService.Logging (debug)
 import AutomationService.MQTT as MQTT
 import AutomationService.React.Bootstrap as Bootstrap
 import AutomationService.React.ColorWheel (colorWheel)
@@ -26,7 +26,7 @@ import Color as Color
 import Control.Alternative (guard)
 import Data.Argonaut.Core (stringify)
 import Data.Argonaut.Encode.Class (encodeJson)
-import Data.Array (catMaybes, drop, intercalate, sortBy, take)
+import Data.Array (catMaybes, intercalate, sortBy)
 import Data.DateTime.Instant (Instant)
 import Data.Foldable (foldr)
 import Data.List as L
@@ -35,7 +35,6 @@ import Data.Map (Map)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Traversable (for_)
 import Effect.Class (liftEffect)
-import Effect.Console (debug)
 import Effect.Ref (Ref)
 import Elmish (Transition, Dispatch, ReactElement, forkVoid, (<|), (<?|))
 import Elmish.HTML.Events as E
@@ -128,9 +127,9 @@ update ws s = case _ of
     pure s
 
 view :: State -> Dispatch Message -> ReactElement
-view { devices, deviceStates, selectedDeviceId } dispatch =
-  H.div "" -- "container mx-auto mt-5 d-flex flex-column justify-content-between"
-  [ H.div "" $ H.text $ (show $ L.length $ M.values devices) <> " Devices"
+view { devices, deviceStates } dispatch =
+  H.div "all-devices" -- "container mx-auto mt-5 d-flex flex-column justify-content-between"
+  [ H.div "device-count" $ H.text $ (show $ L.length $ M.values devices) <> " Devices"
   , H.fragment $
     (\d -> deviceSummary (getDeviceState deviceStates d) d)
     <$>
@@ -153,8 +152,8 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
     deviceTitle :: DeviceDetails -> ReactElement
     deviceTitle { name } = H.div "card-title" name
 
-    listAccess :: Int -> String
-    listAccess a = intercalate ", " $
+    _listAccess :: Int -> String
+    _listAccess a = intercalate ", " $
       catMaybes
       [ guard (isPublished a) *> Just "published"
       , guard (canSet a) *> Just "set"
@@ -235,7 +234,7 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
       -> Array ReactElement
       -> Array ReactElement
       -> ReactElement
-    genericWithDetails mDeviceState deviceDetails headerComponents featureComponents =
+    genericWithDetails _mDeviceState deviceDetails headerComponents featureComponents =
       Bootstrap.accordion {} $
         Bootstrap.accordionItem { eventKey: 0 }
         [
@@ -414,7 +413,7 @@ view { devices, deviceStates, selectedDeviceId } dispatch =
              , value: showMaybe 100 (getProp propName =<< mDeviceState)
              , id: idStr
              , onChange: dispatch <?| \e -> do
-                 ds <- mDeviceState
+                 _ds <- mDeviceState
                  Just $ PublishDeviceMsg $
                    MQTT.mkGenericPublishMsg
                      (setTopic device.name)

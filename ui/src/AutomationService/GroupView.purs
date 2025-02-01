@@ -9,8 +9,9 @@ where
 
 import AutomationService.Device as Device
 import AutomationService.DeviceView as Devices
-import AutomationService.Group (Group(..))
+import AutomationService.Group (Group)
 import AutomationService.GroupMessage (Message(..))
+import AutomationService.Logging (debug)
 import AutomationService.MQTT as MQTT
 import AutomationService.React.Bootstrap as Bootstrap
 import AutomationService.WebSocket (class WebSocket, sendJson, sendString)
@@ -18,16 +19,14 @@ import Data.Argonaut.Core (stringify)
 import Data.Argonaut.Encode.Class (encodeJson)
 import Data.Array as A
 import Data.Foldable (for_)
-import Data.Map as M
+-- import Data.Map as M
 import Data.Maybe (Maybe)
 import Effect.Class (liftEffect)
-import Effect.Console (debug)
-import Elmish (Transition, Dispatch, ReactElement, forkVoid, (<|), (<?|))
-import Elmish.HTML.Events as E
+import Elmish (Transition, Dispatch, ReactElement, forkVoid) -- , (<|), (<?|))
 import Elmish.HTML.Styled as H
-import Prelude (($), (<<<), (<>), (<#>), bind, discard, pure, show)
+import Prelude (($), (<<<), (<>), (<#>), discard, pure, show)
 
-import Debug (traceM)
+-- import Debug (traceM)
 
 
 type State =
@@ -63,9 +62,9 @@ update ws s = case _ of
           pingStateMsg =
             MQTT.publish (Device.getTopic g.name) $ MQTT.state ""
 
-        debug $ "subscribing with: " <> (stringify $ encodeJson subscribeMsg)
+        debug $ "Groups: subscribing with: " <> (stringify $ encodeJson subscribeMsg)
         debug $
-          "pinging to get initial state: " <> (stringify $ encodeJson pingStateMsg)
+          "Groups: pinging to get initial state: " <> (stringify $ encodeJson pingStateMsg)
 
         for_ ws $ \ws' -> do
           sendJson ws' <<< encodeJson $ subscribeMsg
@@ -73,7 +72,7 @@ update ws s = case _ of
 
     pure s { groups = newGroups }
 
-  LoadGroupsFailed msg -> do
+  LoadGroupsFailed _msg -> do
     -- forkVoid $
     --   liftEffect $ debug $ "LoadGroupsFailed with msg: " <> msg) *> pure s
     -- _ <- traceM msg
@@ -87,7 +86,7 @@ update ws s = case _ of
     pure s
 
 view :: Devices.State -> State -> Dispatch Message -> ReactElement
-view { devices, deviceStates } { groups } dispatch =
+view _state { groups } _dispatch =
   H.div ""
   [ H.div "" $ H.text $ (show $ A.length groups) <> " Groups"
   , H.ul "" $ groups <#> \g ->
@@ -111,8 +110,8 @@ view { devices, deviceStates } { groups } dispatch =
 
   where
     -- onOffSwitch :: Maybe DeviceState -> DeviceDetails -> ReactElement
-    onOffSwitch :: ReactElement
-    onOffSwitch =
+    _onOffSwitch :: ReactElement
+    _onOffSwitch =
       H.div "" $ H.text "heyyyyy"
 
 --       case getOnOffSwitch device of

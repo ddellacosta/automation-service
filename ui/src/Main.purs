@@ -1,39 +1,37 @@
 module Main where
 
-import Prelude
-
 import AutomationService.Device (decodeDevices) as Devices
 import AutomationService.DeviceMessage (Message(..)) as Devices
-import AutomationService.DeviceView (DeviceStateUpdateTimers) as Devices
 import AutomationService.DeviceState as DeviceState
+import AutomationService.DeviceView (DeviceStateUpdateTimers) as Devices
 import AutomationService.Group (decodeGroups) as Groups
 import AutomationService.GroupMessage (Message(..)) as Groups
+import AutomationService.Helpers (allElements, maybeHtml)
+import AutomationService.Logging (LogLevel(..), debug)
+import AutomationService.Logging as Logging
+import AutomationService.Message (Message(..), Page(..), pageName, pageNameClass)
+import AutomationService.Message as Page
 import AutomationService.ResourceMessage (Message(..)) as Resources
 import AutomationService.ResourceView (State, initState, update, view) as Resources
-import AutomationService.Helpers (allElements, maybeHtml)
-import AutomationService.Message (Message(..), Page(..), pageName, pageNameClass)
 import AutomationService.WebSocket (class WebSocket, addWSEventListener, connectToWS, sendString)
 import Data.Argonaut (parseJson)
 import Data.Bifunctor (bimap)
 import Data.Either (either)
-import Data.Maybe (Maybe(..))
 import Data.Map as M
+import Data.Maybe (Maybe(..))
 import Data.Traversable (for_)
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
-import Effect.Console (debug)
-import Effect.Ref as Ref
 import Effect.Ref (Ref)
+import Effect.Ref as Ref
 import Elmish (Dispatch, ReactElement, Transition, forks, forkVoid, (<|))
 import Elmish.Boot (defaultMain)
 import Elmish.Component (Command)
 import Elmish.HTML (_data)
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
-import Foreign (unsafeFromForeign)
-import Web.Event.EventTarget (eventListener)
-import Web.Socket.Event.MessageEvent (data_, fromEvent)
+import Prelude (Unit, ($), (#), (<>), (<<<), (<#>), (=<<), bind, discard, pure, show)
 
 type State ws =
   { currentPage :: Page
@@ -49,6 +47,7 @@ init
   => Command Aff (Message ws)
   -> Transition (Message ws) (State ws)
 init newDsUpdateTimers connectToWS = do
+  forkVoid $ liftEffect $ Logging.setLogLevel Warn
   forks connectToWS
   pure
     { currentPage: Devices
@@ -63,35 +62,35 @@ update
   -> (Message ws)
   -> Transition (Message ws) (State ws)
 update s = case _ of
-  SetPage newPage -> pure $ s { currentPage = newPage }
+  SetPage newPage -> do
+    pure $ s { currentPage = newPage }
 
-  DeviceMsg deviceMsg ->
+  DeviceMsg deviceMsg -> do
     Resources.update s.resources deviceMsg #
       bimap DeviceMsg (s { resources = _ })
 
-  GroupMsg groupMsg ->
+  GroupMsg groupMsg -> do
     Resources.update s.resources groupMsg #
       bimap GroupMsg (s { resources = _ })
 
-  UpdateCnt updateMsg ->
+  UpdateCnt updateMsg -> do
     Resources.update s.resources updateMsg #
       bimap UpdateCnt (s { resources = _ })
 
   InitWS ws -> do
     forks $ \{ dispatch: msgSink } -> do
-      let msgSink' = msgSink <<< DeviceMsg
-      el <- liftEffect $ eventListener $ \evt -> do
-        for_ (fromEvent evt) \msgEvt -> do
+      let
+        msgSink' = msgSink <<< DeviceMsg
+        messageHandler = \msgStr -> do
           let
-            jsonStr = unsafeFromForeign $ data_ msgEvt
-            jsonBlob = parseJson jsonStr
+            jsonBlob = parseJson msgStr
             devices = Devices.decodeDevices =<< jsonBlob
             deviceState = DeviceState.decodeDeviceState =<< jsonBlob
             groups = Groups.decodeGroups =<< jsonBlob
 
-          -- debug $ show devices
-          -- debug jsonStr
-
+          liftEffect $ do
+            debug $ show devices
+            debug $ msgStr
 
           -- okay, one thing that is needed is a ux for when state hasn't
           -- loaded yet
@@ -121,56 +120,12 @@ update s = case _ of
 
           msgSink $ UpdateCnt Resources.UpdateCnt
 
-          -- old comments, will revisit - 2024-02-29
-
-          -- so it seems like we get a device state message as soon 
-          -- as we update the device, for every change. some things I 
-          -- want
-          -- * it should be easy enough to determine if we need to 
-          --   update simply by comparing the stored device state 
-          --   with the new device state. So, we'll need a place to 
-          --   store the device data, which we already have I think
-          -- * each device state should be easily comparable _somehow_ 
-          --   to the current device state. So, we need some sort of 
-          --   abstraction for comparing a device's state to the 
-          --   device type's state and effect any relevant change 
-          --   that is needed. I guess this is almost like an 
-          --   abstraction of the same simply json-diff check we'd do 
-          --   first (?)
-            
-            
-
-          -- debug $ "This is getting called? " <> jsonStr
-
-          --
-          -- Probably going to abstract this pattern away.
-          -- What I really want is something that lets me run a bunch
-          -- of Eithers and collect the Left values until I hit a
-          -- Right. That is, I want the short-circuiting behavior of
-          -- `<|>` with something that returns the accumulated state
-          -- of all Left values at the end. And the accumulated state
-          -- should tell me in order what it failed at and finally
-          -- what it succeeded with. Also I think I only want one
-          -- message for parsing failure that summarizes what failed,
-          -- and sends it to debug by default, and warns only if
-          -- nothing was parsed successfully.
-          --
-
-          --
-          -- TODO figure out algorithm for updating device states
-          --  that doesn't slow everything to a halt but is
-          --  responsive enough to respond quickly to user feedback.
-          --
-          --
-
-            -- TODO ...see below re: state updates
-
-
-      liftEffect $ addWSEventListener ws el
+      liftEffect $ addWSEventListener ws messageHandler
 
     pure $ s { resources { websocket = Just ws } }
 
-  PublishMsgChanged msg -> pure $ s { publishMsg = msg }
+  PublishMsgChanged msg -> do
+    pure $ s { publishMsg = msg }
 
   Publish -> do
     forkVoid $ do
@@ -200,6 +155,7 @@ publishMQTT s dispatch =
       }
       "Publish"
     ]
+
   , maybeHtml s.lastSentMsg $ \msg ->
       H.div_
         "publish-mqtt-status border border-primary-subtle rounded m-2 p-3 mt-4 text-secondary small"
@@ -238,14 +194,14 @@ view state@{ currentPage } dispatch =
 
     page :: WebSocket ws => Page -> State ws -> ReactElement
     page pg s = case pg of
-      PublishMQTT ->
+      Page.PublishMQTT ->
         publishMQTT
           { lastSentMsg: s.lastSentMsg
           , websocket: s.resources.websocket
           }
           dispatch
 
-      Devices -> Resources.view s.resources \msg ->
+      Page.Devices -> Resources.view s.resources \msg ->
         dispatch $
           case msg of
             Resources.DeviceMsg _deviceMsg -> DeviceMsg msg
@@ -257,9 +213,9 @@ main = do
   newDsUpdateTimers <- Ref.new M.empty
   defaultMain
     { def:
-        { init: init newDsUpdateTimers connectToWS
-        , view
-        , update
-        }
+      { init: init newDsUpdateTimers connectToWS
+      , view
+      , update
+      }
     , elementId: "app"
     }
