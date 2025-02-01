@@ -47,6 +47,7 @@ init
   => Command Aff (Message ws)
   -> Transition (Message ws) (State ws)
 init newDsUpdateTimers connectToWS = do
+  -- TODO make LogLevel an argument to the application
   forkVoid $ liftEffect $ Logging.setLogLevel Warn
   forks connectToWS
   pure
