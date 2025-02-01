@@ -1,20 +1,20 @@
 module AutomationService.MQTT
  ( brightness
- , genericProp
  , hexColor
+ , hslColor
+ , mkGenericPublishMsg
+ , mkPublishMsg
  , publish
  , subscribe
  , state
  )
 where
 
-import Data.Argonaut.Core (Json, jsonNull)
-import Data.Argonaut.Encode.Class (encodeJson)
-import Data.Argonaut.Parser (jsonParser)
-import Data.Either (Either(..))
-import Prelude ((<>))
+import Data.Argonaut (class EncodeJson, encodeJson, stringify)
+import Data.Int (floor)
+import Prelude (($), (<<<), (<>), (*))
 
--- JSON helpers for generating MQTT messages to send to devices
+-- helpers for generating MQTT messages to send to devices
 
 type SetState = { state :: String }
 
@@ -24,20 +24,32 @@ state stateValue = { state: stateValue }
 type HexValue = { hex :: String }
 type HexColor = { color :: HexValue }
 
+-- type HSLValue = { h :: Int, s :: Int, l :: Int }
+type HSLValue = { hue :: Int, saturation :: Int }
+type HSLColor = { color :: HSLValue }
+
 hexColor :: String -> HexColor
 hexColor hexValue = { color: { hex: hexValue }}
+
+hslColor :: forall r. { h :: Number, s :: Number | r } -> HSLColor
+hslColor { h, s } =
+  { color:
+    { hue: floor h
+    , saturation: floor s
+    }
+  }
 
 type Brightness = { brightness :: String }
 
 brightness :: String -> Brightness
 brightness = { brightness: _ }
 
-type PublishMsg =
+type PublishMsg a =
   { topic :: String
-  , publish :: Json
+  , publish :: a
   }
 
-publish :: String -> Json -> PublishMsg
+publish :: forall a. String -> a -> PublishMsg a
 publish topic msg = { topic, publish: msg }
 
 type SubscribeMsg =
@@ -48,12 +60,22 @@ type SubscribeMsg =
 subscribe :: String -> String -> SubscribeMsg
 subscribe topic autoName = { subscribe: autoName, topic }
 
--- not sure how to do this better yet
-genericProp :: String -> String -> Json
-genericProp propName propVal = encodeJson parsed
-  where
-    jsonStr = "{\"" <> propName <> "\":\"" <> propVal <> "\"}"
+--
+-- experiments in generating a record dynamically, via Record.insert
+--
+-- import Data.Reflectable (class Reflectable, class Reifiable, reifyType)
+-- import Record as Record
+-- import Type.Proxy (Proxy(..))
+--
 
-    parsed = case jsonParser jsonStr of
-      Right parsed' -> parsed'
-      Left _fail -> jsonNull
+-- how do I generate a new Record, including a key name generated
+-- from a string, at runtime, in PureScript?
+mkGenericPublishMsg :: String -> String -> String -> String
+mkGenericPublishMsg topic propName propVal =
+  "{\"topic\": \"" <> topic <>
+  "\", \"publish\": {\"" <>
+  propName <> "\":\"" <>
+  propVal <> "\"}}"
+
+mkPublishMsg :: forall a. (EncodeJson a) => String -> a -> String
+mkPublishMsg topic msg = stringify <<< encodeJson $ publish topic msg

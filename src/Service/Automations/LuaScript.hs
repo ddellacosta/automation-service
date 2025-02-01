@@ -121,9 +121,6 @@ mkRunAutomation filepath = \broadcastChan -> do
   luaScriptPath' <- view $ config . luaScriptPath
   luaState <- liftIO Lua.newstate
 
-  -- note that the semantics of this follow Lua, not Haskell,
-  -- something I didn't understand when I was writing it initially.
-  --
   -- TODO think harder about the error handling, in particular make
   -- this failure info available to other parts of the system, in a
   -- more structured data type

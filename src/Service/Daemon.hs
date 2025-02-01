@@ -195,11 +195,17 @@ run' threadMapTV = do
         Daemon.Start <$> parseAutomationNameText autoNameStr
 
     loadPriorScheduledAutomations :: (MonadIO m) => FilePath -> m [Daemon.Message]
-    loadPriorScheduledAutomations dbPath' = liftIO $ StateStore.allScheduled dbPath' <&>
-      fromMaybe [] . sequence . fmap (decode . LBS.fromStrict . snd)
+    loadPriorScheduledAutomations dbPath' =
+      liftIO $ StateStore.allScheduled dbPath' <&>
+        fromMaybe [] . sequence . fmap (decode . LBS.fromStrict . snd)
 
     cleanupAutomations
-      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
+      :: ( MonadIO m
+         , Logger l
+         , MQTTClient mc
+         , MonadReader (Env l mc) m
+         , MonadUnliftIO m
+         )
       => IO ()
       -> TVar (ThreadMap m)
       -> m ()
@@ -211,7 +217,9 @@ run' threadMapTV = do
       liftIO appCleanup'
 
     cleanDeadAutomations
-      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => TVar (ThreadMap m) -> m ()
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m)
+      => TVar (ThreadMap m)
+      -> m ()
     cleanDeadAutomations threadMapTV' = do
       threadMap <- atomically $ readTVar threadMapTV'
       cleanupAutoNames <- liftIO $ foldMap'
@@ -226,18 +234,19 @@ run' threadMapTV = do
       let cleanedTM = foldl' (flip M.delete) threadMap cleanupAutoNames
       atomically $ writeTVar threadMapTV' cleanedTM
 
-    tryRestoreRunningAutomations :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => m ()
+    tryRestoreRunningAutomations
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m) => m ()
     tryRestoreRunningAutomations = do
-      rc <- view restartConditions
-      rc' <- atomically . readTVar $ rc
-      case rc' of
+      rcTVar <- view restartConditions
+      rc <- atomically . readTVar $ rcTVar
+      case rc of
         (RestartConditions True True True) -> do
           daemonBroadcast' <- view daemonBroadcast
           priorRunning <- view startupMessages
           atomically $ do
             priorRunning' <- readTVar priorRunning
             for_ priorRunning' $ writeTChan daemonBroadcast'
-            writeTVar rc $ rc' & notAlreadyRestarted .~ False
+            writeTVar rcTVar $ rc & notAlreadyRestarted .~ False
         _ -> pure ()
 
     initializeAndRunAutomation
@@ -324,7 +333,8 @@ run' threadMapTV = do
     signalRunningStateUpdate threadMapTV' = do
       runningAutos <- M.keys <$> (atomically . readTVar $ threadMapTV')
       sendClientMsg StateManager $ Automation.ValueMsg $
-        Aeson.Array . V.fromList $ Aeson.String . serializeAutomationName <$> runningAutos
+        Aeson.Array . V.fromList $
+          Aeson.String . serializeAutomationName <$> runningAutos
 
     publishUpdatedStatus
       :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m)
@@ -375,7 +385,8 @@ run' threadMapTV = do
           atomically $ do
             sjs' <- readTVar scheduledJobs'
             let
-              updatedSjs = M.insert jobId (automationSchedule, automationMessage, threadId) sjs'
+              updatedSjs =
+                M.insert jobId (automationSchedule, automationMessage, threadId) sjs'
             writeTVar scheduledJobs' updatedSjs
 
           -- if scheduled job already existed, kill the previously running thread

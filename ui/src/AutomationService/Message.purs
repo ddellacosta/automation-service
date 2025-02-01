@@ -8,7 +8,7 @@ where
 
 import Prelude
 
-import AutomationService.DeviceViewMessage as Devices
+import AutomationService.ResourceMessage as Resources
 import Data.Generic.Rep (class Generic)
 import Data.Show.Generic (genericShow)
 import Data.String.Common as S
@@ -16,7 +16,9 @@ import Data.String.Pattern (Pattern(..), Replacement(..))
 
 data Message ws
   = SetPage Page
-  | DeviceMsg Devices.Message
+  | DeviceMsg Resources.Message
+  | GroupMsg Resources.Message
+  | UpdateCnt Resources.Message
   | InitWS ws
   | PublishMsgChanged String
   | Publish

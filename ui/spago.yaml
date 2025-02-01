@@ -6,6 +6,7 @@ package:
     - argonaut-codecs
     - arrays
     - bifunctors
+    - colors
     - console
     - control
     - datetime
@@ -27,24 +28,33 @@ package:
     - nullable
     - numbers
     - ordered-collections
+    - parsing
     - prelude
+    - profunctor-lenses
     - record
     - refs
     - spec
+    - spec-mocha
     - strings
     - tuples
     - typelevel-prelude
+    - uri
+    - web-dom
     - web-events
+    - web-html
     - web-socket
+    - web-storage
+  bundle:
+    module: Main
+    outfile: "index.js"
+    platform: browser
+    type: "app"
   test:
+    main: Test.Main
     dependencies:
       - elmish-testing-library
-      - spec
-      - web-dom
-      - web-html
-    main: Test.Main
+      - spec-node
 
 workspace:
-  package_set:
-    url: https://raw.githubusercontent.com/purescript/package-sets/psc-0.15.10-20230808/packages.json
-    hash: sha256-hE25zoTMi2ol9AxqouC7ztSS34JIhilmaIeU+Qo6GEY=
+  packageSet:
+    registry: 60.7.0
