@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - fix-build
 
 env:
   IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
