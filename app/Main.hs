@@ -17,7 +17,7 @@ import System.Log.FastLogger (TimedFastLogger, newTimedFastLogger)
 import UnliftIO.STM (TVar, readTVarIO)
 
 configFilePath :: FilePath
-configFilePath = "config.dhall"
+configFilePath = "config/config.dhall"
 
 mkLogger :: Config -> IO (TimedFastLogger, IO ())
 mkLogger config' = do
