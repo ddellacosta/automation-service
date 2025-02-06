@@ -85,9 +85,8 @@
 
               #  > \Error: Failed to launch the browser process!
               #        > [342:342:0206/014943.932611:FATAL:setuid_sandbox_host.cc(163)] The SUID sandbox helper binary was found, but is not configured correctly. Rather than run without sandboxing I'm aborting now. You need to make sure that /nix/store/499bwk374kxvq6kylfwqgcx70h40zyas-chromium-129.0.6668.100-sandbox/bin/__chromium-suid-sandbox is owned by root and has mode 4755.
-              sudo chown root ${pkgs.chromium}/bin/__chromium-suid-sandbox && sudo chmod 4755 ${pkgs.chromium}/bin/__chromium-suid-sandbox
 
-              npx mocha-headless-chrome -t 60000 -e $(which chromium) -a 'allow-file-access-from-files' -f test/browser/index.html
+              npx mocha-headless-chrome -t 60000 -e $(which chromium) -a no-sandbox -a allow-file-access-from-files -f test/browser/index.html
               spago bundle -p automation-service
 
               runHook postBuild
