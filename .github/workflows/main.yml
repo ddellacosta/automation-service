@@ -1,9 +1,6 @@
 name: "Build and publish image to ghcr.io"
 
-on:
-  push:
-    branches:
-      - main
+on: push
 
 env:
   IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
@@ -11,7 +8,25 @@ env:
   REGISTRY_PASSWORD: ${{ github.token }}
 
 jobs:
+  build-only:
+    if: github.ref_name != 'main'
+    name: Build image to confirm a successful build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Push to Registry action
+        uses: actions/checkout@v3
+
+      - uses: cachix/install-nix-action@v20
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build
+        id: build
+        run: nix build
+
   build-and-push:
+    if: github.ref_name == 'main'
     name: Build and push image
     runs-on: ubuntu-latest
 

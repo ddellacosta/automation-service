@@ -7,7 +7,7 @@ This config should not be checked into git with passwords and other sensitive va
 Note that dbPath must be post-processed by the test scaffolding in order to avoid conflicting db paths when tests are run in parallel.
 
 -}
-let LogLevel = ../config/LogLevel.dhall
+let LogLevel = ../config/lib/LogLevel.dhall
 
 in    { mqttBroker =
         { uri = "mqtt://localhost:1883"
@@ -23,4 +23,4 @@ in    { mqttBroker =
       , dbPath = "test/dbs/automationState"
       , httpPort = 48080
       }
-    : ../config/Config.dhall
+    : ../config/lib/Config.dhall
