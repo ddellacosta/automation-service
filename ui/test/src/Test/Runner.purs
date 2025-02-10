@@ -12,7 +12,7 @@ spec :: Spec Unit
 spec = do
   Test.AutomationService.Device.spec
   Test.AutomationService.Exposes.spec
---  Test.Main.spec
+  Test.Main.spec
 
 main :: Effect Unit
 main = runMocha spec

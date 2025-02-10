@@ -80,13 +80,33 @@
               runHook preBuild
 
               ln -sf ${automation-service-npm-deps}/lib/node_modules ./node_modules
-              spago bundle -p automation-service-test
               cp node_modules/mocha/mocha.js node_modules/mocha/mocha.css test/browser/
 
-              #  > \Error: Failed to launch the browser process!
-              #        > [342:342:0206/014943.932611:FATAL:setuid_sandbox_host.cc(163)] The SUID sandbox helper binary was found, but is not configured correctly. Rather than run without sandboxing I'm aborting now. You need to make sure that /nix/store/499bwk374kxvq6kylfwqgcx70h40zyas-chromium-129.0.6668.100-sandbox/bin/__chromium-suid-sandbox is owned by root and has mode 4755.
+              npx spago bundle -p automation-service-test
 
-              npx mocha-headless-chrome -t 60000 -e $(which chromium) -a no-sandbox -a allow-file-access-from-files -f test/browser/index.html
+              #  > \Error: Failed to launch the browser process!
+              #        > [342:342:0206/014943.932611:FATAL:setuid_sandbox_host.cc(163)]
+              # The SUID sandbox helper binary was found, but is not
+              # configured correctly. Rather than run without
+              # sandboxing I'm aborting now. You need to make sure
+              # that /nix/store/499bwk374kxvq6kylfwqgcx70h40zyas-chromium-129.0.6668.100-sandbox/bin/__chromium-suid-sandbox
+              # is owned by root and has mode 4755.
+              #
+              # '--no-sandbox' is the hacky unsafe solution to the above. See e.g.
+              # https://github.com/flathub/com.visualstudio.code/issues/223
+              npx mocha-headless-chrome \
+                -t 60000 \
+                -e $(which chromium) \
+                -a no-sandbox \
+                -a disable-setuid-sandbox \
+                -a allow-file-access-from-files \
+                -f test/browser/index.html
+
+              # dump out chrome logs to the file chrome_debug.log in
+              # the current directory
+              # npx mocha-headless-chrome -t 60000 -p raf -e $(which chromium) -a v=1 -a enable-logging -a user-data-dir=./ -a no-sandbox -a disable-setuid-sandbox -a allow-file-access-from-files -f test/browser/index.html
+              # cat chrome_debug.log
+
               spago bundle -p automation-service
 
               runHook postBuild
