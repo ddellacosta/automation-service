@@ -107,6 +107,7 @@ Currently the automation-service docker image is built on every push to master, 
       - TZ=America/New_York
 ```
 
+
 ## Development
 
 This project uses format via stylish-haskell. Credit to https://raw.githubusercontent.com/kowainik/org/main/.stylish-haskell.yaml for the base.
@@ -149,6 +150,8 @@ You can now take this and drop it in the `compose.yaml` in this directory.
 
 ```shell
 > cd ui
+# this also copies mocha.js and mocha.css to ui/test/browser on postinstall
+> npm install
 
 # bundle spago into index.js
 > spago bundle -p automation-service
