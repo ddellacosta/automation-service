@@ -1,0 +1,45 @@
+name: automation-service-demo
+
+services:
+
+  mosquitto:
+    image: eclipse-mosquitto
+    container_name: mosquitto
+    volumes:
+      - ./demo/mosquitto/config:/mosquitto/config
+      - ./demo/mosquitto/data:/mosquitto/data
+      - ./demo/mosquitto/log:/mosquitto/log
+    ports:
+      - 1883:1883
+      - 9001:9001
+    stdin_open: true
+    tty: true
+
+#  zigbee2mqtt:
+#    container_name: zigbee2mqtt
+#    image: koenkk/zigbee2mqtt:latest
+#    restart: unless-stopped
+#    environment:
+#      - TZ=America/New_York
+#    volumes:
+#      - ./demo/zigbee2mqtt/data:/app/data
+#    # for setting up zigbee device
+#    #   - /run/udev:/run/udev:ro
+#    # devices:
+#    #   - "/dev/ttyACM0:/dev/ttyACM0"
+
+  automation-service:
+    container_name: automation-service
+    image: ghcr.io/ddellacosta/automation-service:latest
+    depends_on:
+      - mosquitto
+#      - zigbee2mqtt
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config
+      - ./lua-automations:/app/lua-automations
+      - ./logs:/app/logs
+    ports:
+      - 8081:8080
+    environment:
+      - TZ=America/New_York

@@ -5,15 +5,15 @@ Comments other than here will be stripped out because of how the Dhall auto-form
 This config should not be checked into git with passwords and other sensitive values saved.
 
 -}
-let LogLevel = ./config/LogLevel.dhall
+let LogLevel = ./lib/LogLevel.dhall
 
 in    { mqttBroker =
-        { uri = "mqtts://automation-service:password@mosquitto:8883"
+        { uri = "mqtt://mosquitto:1883"
         , automationServiceTopic = "automation-service/set"
         , statusTopic = "automation-service/status"
-        , caCertPath = Some "ca.crt"
-        , clientCertPath = Some "client.crt"
-        , clientKeyPath = Some "client.key"
+        , caCertPath = None Text
+        , clientCertPath = None Text
+        , clientKeyPath = None Text
         }
       , logFilePath = "logs/logfile"
       , logLevel = LogLevel.Debug
@@ -21,4 +21,4 @@ in    { mqttBroker =
       , dbPath = "automationState.db"
       , httpPort = 8080
       }
-    : ./config/Config.dhall
+    : ./lib/Config.dhall

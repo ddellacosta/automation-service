@@ -1,7 +1,3 @@
-#
-# Based originally on this:
-#  https://magnus.therning.org/2022-03-13-simple-nix-flake-for-haskell-development.html
-#
 {
   description = "automation-service";
 
@@ -12,26 +8,125 @@
     # PureScript 0.15.15
     nixpkgs.url = "nixpkgs/4eb33fe664af7b41a4c446f87d20c9a0a6321fa3";
     flake-utils.url = "github:numtide/flake-utils";
+    mkSpagoDerivation.url = "github:jeslie0/mkSpagoDerivation";
+    ps-overlay.url = "github:thomashoneyman/purescript-overlay";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, mkSpagoDerivation, ps-overlay }:
     flake-utils.lib.eachSystem ["x86_64-linux"] (system:
-      with nixpkgs.legacyPackages.${system};
+      # with nixpkgs.legacyPackages.${system};
       let
-        t = lib.trivial;
-        hl = haskell.lib;
-        haskellPackages = haskell.packages.ghc964;
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ mkSpagoDerivation.overlays.default
+                       ps-overlay.overlays.default ];
+        };
+        t = pkgs.lib.trivial;
+        hl = pkgs.haskell.lib;
+        haskellPackages = pkgs.haskell.packages.ghc964;
 
         name = "automation-service";
 
-        project = devTools:
+        node_version = pkgs.nodejs_22;
+
+        automation-service-npm-deps =
+          pkgs.buildNpmPackage {
+            name = "automation-service-npm-deps";
+            # prefetch-npm-deps package-lock.json
+            npmDepsHash = "sha256-X5In3SxY2ANptnAQ4ORNHjCdhkDpnv/j6KKmpSg3Ico=";
+            src = ./ui;
+            nodejs = node_version;
+            # need this for spago and logging
+            makeCacheWriteable = true;
+            dontNpmBuild = true;
+
+            env = {
+              PUPPETEER_SKIP_DOWNLOAD = true;
+            };
+
+            installPhase = ''
+              runHook preInstall
+
+              mkdir -p $out/lib
+              cp -r node_modules $out/lib
+
+              runHook postInstall
+            '';
+          };
+
+        automation-service-ui =
+          pkgs.mkSpagoDerivation {
+            spagoYaml = ./ui/spago.yaml;
+            spagoLock = ./ui/spago.lock;
+            src = ./ui;
+
+            nativeBuildInputs = [
+              automation-service-npm-deps
+              node_version
+              pkgs.chromium
+              pkgs.esbuild
+              pkgs.purs
+              pkgs.spago-unstable
+              pkgs.which
+            ];
+
+            version = "0.1.0";
+
+            buildPhase = ''
+              runHook preBuild
+
+              ln -sf ${automation-service-npm-deps}/lib/node_modules ./node_modules
+              cp node_modules/mocha/mocha.js node_modules/mocha/mocha.css test/browser/
+
+              spago bundle -p automation-service-test
+
+              #  > \Error: Failed to launch the browser process!
+              #        > [342:342:0206/014943.932611:FATAL:setuid_sandbox_host.cc(163)]
+              # The SUID sandbox helper binary was found, but is not
+              # configured correctly. Rather than run without
+              # sandboxing I'm aborting now. You need to make sure
+              # that /nix/store/499bwk374kxvq6kylfwqgcx70h40zyas-chromium-129.0.6668.100-sandbox/bin/__chromium-suid-sandbox
+              # is owned by root and has mode 4755.
+              #
+              # '--no-sandbox' is the hacky unsafe solution to the above. See e.g.
+              # https://github.com/flathub/com.visualstudio.code/issues/223
+              npx mocha-headless-chrome \
+                -t 60000 \
+                -e $(which chromium) \
+                -a no-sandbox \
+                -a disable-setuid-sandbox \
+                -a allow-file-access-from-files \
+                -f test/browser/index.html
+
+              # dump out chrome logs to the file chrome_debug.log in
+              # the current directory
+              # npx mocha-headless-chrome -t 60000 -p raf -e $(which chromium) -a v=1 -a enable-logging -a user-data-dir=./ -a no-sandbox -a disable-setuid-sandbox -a allow-file-access-from-files -f test/browser/index.html
+              # cat chrome_debug.log
+
+              spago bundle -p automation-service
+
+              cd css
+              npx sass .
+              cd ..
+
+              runHook postBuild
+            '';
+
+            installPhase = ''
+              runHook preInstall
+
+              mkdir -p $out/ui
+              cp -r . $out/ui/.
+
+              runHook postInstall
+            '';
+          };
+
+        automation-service = devTools:
           let
             addBuildTools = (t.flip hl.addBuildTools) (devTools ++ [
-              pkgs.purescript
-              pkgs.nodejs_22
-              pkgs.esbuild
-              pkgs.sass
-              zlib
+              automation-service-ui
+              pkgs.zlib
             ]);
           in
             haskellPackages.developPackage {
@@ -59,45 +154,40 @@
               ];
             };
 
-        #
-        # # should I bump this? - 2023-10-19
-        #
-        # last bumped 2024-10-20
-        # - imageDigest = "sha256:31b808456afccc2a419507ea112e152cf27e9bd2527517b0b6ca8639cc423501";
-        # - sha256 = "0bbw3r0civlcm3inj23fq8f25aw63rnaay09qjbrvfjd7pcfbyqn";
-        # - finalImageTag = "2.15.0";
-        #
-        nixFromDockerHub = pkgs.dockerTools.pullImage {
-          imageName = "nixos/nix";
-          imageDigest = "sha256:fd7a5c67d396fe6bddeb9c10779d97541ab3a1b2a9d744df3754a99add4046f1";
-          sha256 = "1izbcfac0cac0jg1q3x834lkdqc0q2dh670bj0zsyadhn0m7f3v6";
-          finalImageName = "nixos/nix";
-          finalImageTag = "2.24.9";
-        };
-
       in {
         packages = {
-          pkg = project [ ];
+          automation-service = automation-service [ ];
+          automation-service-npm-deps = automation-service-npm-deps;
+          automation-service-ui = automation-service-ui;
 
           default = pkgs.dockerTools.buildImage {
             name = "automation-service";
             created = "now";
-            fromImage = nixFromDockerHub;
 
             extraCommands = ''
               mkdir ./app
               chmod 755 ./app
+
+              cp -r ${automation-service-ui}/ui ./app/ui
             '';
 
             copyToRoot = pkgs.buildEnv {
               name = "image-root";
-              paths = [ self.packages.${system}.pkg ];
-              pathsToLink = [ "/bin" ];
+              paths = [
+                pkgs.bashInteractive
+                pkgs.busybox
+                pkgs.coreutils
+                pkgs.vim
+                self.packages.${system}.automation-service
+              ];
+              pathsToLink = [
+                "/bin"
+              ];
             };
 
             config = {
               WorkingDir = "/app";
-
+ 
               Cmd = [ "/bin/automation-service" ];
 
               Volumes = {
@@ -105,25 +195,28 @@
               };
             };
           };
-
-          raw = self.packages.${system}.pkg;
         };
 
-        devShell = project (with haskellPackages; [
+        devShell = automation-service (with haskellPackages; [
           cabal-fmt
           cabal-install
-          haskell-language-server
-          hlint
           ghc-events
           ghcid
-          jq
-          lua
-          mosquitto
-          skopeo # for calculating sha256 of docker image
+          haskell-language-server
+          hlint
+          node_version
+          pkgs.chromium
+          pkgs.esbuild
+          pkgs.jq
+          pkgs.lua
+          pkgs.mosquitto
+          pkgs.prefetch-npm-deps
+          pkgs.purs
+          pkgs.skopeo # for calculating sha256 of docker image
+          pkgs.spago-unstable
+          pkgs.watchexec
           stylish-haskell
-          # marked as broken :-(
-          # threadscope
-          watchexec
+          # threadscope # marked as broken :-(
         ]);
       });
 }

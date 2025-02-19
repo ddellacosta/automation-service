@@ -1,12 +1,14 @@
 # automation-service
 
+[![Build and publish image to ghcr.io](https://github.com/ddellacosta/automation-service/actions/workflows/main.yml/badge.svg)](https://github.com/ddellacosta/automation-service/actions/workflows/main.yml)
+
 <img style="width: 45%" src="docs/ha-custom-card.png" alt="screenshot of HA custom card" />
 
 automation-service is a tool for setting up simple-to-complicated home automations, like triggering lighting to go on when you enter a room, or reading from and responding to sensors--and much more. Its goals include:
   * allowing quick feedback loops for experimentation and testing
   * robustness, stability, efficiency
-  * supporting open standards and interoperability
-  * **being simple to understand and start using for home automation DIYers and makers**
+    * supporting open standards and interoperability
+    * **being simple to understand and start using for home automation DIYers and makers**
 
 It communicates via MQTT and can automatically pull and use device and group information from Zigbee2MQTT, but it can potentially be used with anything that can communicate over MQTT. It provides a simple message protocol for starting, stopping, and scheduling automations over MQTT, and lets you write automations in Lua with [batteries-included helpers](docs/lua_api.md) by dropping scripts in the `lua-automations` directory. There is a custom card available for showing status information (and more soon) in Home Assistant as well, seen in the above screenshot.
 
@@ -48,28 +50,28 @@ end
 
 You can start this by sending a "start" message to the topic "automation-service/set", e.g.:
 
-```bash
-$ mosquitto_pub -u user -p password -t automation-service/set -m "{\"start\": \"frontDoor\"}"
+```shell
+> mosquitto_pub -u user -p password -t automation-service/set -m "{\"start\": \"frontDoor\"}"
 ```
 
 A second "start" message will kill any running instances of the automation, and start it again (setup() will be run again). Similarly, you can stop a running automation using a "stop" message:
 
 
-```bash
-$ mosquitto_pub -u user -p password -t automation-service/set -m "{\"stop\": \"frontDoor\"}"
+```shell
+> mosquitto_pub -u user -p password -t automation-service/set -m "{\"stop\": \"frontDoor\"}"
 ```
 
 You can schedule an automation to run with a message as well, using [cron](https://en.wikipedia.org/wiki/Cron#Overview) syntax:
 
-```bash
-$ mosquitto_pub -u user -p password -t automation-service/set \
+```shell
+> mosquitto_pub -u user -p password -t automation-service/set \
   -m "{\"schedule\": \"0 6 * * *\", \"job\": {\"start\": \"frontDoor\"}, \"jobId\": \"frontDoorJob\"}"
 ```
 
 You can unschedule automation jobs with the jobId via "unschedule:"
 
-```bash
-$ mosquitto_pub -u user -p password -t automation-service/set m "{\"unschedule\": \"frontDoorJob\"}"
+```shell
+> mosquitto_pub -u user -p password -t automation-service/set m "{\"unschedule\": \"frontDoorJob\"}"
 ```
 
 If you use Home Assistant, you can send messages to MQTT topics via its developer console as well. These messages and more can also be sent by scripts, so scripts can start and schedule other scripts. See an example of this in [/lua-automations/sunsetLighting.lua](lua-automations/sunsetLighting.lua).
@@ -116,37 +118,71 @@ This project uses format via stylish-haskell. Credit to https://raw.githubuserco
 
 This requires [nix](https://nixos.org/download.html).
 
-```bash
-$ nix build; docker load < result
+```shell
+> nix build; docker load < result
+# or with more verbose output
+
+> nix build -v -L .
 ...
-Loaded image: automation-service:78921vslcfdribi4a6wyqx1cnl0nv67x
-$
+> docker load < result
+0395990e5bd7: Loading layer [==================================================>]  5.847GB/5.847GB
+Loaded image: automation-service:14j3qyc3fxwrlnj95c62c5frkb04hdv7
+
+# can test via e.g.
+# (starts up and fails as mqtt broker is not running ^)
+> docker run --rm --log-driver=local -v ./config:/app/config -v ./lua-automations:/app/lua-automations -v ./logs:/app/logs -w /app automation-service:14j3qyc3fxwrlnj95c62c5frkb04hdv7
+automation-service: Network.Socket.getAddrInfo (called with preferred socket type/protocol: AddrInfo {addrFlags = [AI_ADDRCONFIG], addrFamily = AF_UNSPEC, addrSocketType = Stream, addrProtocol = 0, addrAddress = 0.0.0.0:0, addrCanonName = Nothing}, host name: Just "mosquitto", service name: Just "8883"): does not exist (Name or service not known)
+
+# or
+> docker run --rm -it --entrypoint /bin/bash automation-service:14j3qyc3fxwrlnj95c62c5frkb04hdv7
+bash-5.2# 
 
 ```
 
-You can now take this and drop it in your `compose.yml` file for docker-compose.
+You can now take this and drop it in the `compose.yaml` in this directory.
+
+```bash
+#
+# dumb smoke test to confirm that image works in context of default compose.yaml
+#
+`curl -o /dev/null -s http://localhost:8081/ -w %{response_code}` -eq 200 ] && echo "true" || exit 1
+```
+
+## Frontend
+
+```shell
+> cd ui
+# this also copies mocha.js and mocha.css to ui/test/browser on postinstall
+> npm install
+
+# bundle spago into index.js
+> spago bundle -p automation-service
+
+# do the same but watch for files changing in src/
+> watchexec -w src -- spago bundle -p automation-service
+
+# generate css from scss
+> cd css
+> npx sass .
+
+```
 
 
 ### Testing
 
 Running main application test suite:
 
-```bash
+```shell
 # watchexec is handy:
-$ watchexec -w test -w src -w app -i "*.db" -i "test/dbs/*" 'cabal test --test-show-details=always --test-options "--color=always"'
-$ cabal test --test-show-details=always --test-options '--color=always -l -p Unit'
-$ cabal test --test-show-details=always --test-options '--color=always -l -p Integration'
+> watchexec -w test -w src -w app -i "*.db" -i "test/dbs/*" 'cabal test --test-show-details=always --test-options "--color=always"'
+> cabal test --test-show-details=always --test-options '--color=always -l -p Unit'
+> cabal test --test-show-details=always --test-options '--color=always -l -p Integration'
 ```
 
 Frontend tests:
 
-```bash
-$ npm run test
-$ npm run test:watch
-
-# the above are wrappers for
-$ npx spago test
-$ watchexec -w src -w test -- npx spago test
+```shell
+watchexec -w src -w test/src -- "spago bundle -p automation-service-test; npx mocha-headless-chrome -t 60000 -e (which chromium) -a 'allow-file-access-from-files' -f test/browser/index.html"
 ```
 
 
