@@ -1,5 +1,7 @@
 # automation-service
 
+[![Build and publish image to ghcr.io](https://github.com/ddellacosta/automation-service/actions/workflows/main.yml/badge.svg)](https://github.com/ddellacosta/automation-service/actions/workflows/main.yml)
+
 <img style="width: 45%" src="docs/ha-custom-card.png" alt="screenshot of HA custom card" />
 
 automation-service is a tool for setting up simple-to-complicated home automations, like triggering lighting to go on when you enter a room, or reading from and responding to sensors--and much more. Its goals include:
