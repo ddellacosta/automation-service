@@ -1,7 +1,3 @@
-#
-# Based originally on this:
-#  https://magnus.therning.org/2022-03-13-simple-nix-flake-for-haskell-development.html
-#
 {
   description = "automation-service";
 
@@ -37,7 +33,7 @@
           pkgs.buildNpmPackage {
             name = "automation-service-npm-deps";
             # prefetch-npm-deps package-lock.json
-            npmDepsHash = "sha256-6g3rK2KZv5s37axx6S2kP6yIcRD307WWlKHv1egqduY=";
+            npmDepsHash = "sha256-sz9AVcvqBRbvFwyEdrHZTURQx/vNVZsSVJqUYVTEl2U=";
             src = ./ui;
             nodejs = node_version;
             # need this for spago and logging
@@ -82,7 +78,7 @@
               ln -sf ${automation-service-npm-deps}/lib/node_modules ./node_modules
               cp node_modules/mocha/mocha.js node_modules/mocha/mocha.css test/browser/
 
-              npx spago bundle -p automation-service-test
+              spago bundle -p automation-service-test
 
               #  > \Error: Failed to launch the browser process!
               #        > [342:342:0206/014943.932611:FATAL:setuid_sandbox_host.cc(163)]
@@ -108,6 +104,10 @@
               # cat chrome_debug.log
 
               spago bundle -p automation-service
+
+              cd css
+              npx sass .
+              cd ..
 
               runHook postBuild
             '';
@@ -152,8 +152,6 @@
                   ];
                 }))
               ];
-
-
             };
 
       in {

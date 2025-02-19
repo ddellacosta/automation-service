@@ -136,7 +136,31 @@ bash-5.2#
 
 ```
 
-You can now take this and drop it in your `compose.yml` file for docker-compose.
+You can now take this and drop it in the `compose.yaml` in this directory.
+
+```bash
+#
+# dumb smoke test to confirm that image works in context of default compose.yaml
+#
+`curl -o /dev/null -s http://localhost:8081/ -w %{response_code}` -eq 200 ] && echo "true" || exit 1
+```
+
+## Frontend
+
+```shell
+> cd ui
+
+# bundle spago into index.js
+> spago bundle -p automation-service
+
+# do the same but watch for files changing in src/
+> watchexec -w src -- spago bundle -p automation-service
+
+# generate css from scss
+> cd css
+> npx sass .
+
+```
 
 
 ### Testing
@@ -153,12 +177,7 @@ Running main application test suite:
 Frontend tests:
 
 ```shell
-> npm run test
-> npm run test:watch
-
-# the above are wrappers for
-> npx spago test
-> watchexec -w src -w test -- npx spago test
+watchexec -w src -w test/src -- "spago bundle -p automation-service-test; npx mocha-headless-chrome -t 60000 -e (which chromium) -a 'allow-file-access-from-files' -f test/browser/index.html"
 ```
 
 

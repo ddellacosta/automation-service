@@ -8,6 +8,7 @@ where
 
 import Prelude hiding (filter)
 
+import Control.Arrow ((>>>))
 import Control.Lens (Lens', view, (&), (.~), (<&>), (^.))
 import Control.Monad.IO.Unlift (MonadIO, MonadUnliftIO, liftIO)
 import Control.Monad.Reader (MonadReader)
@@ -492,10 +493,10 @@ run' threadMapTV = do
       where
         mkDefaultTopicMsgAction automationBroadcast' = \_topic topicMsg ->
           for_ (decode topicMsg) $
-              atomically
-            . writeTChan automationBroadcast'
-            . Automation.Client automationName
-            . Automation.ValueMsg
+                Automation.ValueMsg
+            >>> Automation.Client automationName
+            >>> writeTChan automationBroadcast'
+            >>> atomically
 
 loadResources
   :: (MonadUnliftIO m, Hashable k) => (v -> k) -> TVar (HashMap k v) -> [v] -> m ()

@@ -15,12 +15,12 @@
     "@uiw/react-color-wheel": "^2.3.2",
     "color-convert": "^2.0.1",
     "mocha": "^11.0.1",
-    "mocha-headless-chrome": "^4.0.0",
+    "mocha-headless-chrome": "^3.1.0",
     "purescript-language-server": "^0.18.2",
     "purs-tidy": "^0.11.0",
     "react": "^17.0.2",
     "react-bootstrap": "^2.10.5",
     "react-dom": "^17.0.2",
-    "spago": "^0.93.41"
+    "sass": "^1.85.0"
   }
 }
