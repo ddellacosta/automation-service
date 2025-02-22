@@ -8,7 +8,7 @@ where
 
 import Prelude
 
-import AutomationService.ResourceMessage as Resources
+import AutomationService.DeviceMessage as Devices
 import Data.Generic.Rep (class Generic)
 import Data.Show.Generic (genericShow)
 import Data.String.Common as S
@@ -16,14 +16,15 @@ import Data.String.Pattern (Pattern(..), Replacement(..))
 
 data Message ws
   = SetPage Page
-  | DeviceMsg Resources.Message
-  | GroupMsg Resources.Message
-  | UpdateCnt Resources.Message
+  | DeviceMsg Devices.Message
   | InitWS ws
   | PublishMsgChanged String
   | Publish
 
-data Page = Devices | PublishMQTT
+data Page
+  = Devices
+  | Groups
+  | PublishMQTT
 
 derive instance Generic Page _
 
@@ -33,6 +34,7 @@ instance Show Page where
 pageName :: Page -> String
 pageName = case _ of
   Devices -> "Devices"
+  Groups -> "Groups"
   PublishMQTT -> "Publish MQTT"
 
 pageNameClass :: Page -> String

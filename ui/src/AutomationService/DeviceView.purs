@@ -15,6 +15,7 @@ import AutomationService.Device (Device(..), DeviceDetails, DeviceId, Devices,
 import AutomationService.DeviceMessage (Message(..))
 import AutomationService.DeviceState (DeviceState, DeviceStates, getDeviceState)
 import AutomationService.Exposes (SubProps(..), canGet, canSet, enumValues, isOn, isPublished)
+import AutomationService.Group (Group)
 import AutomationService.Lighting (ColorSetter(..), getColorSetter, getNumericCap,
                                    getOnOffSwitch, getPreset)
 import AutomationService.Logging (debug)
@@ -48,6 +49,7 @@ type State =
   , deviceStates :: DeviceStates
   , selectedDeviceId :: Maybe DeviceId
   , deviceStateUpdateTimers :: Ref DeviceStateUpdateTimers
+  , groups :: Array Group
   }
 
 initState :: Ref DeviceStateUpdateTimers -> State
@@ -56,6 +58,7 @@ initState dsUpdateTimers =
   , deviceStates: M.empty
   , selectedDeviceId: Nothing
   , deviceStateUpdateTimers: dsUpdateTimers
+  , groups: []
   }
 
 init :: Ref DeviceStateUpdateTimers -> Transition Message State
@@ -123,8 +126,46 @@ update ws s = case _ of
     forkVoid $ liftEffect $ do
       debug $ "Publishing with '" <> msg  -- <> "' to topic: " <> topic
       for_ ws $ \ws' ->
+        sendString ws' msg
+    pure s
+
+  LoadGroups newGroups -> do
+    -- _ <- traceM newGroups
+
+    forkVoid $ liftEffect $ debug $ "loaded groups: " <> show newGroups
+
+    forkVoid $ do
+      liftEffect $ for_ newGroups $ \g -> do
+        let
+          -- this needs to get passed in from parent state as config, or something
+          subscribeMsg =
+            MQTT.subscribe (deviceTopic g.name) "HTTP 8080"
+          pingStateMsg =
+            MQTT.publish (getTopic g.name) $ MQTT.state ""
+
+        debug $ "Groups: subscribing with: " <> (stringify $ encodeJson subscribeMsg)
+        debug $
+          "Groups: pinging to get initial state: " <> (stringify $ encodeJson pingStateMsg)
+
+        for_ ws $ \ws' -> do
+          sendJson ws' <<< encodeJson $ subscribeMsg
+          sendJson ws' <<< encodeJson $ pingStateMsg
+
+    pure s { groups = newGroups }
+
+  LoadGroupsFailed _msg -> do
+    -- forkVoid $
+    --   liftEffect $ debug $ "LoadGroupsFailed with msg: " <> msg) *> pure s
+    -- _ <- traceM msg
+    pure s
+
+  PublishGroupMsg msg -> do
+    forkVoid $ liftEffect $ do
+      debug $ "Publishing with '" <> msg  -- <> "' to topic: " <> topic
+      for_ ws $ \ws' ->
         sendString ws' msg 
     pure s
+
 
 view :: State -> Dispatch Message -> ReactElement
 view { devices, deviceStates } dispatch =

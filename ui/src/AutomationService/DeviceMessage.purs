@@ -7,6 +7,7 @@ import Prelude (class Show)
 
 import AutomationService.Device (Device, DeviceId)
 import AutomationService.DeviceState (DeviceState)
+import AutomationService.Group (Group)
 import Data.Generic.Rep (class Generic)
 import Data.Show.Generic (genericShow)
 
@@ -18,6 +19,10 @@ data Message
   | DeviceSelected DeviceId
   | NoDeviceSelected
   | PublishDeviceMsg String
+  -- group messages
+  | LoadGroupsFailed String
+  | LoadGroups (Array Group)
+  | PublishGroupMsg String
 
 derive instance Generic Message _
 
