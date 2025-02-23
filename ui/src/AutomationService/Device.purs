@@ -14,18 +14,25 @@ module AutomationService.Device
   , decodeDevices
   , details
   , deviceTopic
+  , deviceType
   , getTopic
   , setDetails
   , setTopic
   )
 where
 
-import AutomationService.Exposes (CapType(..), Exposes, FeatureType(..), decodeExposes)
+import Debug (trace, traceM)
+
+import AutomationService.Exposes (Capability, CapType(..), Exposes, FeatureType(..), decodeExposes)
+import Control.Alt ((<|>))
+import Control.Monad (when)
 import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
-import Data.Array (filter)
+import Data.Array (filter, null)
 import Data.Array.NonEmpty (fromArray, head, sort)
+import Data.Array.NonEmpty as NonEmpty
 import Data.Either (Either(..), isRight)
+import Data.Foldable (for_)
 import Data.Generic.Rep (class Generic)
 import Data.Lens (Lens, Lens', lens')
 import Data.Lens.Record (prop)
@@ -34,7 +41,7 @@ import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
 import Data.Traversable (for, sequence)
 import Data.Tuple (Tuple(..))
-import Prelude (class Eq, class Ord, class Show, bind, flip, map, pure, ($), (<$>), (<>), (=<<))
+import Prelude (class Eq, class Ord, class Show, bind, discard, flip, map, not, pure, show, (<<<), ($), (<$>), (<>), (=<<), (==), (&&), (||))
 import Type.Proxy (Proxy(..))
 
 type DeviceId = String
@@ -98,13 +105,13 @@ _exposes = prop (Proxy :: Proxy "exposes")
 -- capabilities of the Device (which for now just means the stuff
 -- inside of DeviceDetails's exposes field, directly from
 -- https://www.zigbee2mqtt.io/guide/usage/exposes.html). The Device
--- constructors are modeled after Matter 1.2 spec Device types, and
+-- constructors are modeled after Matter 1.4 spec Device types, and
 -- I'll be adding them as I have use for them unless other people
 -- start using this for some reason and ask for it (or contribute it
 -- themselves).
 --
 -- In the future I hope that means both Matter devices as well as
--- ESPHome devices.
+-- ESPHome devices, however that could work.
 --
 
 --
@@ -118,17 +125,36 @@ _exposes = prop (Proxy :: Proxy "exposes")
 -- between features across device sets (e.g. Lights vs. Sensors vs.
 -- Switches vs. etc.) such that if we identify multiple possible
 -- Device types based on what comes back in Exposes, a sort will
--- always pop the most feature-full type to the top.
+-- always pop the most feature-full type to the top...but this may
+-- only work with lights...not sure yet. Other device types seem to
+-- have basically completely disjoint sets of distinguishing
+-- properties.
 --
--- We'll see if that assumption holds...
+-- In any case, a flat list like this has seemed to be the easiest to
+-- work with so far. Having a lot of structure here is hard to
+-- work with and maintain, and is not reflected in the Matter spec
+-- itself in any case.
 --
 data Device
   = ExtendedColorLight DeviceDetails
   | ColorTemperatureLight DeviceDetails
   | DimmableLight DeviceDetails
   | OnOffLight DeviceDetails
+  | ContactSensor DeviceDetails
+  | OccupancySensor DeviceDetails
   | WindowCovering DeviceDetails
   | UnknownDevice DeviceDetails
+
+deviceType :: Device -> String
+deviceType = case _ of
+  ExtendedColorLight _ -> "ExtendedColorLight"
+  ColorTemperatureLight _ -> "ColorTemperatureLight"
+  DimmableLight _ -> "DimmableLight"
+  OnOffLight _ -> "OnOffLight"
+  ContactSensor _ -> "ContactSensor"
+  OccupancySensor _ -> "OccupancySensor"
+  WindowCovering _ -> "WindowCovering"
+  UnknownDevice _ -> "UnknownDevice"
 
 type Devices = Map DeviceId Device
 
@@ -145,6 +171,8 @@ details = case _ of
   DimmableLight d -> d
   ColorTemperatureLight d -> d
   ExtendedColorLight d -> d
+  ContactSensor d -> d
+  OccupancySensor d -> d
   WindowCovering d -> d
   UnknownDevice d -> d
 
@@ -154,11 +182,26 @@ setDetails d = case _ of
   DimmableLight _ -> DimmableLight d
   ColorTemperatureLight _ -> ColorTemperatureLight d
   ExtendedColorLight _ -> ExtendedColorLight d
+  ContactSensor _ -> ContactSensor d
+  OccupancySensor _ -> OccupancySensor d
   WindowCovering _ -> WindowCovering d
   UnknownDevice _ -> UnknownDevice d
 
 _deviceDetails :: Lens' Device DeviceDetails
 _deviceDetails = lens' $ \d -> Tuple (details d) (flip setDetails d)
+
+-- okay I guess these go in here too
+
+deviceTopic :: String -> String
+deviceTopic name' = "zigbee2mqtt/" <> name'
+
+setTopic :: String -> String
+setTopic name' = deviceTopic name' <> "/set"
+
+getTopic :: String -> String
+getTopic name' = deviceTopic name' <> "/get"
+
+--
 
 decodeDevices :: Json -> Either JsonDecodeError (Array Device)
 decodeDevices devicesJson = do
@@ -171,32 +214,6 @@ decodeDevices devicesJson = do
     Nothing ->
       Left (UnexpectedValue devicesJson)
 
---
--- TODO: make this store failures on as granular a level as possible,
--- only failing at the level a decode fails (vs. now where any
--- failure breaks the entire decoding process), and then report
--- failures back and log
---
-
---   pure $ case isOnOffLight deviceDetails, isCover deviceDetails of
---     true, false -> OnOffLight deviceDetails
---     false, true -> WindowCovering deviceDetails
---     _, _ -> OnOffLight deviceDetails
---
---   where
---     isOnOffLight _deviceDetails = true
---     isCover _deviceDetails = false
---
-
-deviceTopic :: String -> String
-deviceTopic name' = "zigbee2mqtt/" <> name'
-
-setTopic :: String -> String
-setTopic name' = deviceTopic name' <> "/set"
-
-getTopic :: String -> String
-getTopic name' = deviceTopic name' <> "/get"
-
 decodeBaseDevice :: Json -> Exposes -> Either JsonDecodeError DeviceDetails
 decodeBaseDevice deviceJson exposes = do
   obj <- decodeJson deviceJson
@@ -206,6 +223,145 @@ decodeBaseDevice deviceJson exposes = do
   manufacturer <- obj .:? "manufacturer"
   model <- obj .:? "model_id"
   pure $ { id: id', name: name', category, manufacturer, model, exposes }
+
+hasCapabilities :: (Capability -> Boolean) -> Exposes -> Boolean
+hasCapabilities pred exposes =
+    not <<< null <<< NonEmpty.filter pred $ exposes
+
+mkDefaultDevice :: DeviceDetails -> Either JsonDecodeError Device
+mkDefaultDevice = Right <<< UnknownDevice
+
+--
+-- Matter Device Library Specification R1.4
+-- Chapter 4. Lighting Device Types
+--
+decodeLightDevice :: DeviceDetails -> Either JsonDecodeError Device
+decodeLightDevice baseDevice =
+  let
+    defaultDevice = mkDefaultDevice baseDevice
+
+    extendedColorLight =
+      if hasCapabilities
+           (\e -> e.type == Composite' && (e.name == "color_xy" || e.name == "hue"))
+           baseDevice.exposes then
+        Right <<< ExtendedColorLight $ baseDevice
+      else
+        Left <<< TypeMismatch $ "Not an ExtendedColorLight"
+
+    colorTemperatureLight =
+      if hasCapabilities
+           (\e -> e.type == Numeric' && e.name == "color_temp")
+           baseDevice.exposes then
+        Right <<< ColorTemperatureLight $ baseDevice
+      else
+        Left <<< TypeMismatch $ "Not a ColorTemperatureLight"
+
+    dimmableLight =
+      if hasCapabilities
+           (\e -> e.type == Numeric' && e.name == "brightness")
+           baseDevice.exposes then
+        Right <<< DimmableLight $ baseDevice
+      else
+        Left <<< TypeMismatch $ "Not an DimmableLight"
+
+    onOffLight =
+      if hasCapabilities
+           (\e -> e.type == Binary')
+           baseDevice.exposes then
+        Right <<< OnOffLight $ baseDevice
+      else
+        Left <<< TypeMismatch $ "Not an OnOffLight"
+
+  in
+   --
+   -- It's probably worth noting that this actually depends on the
+   -- order that these are checked in (unlike other device subtype
+   -- decoding functions which are essentially all just based on
+   -- distinct predicate checks), as each lighting type tends to
+   -- subsume all the properties of the lighting types underneath it
+   -- in the hierarchy. E.g. all lights have an on/off switch
+   -- property, and all lights have brightness from DimmableLight
+   -- "and up."
+   --
+   extendedColorLight
+     <|> colorTemperatureLight
+     <|> dimmableLight
+     <|> onOffLight
+     <|> defaultDevice
+
+--
+-- Matter Device Library Specification R1.4
+-- Chapter 7. Sensor Device Types
+--
+decodeSensorDevice :: DeviceDetails -> Either JsonDecodeError Device
+decodeSensorDevice baseDevice =
+  let
+    defaultDevice = mkDefaultDevice baseDevice
+
+    --
+    -- unimplemented:
+    --
+    -- LightSensor
+    -- TemperatureSensor
+    -- PressureSensor
+    -- FlowSensor
+    -- HumiditySensor
+    -- OnOffSensor
+    -- SmokeCOAlarm
+    -- AirQualitySensor
+    -- WaterFreezeDetector
+    -- WaterLeakDetector
+    -- RainSensor
+    --
+
+    contactSensor =
+      if hasCapabilities
+           (\e -> e.type == Binary' && e.name == "contact")
+           baseDevice.exposes then
+        Right <<< ContactSensor $ baseDevice
+      else
+        Left <<< TypeMismatch $ "Not a ContactSensor"
+
+    occupancySensor =
+      if hasCapabilities
+           (\e -> e.type == Binary' && e.name == "occupancy")
+           baseDevice.exposes then
+        Right <<< OccupancySensor $ baseDevice
+      else
+        Left <<< TypeMismatch $ "Not a OccupancySensor"
+
+  in do
+   traceM $ baseDevice.name <> " - sensor device exposes: " <> show baseDevice.exposes
+   contactSensor <|> occupancySensor <|> defaultDevice
+
+--
+-- Matter Device Library Specification R1.4
+-- Chapter 8. Closure Device Types
+--
+decodeClosureDevice :: DeviceDetails -> Either JsonDecodeError Device
+decodeClosureDevice baseDevice =
+  let
+    defaultDevice = mkDefaultDevice baseDevice
+
+    --
+    -- unimplemented:
+    --
+    -- DoorLock
+    -- DoorLockController
+    -- WindowCoveringController
+    --
+
+    windowCovering =
+      if hasCapabilities
+           (\e -> e.type == Numeric' && e.name == "position")
+           baseDevice.exposes then
+        Right <<< WindowCovering $ baseDevice
+      else
+        Left <<< TypeMismatch $ "Not a WindowCovering"
+
+  in do
+   traceM $ baseDevice.name <> " - closure device exposes: " <> show baseDevice.exposes
+   windowCovering <|> defaultDevice
 
 decodeDevice :: Json -> Either JsonDecodeError Device
 decodeDevice deviceJson = do
@@ -228,69 +384,49 @@ decodeDevice deviceJson = do
 
   baseDevice <- decodeBaseDevice deviceJson exposes
 
-  --
-  -- Arguably this should be doing more comprehensive checks to
-  -- ensure that e.g. a device with a numeric brightness capability
-  -- also definitely has an on/off binary capability too. And it
-  -- probably will...some day. For now I'm relying on the idea that
-  -- these capabilities imply a hierarchy of functionality that
-  -- wouldn't mean much otherwise, and is implied by the device types
-  -- described in the Matter 1.2 protocol (which I think it's
-  -- reasonable to expect zigbee-compatibile devices to roughly
-  -- adhere to, both based on my experience looking at their feature
-  -- set along with the fact that the Zigbee Alliance is a major
-  -- contributer to Matter).
-  --
-  -- More practically speaking this also pushes a lot of the
-  -- responsibility for confirming functionality to the view layer,
-  -- and that's fine for now; the view layer has to manage a lot of
-  -- changing conditions regardless so it's not a bad tradeoff to
-  -- simplify this parsing code in return.
-  --
-  devices <- map sort $ for exposes $ \e ->
-    Right $ case e.featureType, e.type, e.name of
-      Just Light, Composite', "color_xy" -> ExtendedColorLight baseDevice
-      Just Light, Composite', "hue" -> ExtendedColorLight baseDevice
-      Just Light, Numeric', "color_temp" -> ColorTemperatureLight baseDevice
-      Just Light, Numeric', "brightness" -> DimmableLight baseDevice
-      Just Light, Binary', _ -> OnOffLight baseDevice
-      _, _, _ -> UnknownDevice baseDevice
+  let
+    defaultDevice = mkDefaultDevice baseDevice
 
-  -- see the comment above the definition for the Device data type to
-  -- understand what the sort above implies
-  pure $ head devices
+    lightDevice =
+      if hasCapabilities (\e -> e.featureType == Just Light) exposes then
+        decodeLightDevice baseDevice
+      else
+        Left <<< TypeMismatch $ "Not a Light Device"
 
---
--- Matter device requirements. Each item following the previous inherits the previous item's requirements:
---
--- OnOffLight
--- - on/off switching
---
--- DimmableLight
--- - light level control
---
--- ColorTemperatureLight
--- - color temperature level control
---
--- ExtendedColorLight
--- - color control w/hue&saturation, enhanced hue (?), XY, color looping (?)
---
--- WindowCovering
--- - up/down for covering?
+    --
+    -- This one has no specific featureType so I have to do it this
+    -- ass-backwards way where I delineate all the specific sensor
+    -- type predicates and then do it again inside of
+    -- decodeSensorDevice, but this feels cleaner to me even if it's
+    -- less efficient. If it seems to cause performance issues I'll
+    -- do it the ugly...er, even uglier way ¯\_(ツ)_/¯
+    --
+    sensorDevice =
+      if flip hasCapabilities exposes $ \e ->
+           (e.name == "contact" && e.type == Binary') -- ContactSensor
+        || (e.name == "occupancy" && e.type == Binary') -- OccupancySensor
+      then
+        decodeSensorDevice baseDevice
+      else
+        Left <<< TypeMismatch $ "Not a Sensor Device"
 
---
--- what about...
---
--- ## sensors
---
--- - humidity/temperature
--- - humidity/temp/air
--- - motion sensors
--- - door opening sensor
---
--- ## controls
---
--- - lighting on/off dimmer
--- - multi-control remote
---
+    closureDevice =
+      if hasCapabilities (\e -> e.featureType == Just Cover) exposes then
+        decodeClosureDevice baseDevice
+      else
+        Left <<< TypeMismatch $ "Not a Closure Device"
 
+    returning =
+      lightDevice
+      <|> sensorDevice
+      <|> closureDevice
+      <|> defaultDevice
+
+  deviceType' <- deviceType <$> returning
+
+  when (deviceType' == "UnknownDevice") $
+    traceM $ baseDevice.name <> " - UnknownDevice, exposes " <> show baseDevice.exposes
+
+  traceM $ baseDevice.name <> " - final device type: " <> deviceType'
+
+  returning

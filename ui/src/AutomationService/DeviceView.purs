@@ -232,10 +232,17 @@ view { devices, deviceStates } dispatch =
             OnOffLight deviceDetails ->
               genericOnOffWithDetails mDeviceState deviceDetails []
 
+            ContactSensor deviceDetails ->
+              genericWithDetails mDeviceState deviceDetails [] []
+
+            OccupancySensor deviceDetails ->
+              genericWithDetails mDeviceState deviceDetails [] []
+
             WindowCovering deviceDetails ->
               genericWithDetails mDeviceState deviceDetails [] []
 
             UnknownDevice deviceDetails ->
+              H.div "border border-danger" $
               genericWithDetails mDeviceState deviceDetails [] []
 
     genericOnOffWithDetails
