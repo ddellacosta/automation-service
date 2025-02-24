@@ -38,6 +38,7 @@ import Data.Traversable (for_)
 import Effect.Class (liftEffect)
 import Effect.Ref (Ref)
 import Elmish (Transition, Dispatch, ReactElement, forkVoid, (<|), (<?|))
+import Elmish.HTML (_data)
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
 import Foreign.Object as O
@@ -169,7 +170,8 @@ update ws s = case _ of
 
 view :: State -> Dispatch Message -> ReactElement
 view { devices, deviceStates } dispatch =
-  H.div "all-devices" -- "container mx-auto mt-5 d-flex flex-column justify-content-between"
+  H.div_ "all-devices" -- "container mx-auto mt-5 d-flex flex-column justify-content-between"
+  { _data: _data { "test-id": "all-devices" } }
   [ H.div "device-count" $ H.text $ (show $ L.length $ M.values devices) <> " Devices"
   , H.fragment $
     (\d -> deviceSummary (getDeviceState deviceStates d) d)
@@ -203,7 +205,7 @@ view { devices, deviceStates } dispatch =
 
     deviceSummary :: Maybe DeviceState -> Device -> ReactElement
     deviceSummary mDeviceState device =
-      H.div "col" $
+      H.div "col device" $
       H.div "card mt-2" $
         H.div "card-body text-bg-light p-3" $
           case device of
@@ -232,10 +234,29 @@ view { devices, deviceStates } dispatch =
             OnOffLight deviceDetails ->
               genericOnOffWithDetails mDeviceState deviceDetails []
 
+            GenericSwitch deviceDetails ->
+              genericWithDetails mDeviceState deviceDetails [] []
+
+            ContactSensor deviceDetails ->
+              genericWithDetails mDeviceState deviceDetails [] []
+
+            OccupancySensor deviceDetails ->
+              genericWithDetails mDeviceState deviceDetails [] []
+
+            TemperatureSensor deviceDetails ->
+              genericWithDetails mDeviceState deviceDetails [] []
+
+            HumiditySensor deviceDetails ->
+              genericWithDetails mDeviceState deviceDetails [] []
+
+            AirQualitySensor deviceDetails ->
+              genericWithDetails mDeviceState deviceDetails [] []
+
             WindowCovering deviceDetails ->
               genericWithDetails mDeviceState deviceDetails [] []
 
             UnknownDevice deviceDetails ->
+              H.div "border border-danger" $
               genericWithDetails mDeviceState deviceDetails [] []
 
     genericOnOffWithDetails
@@ -279,7 +300,7 @@ view { devices, deviceStates } dispatch =
       Bootstrap.accordion {} $
         Bootstrap.accordionItem { eventKey: 0 }
         [
-          H.div_ "card-header d-flex flex-row justify-content-between"
+          H.div_ "card-header d-flex flex-row justify-content-between device-header"
           { style: H.css { minWidth: "11.5em" } } $
           [ deviceTitle deviceDetails ] <> headerComponents
         , Bootstrap.accordionHeader {} "detailed settings"

@@ -6,17 +6,13 @@ module AutomationService.Group
   )
 where
 
-import AutomationService.Device (DeviceId)
-import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, encodeJson, toArray)
+import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:))
 import Data.Array (filter)
 import Data.Either (Either(..), isRight)
-import Data.Foldable (foldM)
-import Data.Map as M
-import Data.Map (Map)
 import Data.Maybe (Maybe(..))
-import Data.Traversable (sequence, traverse)
-import Prelude (($), (<$>), (=<<), (<#>), bind, map, pure)
+import Data.Traversable (sequence)
+import Prelude (($), (<$>), (=<<), bind, pure)
 
 type GroupScene = { id :: Int, name :: String }
 type GroupDevice = { id :: String, endpoint :: Int }

@@ -16,28 +16,26 @@ import Effect.Ref as Ref
 import Elmish.Component (Command)
 -- see Test.AutomationService.Elmish.Bootstrap
 -- import Elmish.Test (find, prop, testComponent, text, (>>))
--- import Elmish.Test (find, prop, text, (>>), nearestEnclosingReactComponentName)
-import Elmish.Test (find, prop, (>>), nearestEnclosingReactComponentName)
+-- see note about text replacement below
+-- import Elmish.Test (find, prop, text, (>>))
+import Elmish.Test (find, prop, (>>))
 import Elmish.Test.DomProps as P
 import Elmish.Test.Events (change, click)
 import Foreign (unsafeFromForeign)
 import Main as Main
-import Prelude (Unit, bind, discard, pure, void, ($), (<<<), (>>>), (<$>), (<>), (>>=), (=<<))
+import Prelude (Unit, bind, discard, pure, void, ($), (<<<), (>>>), (<$>), (<>), (>>=))
 import Test.AutomationService.Elmish.Bootstrap (testComponent)
 import Test.AutomationService.Spec (Spec)
 import Test.AutomationService.WebSocketStub (webSocketStub)
 import Test.Fixtures as Fixtures
 import Test.Spec (before, describe, it)
 import Test.Spec.Assertions (shouldEqual)
+import Web.DOM.Element (Element, toNode)
+import Web.DOM.Node (textContent)
 import Web.Event.CustomEvent as CE
 import Web.Event.Event (EventType(..))
 import Web.Event.EventTarget (EventTarget, eventListener)
 import Web.Event.EventTarget as ET
-
-import Web.DOM.Element (Element, className, tagName, toNode, fromNode)
-import Web.DOM.Node (firstChild, nodeName, textContent)
-import Elmish.Test.State (class Testable, currentNode)
-import Debug (traceM)
 
 --
 -- For reasons that I don't understand, only when attempting to test
@@ -86,7 +84,7 @@ sendMessage ws msg = do
 spec :: Spec Unit
 spec = before setup $
   describe "Main app" $
-    it "Can navigate to different pages" $ \wsState@(TestWS { store, ws }) -> do
+    it "Can navigate to different pages" $ \wsState@(TestWS { store: _store, ws }) -> do
       let mqttMsg = "{\"start\": \"test\"}"
 
       newDsUpdateTimers <- liftEffect $ Ref.new M.empty
@@ -114,6 +112,9 @@ spec = before setup $
           find ("li" `withTestId` "nav-devices" <> " a") >> click
           find ("h2" `withTestId` "main-title") >>= text
             >>= shouldEqual "Devices"
+
+          find "div.all-devices div.device .card-body .card-header" >>= text
+            >>= shouldEqual "Basement Black Signe"
 
           -- Publish MQTT
           find ("li" `withTestId` "nav-publish-mqtt" <> " a") >> click

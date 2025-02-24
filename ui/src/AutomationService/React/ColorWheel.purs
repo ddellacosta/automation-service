@@ -6,7 +6,6 @@ where
 import Effect.Uncurried (EffectFn1)
 import Elmish.React (createElement')
 import Elmish.React.Import (ImportedReactComponentConstructor, ImportedReactComponent)
-import Foreign (Foreign)
 import Foreign.Object (Object)
 import Prelude (Unit)
 
