@@ -3,6 +3,7 @@ module AutomationService.Device
   , DeviceDetails
   , DeviceId
   , Devices
+  , DeviceType(..)
   , _category
   , _deviceDetails
   , _exposes
@@ -21,27 +22,23 @@ module AutomationService.Device
   )
 where
 
-import Debug (trace, traceM)
-
 import AutomationService.Exposes (Capability, CapType(..), Exposes, FeatureType(..), decodeExposes)
 import Control.Alt ((<|>))
-import Control.Monad (when)
 import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Array (filter, null)
-import Data.Array.NonEmpty (fromArray, head, sort)
+import Data.Array.NonEmpty (fromArray)
 import Data.Array.NonEmpty as NonEmpty
 import Data.Either (Either(..), isRight)
-import Data.Foldable (for_)
 import Data.Generic.Rep (class Generic)
 import Data.Lens (Lens, Lens', lens')
 import Data.Lens.Record (prop)
 import Data.Map (Map)
 import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
-import Data.Traversable (for, sequence)
+import Data.Traversable (sequence)
 import Data.Tuple (Tuple(..))
-import Prelude (class Eq, class Ord, class Show, bind, discard, flip, map, not, pure, show, (<<<), ($), (<$>), (<>), (=<<), (==), (&&), (||))
+import Prelude (class Eq, class Ord, class Show, bind, flip, not, pure, (<<<), ($), (<$>), (<>), (=<<), (==), (&&), (||))
 import Type.Proxy (Proxy(..))
 
 type DeviceId = String
@@ -140,21 +137,14 @@ data Device
   | ColorTemperatureLight DeviceDetails
   | DimmableLight DeviceDetails
   | OnOffLight DeviceDetails
+  | GenericSwitch DeviceDetails
   | ContactSensor DeviceDetails
   | OccupancySensor DeviceDetails
+  | HumiditySensor DeviceDetails
+  | TemperatureSensor DeviceDetails
+  | AirQualitySensor DeviceDetails
   | WindowCovering DeviceDetails
   | UnknownDevice DeviceDetails
-
-deviceType :: Device -> String
-deviceType = case _ of
-  ExtendedColorLight _ -> "ExtendedColorLight"
-  ColorTemperatureLight _ -> "ColorTemperatureLight"
-  DimmableLight _ -> "DimmableLight"
-  OnOffLight _ -> "OnOffLight"
-  ContactSensor _ -> "ContactSensor"
-  OccupancySensor _ -> "OccupancySensor"
-  WindowCovering _ -> "WindowCovering"
-  UnknownDevice _ -> "UnknownDevice"
 
 type Devices = Map DeviceId Device
 
@@ -167,28 +157,73 @@ instance Show Device where
 
 details :: Device -> DeviceDetails
 details = case _ of
-  OnOffLight d -> d
-  DimmableLight d -> d
-  ColorTemperatureLight d -> d
   ExtendedColorLight d -> d
+  ColorTemperatureLight d -> d
+  DimmableLight d -> d
+  OnOffLight d -> d
+  GenericSwitch d -> d
   ContactSensor d -> d
   OccupancySensor d -> d
+  HumiditySensor d -> d
+  TemperatureSensor d -> d
+  AirQualitySensor d -> d
   WindowCovering d -> d
   UnknownDevice d -> d
 
 setDetails :: DeviceDetails -> Device -> Device
 setDetails d = case _ of
-  OnOffLight _ -> OnOffLight d
-  DimmableLight _ -> DimmableLight d
-  ColorTemperatureLight _ -> ColorTemperatureLight d
   ExtendedColorLight _ -> ExtendedColorLight d
+  ColorTemperatureLight _ -> ColorTemperatureLight d
+  DimmableLight _ -> DimmableLight d
+  OnOffLight _ -> OnOffLight d
+  GenericSwitch _ -> GenericSwitch d
   ContactSensor _ -> ContactSensor d
   OccupancySensor _ -> OccupancySensor d
+  HumiditySensor _ -> HumiditySensor d
+  TemperatureSensor _ -> TemperatureSensor d
+  AirQualitySensor _ -> AirQualitySensor d
   WindowCovering _ -> WindowCovering d
   UnknownDevice _ -> UnknownDevice d
 
 _deviceDetails :: Lens' Device DeviceDetails
 _deviceDetails = lens' $ \d -> Tuple (details d) (flip setDetails d)
+
+-- an experiment, mostly for tests at this point
+data DeviceType
+  = ExtendedColorLight'
+  | ColorTemperatureLight'
+  | DimmableLight'
+  | OnOffLight'
+  | GenericSwitch'
+  | ContactSensor'
+  | OccupancySensor'
+  | HumiditySensor'
+  | TemperatureSensor'
+  | AirQualitySensor'
+  | WindowCovering'
+  | UnknownDevice'
+
+derive instance Eq DeviceType
+derive instance Generic DeviceType _
+derive instance Ord DeviceType
+
+instance Show DeviceType where
+  show = genericShow
+
+deviceType :: Device -> DeviceType
+deviceType = case _ of
+  ExtendedColorLight _ -> ExtendedColorLight'
+  ColorTemperatureLight _ -> ColorTemperatureLight'
+  DimmableLight _ -> DimmableLight'
+  OnOffLight _ -> OnOffLight'
+  GenericSwitch _ -> GenericSwitch'
+  ContactSensor _ -> ContactSensor'
+  OccupancySensor _ -> OccupancySensor'
+  HumiditySensor _ -> HumiditySensor'
+  TemperatureSensor _ -> TemperatureSensor'
+  AirQualitySensor _ -> AirQualitySensor'
+  WindowCovering _ -> WindowCovering'
+  UnknownDevice _ -> UnknownDevice'
 
 -- okay I guess these go in here too
 
@@ -224,8 +259,8 @@ decodeBaseDevice deviceJson exposes = do
   model <- obj .:? "model_id"
   pure $ { id: id', name: name', category, manufacturer, model, exposes }
 
-hasCapabilities :: (Capability -> Boolean) -> Exposes -> Boolean
-hasCapabilities pred exposes =
+hasCapabilities :: Exposes -> (Capability -> Boolean) -> Boolean
+hasCapabilities exposes pred =
     not <<< null <<< NonEmpty.filter pred $ exposes
 
 mkDefaultDevice :: DeviceDetails -> Either JsonDecodeError Device
@@ -241,33 +276,34 @@ decodeLightDevice baseDevice =
     defaultDevice = mkDefaultDevice baseDevice
 
     extendedColorLight =
-      if hasCapabilities
-           (\e -> e.type == Composite' && (e.name == "color_xy" || e.name == "hue"))
-           baseDevice.exposes then
+      if hasCapabilities baseDevice.exposes $ \e ->
+        (e.name == "color_xy" || e.name == "hue")
+        && e.type == Composite'
+      then
         Right <<< ExtendedColorLight $ baseDevice
       else
         Left <<< TypeMismatch $ "Not an ExtendedColorLight"
 
     colorTemperatureLight =
-      if hasCapabilities
-           (\e -> e.type == Numeric' && e.name == "color_temp")
-           baseDevice.exposes then
+      if hasCapabilities baseDevice.exposes $ \e ->
+        e.name == "color_temp" && e.type == Numeric'
+      then
         Right <<< ColorTemperatureLight $ baseDevice
       else
         Left <<< TypeMismatch $ "Not a ColorTemperatureLight"
 
     dimmableLight =
-      if hasCapabilities
-           (\e -> e.type == Numeric' && e.name == "brightness")
-           baseDevice.exposes then
+      if hasCapabilities baseDevice.exposes $ \e ->
+        e.name == "brightness" && e.type == Numeric'
+      then
         Right <<< DimmableLight $ baseDevice
       else
         Left <<< TypeMismatch $ "Not an DimmableLight"
 
     onOffLight =
-      if hasCapabilities
-           (\e -> e.type == Binary')
-           baseDevice.exposes then
+      if hasCapabilities baseDevice.exposes $ \e ->
+        e.type == Binary'
+      then
         Right <<< OnOffLight $ baseDevice
       else
         Left <<< TypeMismatch $ "Not an OnOffLight"
@@ -289,6 +325,38 @@ decodeLightDevice baseDevice =
      <|> onOffLight
      <|> defaultDevice
 
+
+--
+-- Matter Device Library Specification R1.4
+-- Chapter 6. Switches and Controls Device Types
+--
+decodeControlsDevice :: DeviceDetails -> Either JsonDecodeError Device
+decodeControlsDevice baseDevice =
+  let
+    defaultDevice = mkDefaultDevice baseDevice
+
+    --
+    -- unimplemented:
+    --
+    -- OnOffLightSwitch
+    -- DimmerSwitch
+    -- ColorDimmerSwitch
+    -- ControlBridge
+    -- PumpController
+    --
+
+    genericSwitch =
+      if hasCapabilities baseDevice.exposes $ \e ->
+        e.name == "action" && e.type == Enum'
+      then
+        Right <<< GenericSwitch $ baseDevice
+      else
+        Left <<< TypeMismatch $ "Not a GenericSwitch"
+
+  in
+   genericSwitch <|> defaultDevice
+
+
 --
 -- Matter Device Library Specification R1.4
 -- Chapter 7. Sensor Device Types
@@ -302,37 +370,74 @@ decodeSensorDevice baseDevice =
     -- unimplemented:
     --
     -- LightSensor
-    -- TemperatureSensor
     -- PressureSensor
     -- FlowSensor
-    -- HumiditySensor
     -- OnOffSensor
     -- SmokeCOAlarm
-    -- AirQualitySensor
     -- WaterFreezeDetector
     -- WaterLeakDetector
     -- RainSensor
     --
 
     contactSensor =
-      if hasCapabilities
-           (\e -> e.type == Binary' && e.name == "contact")
-           baseDevice.exposes then
+      if hasCapabilities baseDevice.exposes $ \e ->
+        e.name == "contact" && e.type == Binary'
+      then
         Right <<< ContactSensor $ baseDevice
       else
         Left <<< TypeMismatch $ "Not a ContactSensor"
 
     occupancySensor =
-      if hasCapabilities
-           (\e -> e.type == Binary' && e.name == "occupancy")
-           baseDevice.exposes then
+      if hasCapabilities baseDevice.exposes $ \e ->
+        e.name == "occupancy" && e.type == Binary'
+      then
         Right <<< OccupancySensor $ baseDevice
       else
         Left <<< TypeMismatch $ "Not a OccupancySensor"
 
-  in do
-   traceM $ baseDevice.name <> " - sensor device exposes: " <> show baseDevice.exposes
-   contactSensor <|> occupancySensor <|> defaultDevice
+    humiditySensor =
+      if hasCapabilities baseDevice.exposes $ \e ->
+        e.name == "humidity" && e.type == Numeric'
+      then
+        Right <<< HumiditySensor $ baseDevice
+      else
+        Left <<< TypeMismatch $ "Not a HumiditySensor"
+
+    temperatureSensor =
+      if hasCapabilities baseDevice.exposes $ \e ->
+        e.name == "temperature" && e.type == Numeric'
+      then
+        Right <<< TemperatureSensor $ baseDevice
+      else
+        Left <<< TypeMismatch $ "Not a TemperatureSensor"
+
+    airQualitySensor =
+      if hasCapabilities baseDevice.exposes $ \e ->
+        -- Not really sure which of these is "correct", so just
+        -- checking for them both in any case since they both fit the
+        -- definition:
+        (e.name == "air_quality" && e.type == Enum')
+        || (e.name == "voc" && e.type == Numeric')
+      then
+        Right <<< AirQualitySensor $ baseDevice
+      else
+        Left <<< TypeMismatch $ "Not a AirQualitySensor"
+
+  in
+    contactSensor
+      <|> occupancySensor
+      -- This is one case where the ordering matters; most humidity
+      -- sensors are also temperature sensors, and air quality sensors
+      -- include both as well. So if we choose the wrong one here we may
+      -- miss out on being able to dispatch the most
+      -- capability-inclusive, not that we can't remedy that to some
+      -- extent in UI based on dynamic capability checking, but that is
+      -- less ideal (otherwise why are we using PureScript):
+      <|> airQualitySensor
+      <|> humiditySensor
+      <|> temperatureSensor
+      <|> defaultDevice
+
 
 --
 -- Matter Device Library Specification R1.4
@@ -352,16 +457,16 @@ decodeClosureDevice baseDevice =
     --
 
     windowCovering =
-      if hasCapabilities
-           (\e -> e.type == Numeric' && e.name == "position")
-           baseDevice.exposes then
+      if hasCapabilities baseDevice.exposes $ \e ->
+        e.name == "position" && e.type == Numeric'
+      then
         Right <<< WindowCovering $ baseDevice
       else
         Left <<< TypeMismatch $ "Not a WindowCovering"
 
-  in do
-   traceM $ baseDevice.name <> " - closure device exposes: " <> show baseDevice.exposes
+  in
    windowCovering <|> defaultDevice
+
 
 decodeDevice :: Json -> Either JsonDecodeError Device
 decodeDevice deviceJson = do
@@ -388,10 +493,20 @@ decodeDevice deviceJson = do
     defaultDevice = mkDefaultDevice baseDevice
 
     lightDevice =
-      if hasCapabilities (\e -> e.featureType == Just Light) exposes then
+      if hasCapabilities exposes $ \e ->
+        e.featureType == Just Light
+      then
         decodeLightDevice baseDevice
       else
         Left <<< TypeMismatch $ "Not a Light Device"
+
+    controlsDevice =
+      if hasCapabilities exposes $ \e ->
+        e.name == "action" && e.type == Enum'
+      then
+        decodeControlsDevice baseDevice
+      else
+        Left <<< TypeMismatch $ "Not a Controls Device"
 
     --
     -- This one has no specific featureType so I have to do it this
@@ -402,31 +517,34 @@ decodeDevice deviceJson = do
     -- do it the ugly...er, even uglier way ¯\_(ツ)_/¯
     --
     sensorDevice =
-      if flip hasCapabilities exposes $ \e ->
-           (e.name == "contact" && e.type == Binary') -- ContactSensor
-        || (e.name == "occupancy" && e.type == Binary') -- OccupancySensor
+      if hasCapabilities exposes $ \e ->
+           e.name == "contact" && e.type == Binary'      -- ContactSensor
+        || e.name == "occupancy" && e.type == Binary'    -- OccupancySensor
+        || e.name == "temperature" && e.type == Numeric' -- TemperatureSensor
+        || e.name == "humidity" && e.type == Numeric'    -- HumiditySensor
+        || e.name == "air_quality" && e.type == Enum'    -- AirQualitySensor
+        || e.name == "voc" && e.type == Numeric'         -- AirQualitySensor
       then
         decodeSensorDevice baseDevice
       else
         Left <<< TypeMismatch $ "Not a Sensor Device"
 
+    --
+    -- The only one of these I have to test with right now is the
+    -- IKEA window blinds, so not sure if they will all have this
+    -- featureType...but probably, if we can assume things behave
+    -- like lights do wrt featureType being consistent?
+    --
     closureDevice =
-      if hasCapabilities (\e -> e.featureType == Just Cover) exposes then
+      if hasCapabilities exposes $ \e ->
+        e.featureType == Just Cover
+      then
         decodeClosureDevice baseDevice
       else
         Left <<< TypeMismatch $ "Not a Closure Device"
 
-    returning =
-      lightDevice
-      <|> sensorDevice
-      <|> closureDevice
-      <|> defaultDevice
-
-  deviceType' <- deviceType <$> returning
-
-  when (deviceType' == "UnknownDevice") $
-    traceM $ baseDevice.name <> " - UnknownDevice, exposes " <> show baseDevice.exposes
-
-  traceM $ baseDevice.name <> " - final device type: " <> deviceType'
-
-  returning
+  lightDevice
+    <|> controlsDevice
+    <|> sensorDevice
+    <|> closureDevice
+    <|> defaultDevice

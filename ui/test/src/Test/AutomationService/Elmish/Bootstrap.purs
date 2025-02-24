@@ -19,7 +19,7 @@ import Prelude
 
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Data.Traversable (traverse_)
-import Effect (Effect)
+-- import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (liftEffect)
 import Elmish (ComponentDef, ReactElement, construct)

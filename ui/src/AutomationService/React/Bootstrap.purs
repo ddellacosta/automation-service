@@ -26,10 +26,9 @@ import Data.Undefined.NoProblem (Opt)
 import Elmish.React (ReactElement, createElement)
 import Elmish.React.Import (ImportedReactComponent,
                             ImportedReactComponentConstructorWithContent)
-import Elmish.HTML.Events (EventHandler, SyntheticEvent, handleEffect, stopPropagation)
+import Elmish.HTML.Events (SyntheticEvent)
 import Elmish.HTML.Styled as H
-import Foreign.Object (Object)
-import Prelude (Unit, ($), (<<<), const, pure, unit)
+import Prelude (Unit, ($), pure, unit)
 
 -- Accordion
 
@@ -69,7 +68,7 @@ foreign import accordionButton_ :: ImportedReactComponent
 foreign import accordionCollapse_ :: ImportedReactComponent
 
 foreign import useAccordionButton_
-  :: forall a. Int -> EffectFn1 SyntheticEvent Unit -> EffectFn1 SyntheticEvent Unit
+  :: Int -> EffectFn1 SyntheticEvent Unit -> EffectFn1 SyntheticEvent Unit
 
 type IconClass = String
 
