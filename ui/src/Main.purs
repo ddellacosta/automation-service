@@ -8,7 +8,7 @@ import AutomationService.DeviceView (DeviceStateUpdateTimers, State, initState, 
 import AutomationService.Group (decodeGroups) as Groups
 import AutomationService.GroupView (view) as Groups
 import AutomationService.Helpers (allElements, maybeHtml)
-import AutomationService.Logging (LogLevel(..), debug, info, warn)
+import AutomationService.Logging (LogLevel(..), debug, warn)
 import AutomationService.Logging as Logging
 import AutomationService.Message (Message(..), Page(..), pageName, pageNameClass)
 import AutomationService.Message as Page
@@ -121,11 +121,11 @@ update s = case _ of
               msgSink' <<< Devices.LoadDevices $ devices'
 
             Decoded DecodingFailed { errors } -> do
-              liftEffect <<< info $ "Decoding failed: " <> show errors
+              liftEffect <<< warn $ "Decoding failed: " <> show errors
               msgSink' <<< Devices.LoadDevicesFailed <<< show $ errors
 
             Decoded BadJson { errors } -> do
-              liftEffect <<< info $ "Bad JSON: " <> show errors
+              liftEffect <<< debug $ "Bad JSON: " <> show errors
 
           msgSink' $ either
             (Devices.LoadGroupsFailed <<< show)

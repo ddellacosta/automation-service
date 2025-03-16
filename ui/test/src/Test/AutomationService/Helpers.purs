@@ -5,18 +5,17 @@ module Test.AutomationService.Helpers
 where
 
 import AutomationService.Device (Device, DeviceDetails, details)
-import Control.Applicative (class Applicative)
-import Control.Bind (class Bind)
 import Control.Monad.Error.Class (class MonadThrow)
 import Data.Eq (class Eq)
+import Data.Functor (class Functor)
 import Data.Show (class Show)
 import Effect.Exception (Error)
-import Prelude (Unit, (<<<), (=<<), pure)
+import Prelude (Unit, (<<<), (<$>))
 import Test.Spec.Assertions (shouldEqual)
 
 -- |
 -- | shouldConstruct is a bit of a hack to allow testing
--- | of devices inside of an (Show-able, Eq-able) Applicative
+-- | of devices inside of an (Show-able, Eq-able) Functorial
 -- | context directly against a Device data constructor, a la
 -- |
 -- |     -- Maybe Device
@@ -40,17 +39,15 @@ shouldConstruct
   :: forall m t. MonadThrow Error m
   => Show (t Device)
   => Eq (t Device)
-  => Applicative t
-  => Bind t
+  => Functor t
   => (DeviceDetails -> Device)
   -> t Device
   -> m Unit
 shouldConstruct cons v = construct cons v `shouldEqual` v
 
 construct
-  :: forall m. Bind m
-  => Applicative m
+  :: forall t. Functor t
   => (DeviceDetails -> Device)
-  -> m Device
-  -> m Device
-construct cons v = pure <<< cons <<< details =<< v
+  -> t Device
+  -> t Device
+construct cons v = cons <<< details <$> v
