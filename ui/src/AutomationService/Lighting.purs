@@ -10,38 +10,37 @@ module AutomationService.Lighting
   )
 where
 
-import AutomationService.Device (DeviceDetails)
-import AutomationService.Exposes (Capability, SubProps(..))
+import AutomationService.Exposes (Capability, CapabilityDetails, Exposes, SubProps(..), capabilityDetails)
 import Data.Array (head)
 import Data.Array.NonEmpty (mapMaybe, filter)
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
-import Prelude (class Show, ($), (==))
+import Prelude (class Show, ($), (<<<), (>>>), (==))
 
-getOnOffSwitch :: DeviceDetails -> Maybe Capability
-getOnOffSwitch { exposes } =
-  head $ filter isOnOffSwitch exposes
+getOnOffSwitch :: Exposes -> Maybe Capability
+getOnOffSwitch exposes =
+  head $ filter (isOnOffSwitch <<< capabilityDetails) exposes
 
-isOnOffSwitch :: Capability -> Boolean
+isOnOffSwitch :: CapabilityDetails -> Boolean
 isOnOffSwitch { subProps } =
   case subProps of
     Binary _props -> true
     _ -> false
 
-getPreset :: String -> DeviceDetails -> Maybe Capability
-getPreset presetName { exposes } =
-  head $ filter (isPreset presetName) exposes
+getPreset :: String -> Exposes -> Maybe Capability
+getPreset presetName exposes =
+  head $ filter (isPreset presetName <<< capabilityDetails) exposes
 
-isPreset :: String -> Capability -> Boolean
+isPreset :: String -> CapabilityDetails -> Boolean
 isPreset presetName { name, subProps } =
   case subProps of
     Enum _props -> name == presetName
     _ -> false
 
-getColorSetter :: DeviceDetails -> Maybe ColorSetter
-getColorSetter { exposes } =
-  head $ mapMaybe getColor exposes
+getColorSetter :: Exposes -> Maybe ColorSetter
+getColorSetter exposes =
+  head $ mapMaybe (getColor <<< capabilityDetails) exposes
 
 data ColorSetter
   = HueSatSetter (Array Capability)
@@ -53,11 +52,11 @@ instance Show ColorSetter where
   show = genericShow
 
 isColor :: Capability -> Boolean
-isColor c = case getColor c of
+isColor c = case getColor <<< capabilityDetails $ c of
   Just _ -> true
   Nothing -> false
 
-getColor :: Capability -> Maybe ColorSetter
+getColor :: CapabilityDetails -> Maybe ColorSetter
 getColor { name, subProps } =
   case name, subProps of
     "color_hs", Composite caps ->
@@ -68,12 +67,16 @@ getColor { name, subProps } =
 
     _, _ -> Nothing
 
-getNumericCap :: String -> DeviceDetails -> Maybe Capability
-getNumericCap capName { exposes } =
+getNumericCap :: String -> Exposes -> Maybe Capability
+getNumericCap capName exposes =
   head $
     filter
-      (case _ of
-        { name, subProps: Numeric _numProps } -> capName == name
-        _ -> false
+      (capabilityDetails >>>
+       case _ of
+         { name, subProps: Numeric _numProps } ->
+           capName == name
+
+         _ ->
+           false
       )
       exposes
