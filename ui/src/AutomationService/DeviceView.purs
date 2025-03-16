@@ -8,13 +8,11 @@ module AutomationService.DeviceView
   )
 where
 
-import Prelude
-
 import AutomationService.Device (Device(..), DeviceDetails, DeviceId, Devices,
                                  details, deviceTopic, getTopic, setTopic)
 import AutomationService.DeviceMessage (Message(..))
 import AutomationService.DeviceState (DeviceState, DeviceStates, getDeviceState)
-import AutomationService.Exposes (SubProps(..), canGet, canSet, enumValues, isOn, isPublished)
+import AutomationService.Exposes (SubProps(..), canGet, canSet, capabilityDetails, enumValues, isOn, isPublished)
 import AutomationService.Group (Group)
 import AutomationService.Lighting (ColorSetter(..), getColorSetter, getNumericCap,
                                    getOnOffSwitch, getPreset)
@@ -28,6 +26,7 @@ import Control.Alternative (guard)
 import Data.Argonaut.Core (stringify)
 import Data.Argonaut.Encode.Class (encodeJson)
 import Data.Array (catMaybes, intercalate, sortBy)
+import Data.Array.NonEmpty as NonEmpty
 import Data.DateTime.Instant (Instant)
 import Data.Foldable (foldr)
 import Data.List as L
@@ -42,6 +41,8 @@ import Elmish.HTML (_data)
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
 import Foreign.Object as O
+import Prelude (($), (<<<), (<$>), (<#>), (*>), (=<<), (>>=), (<>), bind, compare, discard, not, otherwise, pure, show)
+
 
 type DeviceStateUpdateTimers = Map DeviceId Instant
 
@@ -240,6 +241,9 @@ view { devices, deviceStates } dispatch =
             ContactSensor deviceDetails ->
               genericWithDetails mDeviceState deviceDetails [] []
 
+            LightSensor deviceDetails ->
+              genericWithDetails mDeviceState deviceDetails [] []
+
             OccupancySensor deviceDetails ->
               genericWithDetails mDeviceState deviceDetails [] []
 
@@ -305,7 +309,9 @@ view { devices, deviceStates } dispatch =
           [ deviceTitle deviceDetails ] <> headerComponents
         , Bootstrap.accordionHeader {} "detailed settings"
         , Bootstrap.accordionBody {} $
-          [ deviceInfo deviceDetails ] <> featureComponents
+          [ deviceInfo deviceDetails
+          , H.fragment $ NonEmpty.toArray $ (\c -> H.div "" (show c)) <$> deviceDetails.exposes
+          ] <> featureComponents
         ]
 
     deviceInfo :: DeviceDetails -> ReactElement
@@ -325,8 +331,8 @@ view { devices, deviceStates } dispatch =
        ]
 
     onOffSwitch :: Maybe DeviceState -> DeviceDetails -> ReactElement
-    onOffSwitch mDeviceState device =
-      case getOnOffSwitch device of
+    onOffSwitch mDeviceState device@{ exposes } =
+      case getOnOffSwitch exposes <#> capabilityDetails of
         Nothing ->
           H.div "" $ H.text "Not a light?"
 
@@ -357,12 +363,12 @@ view { devices, deviceStates } dispatch =
             ]
 
     colorSelector :: Maybe DeviceState -> DeviceDetails -> ReactElement
-    colorSelector _mDeviceState device =
+    colorSelector _mDeviceState device@{ exposes } =
       -- let
       --   hsColor = fromMaybe 1 _mDeviceState
       --   xyColor = fromMaybe 1 _mDeviceState
       -- in
-       case getColorSetter device of
+       case getColorSetter exposes of
          Nothing ->
            H.div "" $ H.text "this doesn't support color selection"
 
@@ -420,8 +426,8 @@ view { devices, deviceStates } dispatch =
            ]
 
     enumSelector :: String -> Maybe DeviceState -> DeviceDetails -> ReactElement
-    enumSelector presetName _mDeviceState device =
-      case getPreset presetName device of
+    enumSelector presetName _mDeviceState device@{ exposes } =
+      case getPreset presetName exposes <#> capabilityDetails of
         Nothing -> H.empty
 
         Just preset
@@ -446,8 +452,8 @@ view { devices, deviceStates } dispatch =
               ]
 
     numberSlider :: String -> Maybe DeviceState -> DeviceDetails -> ReactElement
-    numberSlider propName mDeviceState device =
-      case getNumericCap propName device of
+    numberSlider propName mDeviceState device@{ exposes } =
+      case getNumericCap propName exposes <#> capabilityDetails of
         Just cap@{ subProps: (Numeric numProps) } ->
           let
             idStr = "numericRange_" <> device.id

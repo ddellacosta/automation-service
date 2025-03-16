@@ -3,10 +3,10 @@ module Test.AutomationService.Exposes where
 import AutomationService.Exposes (CapType(..), FeatureType(..), SubProps(..),
                                   _access, _description, _featureType, _label, _name,
                                   _property, _subProps, _type, canGet, canSet,
-                                  isPublished, decodeExposes)
+                                  capabilityDetails, isPublished, decodeExposes)
 import Data.Argonaut.Decode ((.:), (.:?), fromJsonString)
 import Data.Array.NonEmpty (fromArray)
-import Data.Lens ((^?), _Just, _Right, folded, lengthOf)
+import Data.Lens ((^?), _Just, _Right, folded, lengthOf, to)
 import Data.Lens.Index (ix)
 import Data.Maybe (Maybe(..), fromJust)
 import Prelude (Unit, ($), (<<<), (<$>), (=<<), bind, discard)
@@ -27,20 +27,19 @@ spec =
           obj <- fromJsonString signeFixture
           definition <- obj .: "definition"
           exposes' <- definition .:? "exposes"
-          decodeExposes Nothing $
-            unsafePartial $ fromJust $ fromArray =<< exposes'
+          decodeExposes $ unsafePartial $ fromJust $ fromArray =<< exposes'
 
-        brightness = signeExposes ^? _Right <<< ix 1
+        brightness = signeExposes ^? _Right <<< ix 1 <<< to capabilityDetails
         prop cap przm = cap ^? (_Just <<< przm)
         mProp cap przm = cap ^? (_Just <<< przm <<< _Just)
 
         -- I can't seem to compose these with prop/mProp without a
         -- type error about not matching String, but it highlights the
         -- `ix` call for some reason?
-        featureType = signeExposes ^? _Right <<< ix 1 <<< _featureType <<< _Just
-        type' = signeExposes ^? _Right <<< ix 1 <<< _type
-        access = signeExposes ^? _Right <<< ix 1 <<< _access
-        subProps = signeExposes ^? _Right <<< ix 1 <<< _subProps
+        featureType = signeExposes ^? _Right <<< ix 1 <<< to capabilityDetails <<< _featureType <<< _Just
+        type' = signeExposes ^? _Right <<< ix 1 <<< to capabilityDetails <<< _type
+        access = signeExposes ^? _Right <<< ix 1 <<< to capabilityDetails <<< _access
+        subProps = signeExposes ^? _Right <<< ix 1 <<< to capabilityDetails <<< _subProps
 
         subPropsFixture
           = Numeric
@@ -50,9 +49,10 @@ spec =
             , valueStep: Nothing
             }
 
+
       -- assertions
 
-      lengthOf (_Right <<< folded) signeExposes `shouldEqual` 11
+      lengthOf (folded <<< folded) signeExposes `shouldEqual` 11
 
       type' `shouldEqual` Just Numeric'
 

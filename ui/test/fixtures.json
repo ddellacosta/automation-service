@@ -229,7 +229,7 @@
         "scenes": []
       }
     },
-    "friendly_name": "Grow room temperature and humidity",
+    "friendly_name": "Temperature and humidity",
     "ieee_address": "0x0015bc0035001e14",
     "interview_completed": true,
     "interviewing": false,
@@ -19111,4 +19111,232 @@
     "supported": true,
     "type": "Router"
   }
-]
+  // this is just me being lazy and dumping the groups JSON out
+  // without needing to split this into two files. Also I think valid
+  // JSON doesn't have comments? I forget
+  {"groups":
+   [
+     {
+       "friendly_name": "Basement Standing Lamp",
+       "id": 1,
+       "members": [
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010c9d3dc7"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010c48279d"
+	 }
+       ],
+       "scenes": [
+	 {
+           "id": 0,
+           "name": "Chrimbus"
+	 },
+	 {
+           "id": 1,
+           "name": "Chilly"
+	 }
+       ]
+     },
+     {
+       "friendly_name": "Living Room Lighting",
+       "id": 2,
+       "members": [
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x680ae2fffe4577ac"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010c9941c5"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010c3b2e53"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010c3b38af"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010bfadf37"
+	 }
+       ],
+       "scenes": []
+     },
+     {
+       "friendly_name": "Gym Ceiling - All",
+       "id": 3,
+       "members": [
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d098"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00e182"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d37096e"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d3711cb"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d1c9"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00e7aa"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d8cd"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d7d7"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d1fa"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d100"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00dfdb"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00dd15"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d757"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d079"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d052"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d142"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00e25a"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00c864"
+	 }
+       ],
+       "scenes": []
+     },
+     {
+       "friendly_name": "Basement Main - All Ceiling Lights",
+       "id": 4,
+       "members": [
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00e7e5"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00e80c"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00e9d3"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00ea47"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d102"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d063"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00dd82"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d05e"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d161"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d724"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00e263"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d7eb"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00d131"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00e256"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010d00e189"
+	 }
+       ],
+       "scenes": []
+     },
+     {
+       "friendly_name": "Living Room Standing Lamp",
+       "id": 5,
+       "members": [
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010c9941c5"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010c3b2e53"
+	 },
+	 {
+           "endpoint": 11,
+           "ieee_address": "0x001788010c3b38af"
+	 }
+       ],
+       "scenes": []
+     },
+     {
+       "friendly_name": "default_bind_group",
+       "id": 901,
+       "members": [],
+       "scenes": []
+     }
+   ]
+  ]

@@ -5,14 +5,14 @@ where
 
 import Prelude (class Show)
 
-import AutomationService.Device (Device, DeviceId)
+import AutomationService.Device (Devices, DeviceId)
 import AutomationService.DeviceState (DeviceState)
 import AutomationService.Group (Group)
 import Data.Generic.Rep (class Generic)
 import Data.Show.Generic (genericShow)
 
 data Message
-  = LoadDevices (Array Device)
+  = LoadDevices Devices
   | LoadDevicesFailed String
   | LoadDeviceState DeviceState
   | LoadDeviceStateFailed String
