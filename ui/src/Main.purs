@@ -120,8 +120,10 @@ update s = case _ of
                 liftEffect <<< warn $ "Decoding errors: " <> show errors
               msgSink' <<< Devices.LoadDevices $ devices'
 
+            -- We may also get this when we have mismatched JSON, so
+            -- keeping these at debug level as well:
             Decoded DecodingFailed { errors } -> do
-              liftEffect <<< warn $ "Decoding failed: " <> show errors
+              liftEffect <<< debug $ "Decoding failed: " <> show errors
               msgSink' <<< Devices.LoadDevicesFailed <<< show $ errors
 
             Decoded BadJson { errors } -> do
