@@ -239,42 +239,41 @@ decodeDevices :: Json -> Decoded DecodedStatus
 decodeDevices devicesJson = do
   case toArray devicesJson of
     Just ds ->
-      let
-        decodedDevices = decodeDevice <$> ds
-      in
-       case sequence $ filter isRight decodedDevices of
-          Right devices ->
-            let
-              decodedDevicesMap =
-                foldr
-                  (\d devices' ->
-                    M.insert (_.id <<< details $ d) d devices'
-                  )
-                  M.empty
-                  devices
-            in
-             if M.isEmpty decodedDevicesMap then
-               Decoded NoDevicesDecoded
-               { devices: decodedDevicesMap
-               , errors: filter isLeft decodedDevices
-               }
-             else
-               Decoded DecodingSucceeded
-               { devices: decodedDevicesMap
-               , errors: filter isLeft decodedDevices
-               }
-
-          Left error ->
-            Decoded DecodingFailed
-            { devices: M.empty
-            , errors: [Left error]
-            }
+      decodedDevicesToMap $ decodeDevice <$> ds
 
     Nothing ->
       Decoded DecodingFailed
       { devices: M.empty
       , errors: [Left (UnexpectedValue devicesJson)]
       }
+
+  where
+    decodedDevicesToMap decodedDevices =
+      case sequence $ filter isRight decodedDevices of
+        Right devices ->
+          let
+            decodedDevicesMap = deviceArrayToMap devices
+          in
+           if M.isEmpty decodedDevicesMap then
+             Decoded NoDevicesDecoded
+             { devices: decodedDevicesMap
+             , errors: filter isLeft decodedDevices
+             }
+           else
+             Decoded DecodingSucceeded
+             { devices: decodedDevicesMap
+             , errors: filter isLeft decodedDevices
+             }
+
+        -- this would be pretty weird
+        Left error ->
+          Decoded DecodingFailed
+          { devices: M.empty
+          , errors: [Left error]
+          }
+
+    deviceArrayToMap =
+      foldr (\d -> M.insert (_.id <<< details $ d) d) M.empty
 
 decodeBaseDevice :: Json -> Exposes -> Either JsonDecodeError DeviceDetails
 decodeBaseDevice deviceJson exposes = do
@@ -289,9 +288,9 @@ decodeBaseDevice deviceJson exposes = do
 featureType :: Exposes -> FeatureType -> Boolean
 featureType exposes ft =
   exposes #
-  NonEmpty.filter ((\ft' -> ft' == Just ft) <<< _.featureType <<< capabilityDetails)
-  >>> null
-  >>> not
+    NonEmpty.filter ((\ft' -> ft' == Just ft) <<< _.featureType <<< capabilityDetails)
+    >>> null
+    >>> not
 
 capabilities :: Exposes -> Array (CapabilityDetails -> Capability) -> Boolean
 capabilities exposes matchCapabilities =
