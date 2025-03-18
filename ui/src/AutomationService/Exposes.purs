@@ -21,12 +21,15 @@ module AutomationService.Exposes
   , _type
   , canGet
   , canSet
+  , capabilities
   , capabilityDetails
   , decodeCapability
   , decodeExposes
   , enumValues
+  , featureType
   , isOn
   , isPublished
+  , matchingCapabilities
   , serializeValueOnOff
   )
 where
@@ -36,17 +39,19 @@ import Data.Argonaut (Json, JsonDecodeError, decodeJson)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Argonaut.Decode.Class (class DecodeJson)
 import Data.Argonaut.Decode.Decoders (decodeBoolean, decodeString)
+import Data.Array (filter, length)
 import Data.Array.NonEmpty (NonEmptyArray, cons', fromArray, head, tail)
+import Data.Array.NonEmpty as NonEmpty
 import Data.Int.Bits ((.&.))
 import Data.Either (Either(..))
-import Data.Foldable (foldM)
+import Data.Foldable (foldM, null)
 import Data.Generic.Rep (class Generic)
 import Data.Lens (Lens)
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
 import Data.Traversable (for)
-import Prelude (class Eq, class Ord, class Show, ($), (<>), (<$>), (>>=), (=<<), (>), (==), bind, const, pure, show)
+import Prelude (class Eq, class Ord, class Show, (<<<), (>>>), ($), (#), (<>), (<$>), (>>=), (=<<), (>), (==), bind, const, not, pure, show)
 import Type.Proxy (Proxy(..))
 
 
@@ -339,7 +344,7 @@ type Exposes = NonEmptyArray Capability
 
 decodeBaseCapabilityDetails
   :: Maybe FeatureType -> Json -> Either JsonDecodeError CapabilityDetails
-decodeBaseCapabilityDetails featureType capabilityJson = do
+decodeBaseCapabilityDetails featureType' capabilityJson = do
   obj <- decodeJson capabilityJson
   type' <- obj .: "type"
   name <- obj .: "name"
@@ -349,7 +354,7 @@ decodeBaseCapabilityDetails featureType capabilityJson = do
   access <- obj .: "access"
   pure
     { type: type'
-    , featureType
+    , featureType: featureType'
     , name
     , description
     , label
@@ -382,9 +387,9 @@ decodeNumeric capabilityJson = do
   pure { valueMax, valueMin, valueStep, unit }
 
 decodeCapabilityDetails :: Maybe FeatureType -> Json -> Either JsonDecodeError CapabilityDetails
-decodeCapabilityDetails featureType capabilityJson = do
+decodeCapabilityDetails featureType' capabilityJson = do
   obj <- decodeJson capabilityJson
-  baseCapabilityDetails <- decodeBaseCapabilityDetails featureType capabilityJson
+  baseCapabilityDetails <- decodeBaseCapabilityDetails featureType' capabilityJson
   mFeatures <- obj .:? "features"
   mItemType <- obj .:? "item_type"
 
@@ -408,8 +413,8 @@ decodeCapabilityDetails featureType capabilityJson = do
 
 
 decodeCapability :: Maybe FeatureType -> Json -> Either JsonDecodeError Capability
-decodeCapability featureType capabilityJson = do
-  details <- decodeCapabilityDetails featureType capabilityJson
+decodeCapability featureType' capabilityJson = do
+  details <- decodeCapabilityDetails featureType' capabilityJson
 
   Right $ case details.name, details.type of
     "state", Binary' ->
@@ -510,3 +515,30 @@ decodeExposes exposesJson = do
   foldM (\exposes nextExposes -> Right $ exposes <> nextExposes)
     (head exposesArrays)
     (tail exposesArrays)
+
+
+-- utilities for filtering a collection of Capabilities a.k.a. Exposes
+
+featureType :: Exposes -> FeatureType -> Boolean
+featureType exposes ft =
+  exposes #
+    NonEmpty.filter ((\ft' -> ft' == Just ft) <<< _.featureType <<< capabilityDetails)
+    >>> null
+    >>> not
+
+capabilities :: Exposes -> Array (CapabilityDetails -> Capability) -> Boolean
+capabilities exposes toMatchCapabilities =
+  length(matchingCapabilities exposes toMatchCapabilities) == length(toMatchCapabilities)
+
+matchingCapabilities
+  :: Exposes
+  -> Array (CapabilityDetails -> Capability)
+  -> Array (CapabilityDetails -> Capability)
+matchingCapabilities exposes' toMatchCapabilities =
+  filter
+    (\capCons -> not <<< null <<< NonEmpty.filter (is capCons) $ exposes')
+    toMatchCapabilities
+
+  where
+    is :: (CapabilityDetails -> Capability) -> Capability -> Boolean
+    is cons v = v == (cons <<< capabilityDetails $ v)

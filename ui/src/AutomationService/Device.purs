@@ -23,13 +23,13 @@ module AutomationService.Device
   )
 where
 
-import AutomationService.Exposes (Capability(..), CapabilityDetails, Exposes, FeatureType(..), capabilityDetails, decodeExposes)
+import AutomationService.Exposes (Capability(..), Exposes, FeatureType(..), capabilities, decodeExposes,
+                                  featureType)
 import Control.Alt ((<|>))
 import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
-import Data.Array (filter, length, null)
+import Data.Array (filter)
 import Data.Array.NonEmpty (fromArray)
-import Data.Array.NonEmpty as NonEmpty
 import Data.Either (Either(..), isLeft, isRight)
 import Data.Foldable (foldr)
 import Data.Generic.Rep (class Generic)
@@ -41,7 +41,7 @@ import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(..))
-import Prelude (class Eq, class Ord, class Show, (<<<), (>>>), ($), (#), (<$>), (<>), (=<<), (==), (||), bind, flip, not, pure)
+import Prelude (class Eq, class Ord, class Show, (<<<), ($), (<$>), (<>), (=<<), (||), bind, flip, pure)
 import Type.Proxy (Proxy(..))
 
 type DeviceId = String
@@ -284,26 +284,6 @@ decodeBaseDevice deviceJson exposes = do
   manufacturer <- obj .:? "manufacturer"
   model <- obj .:? "model_id"
   pure $ { id: id', name: name', category, manufacturer, model, exposes }
-
-featureType :: Exposes -> FeatureType -> Boolean
-featureType exposes ft =
-  exposes #
-    NonEmpty.filter ((\ft' -> ft' == Just ft) <<< _.featureType <<< capabilityDetails)
-    >>> null
-    >>> not
-
-capabilities :: Exposes -> Array (CapabilityDetails -> Capability) -> Boolean
-capabilities exposes matchCapabilities =
-  length(matches) == length(matchCapabilities)
-
-  where
-    matches =
-      filter
-        (\capCons -> not <<< null <<< NonEmpty.filter (is capCons) $ exposes)
-        matchCapabilities
-
-    is :: (CapabilityDetails -> Capability) -> Capability -> Boolean
-    is cons v = v == (cons <<< capabilityDetails $ v)
 
 mkDefaultDevice :: DeviceDetails -> Either JsonDecodeError Device
 mkDefaultDevice = Right <<< UnknownDevice
