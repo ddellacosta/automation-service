@@ -85,16 +85,10 @@ shouldHaveCapabilities
   => t Exposes
   -> Array (CapabilityDetails -> Capability)
   -> m Unit
-shouldHaveCapabilities exposes caps = do
-  let
-    matches =
-      flip matchingCapabilities caps <$> exposes
-    isMatch = matches <#> \ms -> length ms == length caps
-
+shouldHaveCapabilities exposes caps =
   for_ isMatch \isMatch' -> do
     when (not isMatch') do
       let
-        capName cons = capabilityName <<< cons $ dummy
         capNames = show $ capName <$> caps
         matchNames = show $ matches <#> \matches' ->
           capName <$> matches'
@@ -102,6 +96,11 @@ shouldHaveCapabilities exposes caps = do
         "Does not have capabilities " <> capNames <> ", has only " <> matchNames
 
   where
+    matches = flip matchingCapabilities caps <$> exposes
+    isMatch = matches <#> \ms -> length ms == length caps
+
+    capName cons = capabilityName <<< cons $ dummy
+
     dummy :: CapabilityDetails
     dummy =
       { type: UnknownCT "dummy"

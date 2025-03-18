@@ -74,5 +74,16 @@ spec =
 
       subProps `shouldEqual` Just subPropsFixture
 
-      -- signe `shouldHaveCapabilities` [OnOff, Brightness, ColorHue]
-      signe `shouldHaveCapabilities` [OnOff, Brightness, ColorHue, Occupancy]
+      signe `shouldHaveCapabilities`
+        [ Brightness
+        , ColorGradient
+        , ColorHue
+        , ColorTempStartup
+        , ColorTemperature
+        , ColorXY
+        , Effect
+        , GradientScene
+        , LinkQuality
+        , OnOff
+        , PowerOnBehavior
+        ]
