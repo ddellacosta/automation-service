@@ -8,7 +8,7 @@ where
 import AutomationService.Device (Device, DeviceDetails, details)
 import AutomationService.Exposes (CapType(..), Capability, CapabilityDetails, Exposes, SubProps(..), matchingCapabilities)
 import Control.Monad (when)
-import Control.Monad.Error.Class (class MonadError, class MonadThrow, throwError)
+import Control.Monad.Error.Class (class MonadThrow, throwError)
 import Data.Array (length)
 import Data.Eq (class Eq)
 import Data.Functor (class Functor)
@@ -64,9 +64,9 @@ construct cons v = cons <<< details <$> v
 
 
 -- |
--- | Slightly over the top helper for producing good failure messages
+-- | Slightly over-the-top helper for producing good failure messages
 -- | when supplying a test using an array of Capability constructors
--- | to compare against a Exposes object (a.k.a. an array of Capbility
+-- | to compare against an Exposes object (a.k.a. an array of Capbility
 -- | values), a la
 -- |
 -- |     light `shouldHaveCapabilities` [OnOff, Occupancy]
@@ -79,19 +79,18 @@ construct cons v = cons <<< details <$> v
 -- |
 shouldHaveCapabilities
   :: forall m t. MonadThrow Error m
-  => MonadError Error m
   => Traversable t
   => Show (t (Array String))
   => t Exposes
   -> Array (CapabilityDetails -> Capability)
   -> m Unit
 shouldHaveCapabilities exposes caps =
-  for_ isMatch \isMatch' -> do
+  for_ isMatch \isMatch' ->
     when (not isMatch') do
       let
         capNames = show $ capName <$> caps
-        matchNames = show $ matches <#> \matches' ->
-          capName <$> matches'
+        -- lol
+        matchNames = show $ matches <#> \matches' -> capName <$> matches'
       throwError <<< error $
         "Does not have capabilities " <> capNames <> ", has only " <> matchNames
 
