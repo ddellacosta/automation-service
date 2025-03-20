@@ -1,16 +1,16 @@
 module Test.AutomationService.Device where
 
-import AutomationService.Device (DeviceType(..), decodeDevice, _deviceDetails, _category, _id,
-                                 _exposes, _manufacturer, _model, _name, deviceType)
+import AutomationService.Device (Device(..), decodeDevice, _deviceDetails, _category, _id,
+                                 _exposes, _manufacturer, _model, _name)
 import Data.Argonaut.Decode (parseJson)
-import Data.Either (Either(..))
 import Data.Lens (_Just, _Right, folded, lengthOf, preview)
 import Data.Maybe (Maybe(..))
-import Prelude (Unit, ($), (<$>), (<<<), (=<<), discard)
+import Prelude (Unit, ($), (<<<), (=<<), discard)
+import Test.AutomationService.Helpers (shouldConstruct)
 import Test.AutomationService.Spec (Spec)
 import Test.Spec (describe, it)
 import Test.Spec.Assertions (shouldEqual)
-import Test.Fixtures (airQualitySensorFixture, contactSensorFixture, controlsDeviceFixture, humiditySensorFixture, motionSensorFixture, signeFixture, unknownDeviceFixture, windowCoveringFixture)
+import Test.Fixtures (airQualitySensorFixture, contactSensorFixture, controlsDeviceFixture, humiditySensorFixture, lightSensorFixture, signeFixture, unknownDeviceFixture, windowCoveringFixture)
 
 spec :: Spec Unit
 spec =
@@ -18,17 +18,16 @@ spec =
     it "Decode all properties of a Device" $ do
 
       let
-        -- code under test
+        -- code under test (decodeDevice)
         signe = decodeDevice =<< parseJson signeFixture
         controlsDevice = decodeDevice =<< parseJson controlsDeviceFixture
         contactSensor = decodeDevice =<< parseJson contactSensorFixture
-        motionSensor = decodeDevice =<< parseJson motionSensorFixture
+        lightSensor = decodeDevice =<< parseJson lightSensorFixture
         airQualitySensor = decodeDevice =<< parseJson airQualitySensorFixture
         humiditySensor = decodeDevice =<< parseJson humiditySensorFixture
         windowCovering = decodeDevice =<< parseJson windowCoveringFixture
         unknownDevice = decodeDevice =<< parseJson unknownDeviceFixture
 
-        -- optics are so useful as test helpers
         signe' lns = preview (_Right <<< _deviceDetails <<< lns) signe
         signeM lns = preview (_Right <<< _deviceDetails <<< lns <<< _Just) signe
         _exposes' = _Right <<< _deviceDetails <<< _exposes <<< folded
@@ -49,11 +48,13 @@ spec =
       -- OnOffLight'
       -- TemperatureSensor'
       --
-      (deviceType <$> signe) `shouldEqual` Right ExtendedColorLight'
-      (deviceType <$> controlsDevice) `shouldEqual` Right GenericSwitch'
-      (deviceType <$> contactSensor) `shouldEqual` Right ContactSensor'
-      (deviceType <$> motionSensor) `shouldEqual` Right OccupancySensor'
-      (deviceType <$> airQualitySensor) `shouldEqual` Right AirQualitySensor'
-      (deviceType <$> humiditySensor) `shouldEqual` Right HumiditySensor'
-      (deviceType <$> windowCovering) `shouldEqual` Right WindowCovering'
-      (deviceType <$> unknownDevice) `shouldEqual` Right UnknownDevice'
+      -- Also, all my OccupancySensors are LightSensors, it turns out ¯\_(ツ)_/¯
+      --
+      ExtendedColorLight `shouldConstruct` signe
+      GenericSwitch `shouldConstruct` controlsDevice
+      ContactSensor `shouldConstruct` contactSensor
+      LightSensor `shouldConstruct` lightSensor
+      AirQualitySensor `shouldConstruct` airQualitySensor
+      HumiditySensor `shouldConstruct` humiditySensor
+      WindowCovering `shouldConstruct` windowCovering
+      UnknownDevice `shouldConstruct` unknownDevice

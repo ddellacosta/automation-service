@@ -1,6 +1,7 @@
 module AutomationService.Exposes
   ( BinaryProps
-  , Capability
+  , Capability(..)
+  , CapabilityDetails
   , CapType(..)
   , CompositeProps
   , EnumProps
@@ -20,35 +21,41 @@ module AutomationService.Exposes
   , _type
   , canGet
   , canSet
+  , capabilities
+  , capabilityDetails
   , decodeCapability
   , decodeExposes
   , enumValues
+  , featureType
   , isOn
   , isPublished
+  , matchingCapabilities
   , serializeValueOnOff
   )
 where
 
-import Control.Alternative ((<|>))
+import Control.Alt ((<|>))
 import Data.Argonaut (Json, JsonDecodeError, decodeJson)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Argonaut.Decode.Class (class DecodeJson)
 import Data.Argonaut.Decode.Decoders (decodeBoolean, decodeString)
+import Data.Array (filter, length)
 import Data.Array.NonEmpty (NonEmptyArray, cons', fromArray, head, tail)
+import Data.Array.NonEmpty as NonEmpty
 import Data.Int.Bits ((.&.))
 import Data.Either (Either(..))
-import Data.Foldable (foldM)
+import Data.Foldable (foldM, null)
 import Data.Generic.Rep (class Generic)
 import Data.Lens (Lens)
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
 import Data.Traversable (for)
-import Prelude (class Eq, class Ord, class Show, ($), (<>), (<$>), (>>=), (=<<), (>), (==), bind, const, pure, show)
+import Prelude (class Eq, class Ord, class Show, (<<<), (>>>), ($), (#), (<>), (<$>), (>>=), (=<<), (>), (==), bind, const, not, pure, show)
 import Type.Proxy (Proxy(..))
 
 
--- Capability.type
+-- CapabilityDetails.type
 
 data CapType
   = Binary'
@@ -56,6 +63,7 @@ data CapType
   | Enum'
   | List'
   | Numeric'
+  | Text'
   | UnknownCT String
 
 derive instance Eq CapType
@@ -74,10 +82,11 @@ instance DecodeJson CapType where
       "enum" -> Enum'
       "list" -> List'
       "numeric" -> Numeric'
+      "text" -> Text'
       unknown -> UnknownCT unknown
 
 
--- Capability.featureType
+-- CapabilityDetails.featureType
 
 data FeatureType
   = Cover
@@ -100,7 +109,7 @@ instance DecodeJson FeatureType where
       unknown -> UnknownFT unknown
 
 
--- Capability.access
+-- CapabilityDetails.access
 
 -- |
 -- | https://www.zigbee2mqtt.io/guide/usage/exposes.html#access
@@ -123,7 +132,7 @@ canGet :: Int -> Boolean
 canGet a = 4 .&. a > 0
 
 
--- Capability.subProps
+-- CapabilityDetails.subProps
 
 -- |
 -- | "Why can't you just be normal?"
@@ -149,7 +158,7 @@ serializeValueOnOff = case _ of
   ValueOnOffBool b -> show b
   ValueOnOffString s -> s
 
-isOn :: Capability -> ValueOnOff -> Boolean
+isOn :: CapabilityDetails -> ValueOnOff -> Boolean
 isOn { subProps } = case subProps of
   Binary { valueOn } -> (_ == valueOn)
   _ -> const false
@@ -164,7 +173,7 @@ type CompositeProps = Array Capability
 
 type EnumProps = { values :: Array String }
 
-enumValues :: Capability -> Array String
+enumValues :: CapabilityDetails -> Array String
 enumValues { subProps } = case subProps of
   Enum { values } -> values
   _ -> []
@@ -191,16 +200,12 @@ derive instance Generic SubProps _
 derive instance Ord SubProps -- for Device's Ord
 
 instance Show SubProps where
-  -- apparently due to the fact that SubProps can be recursive
-  -- via ListProps or CompositeProps, point-free here introduces a
-  -- cycle that won't type-check, I don't really understand why yet
-  -- though (TODO)
   show sp = genericShow sp
 
 
--- Capability
+-- CapabilityDetails
 
-type Capability =
+type CapabilityDetails =
   { type        :: CapType
   , featureType :: Maybe FeatureType
   , name        :: String
@@ -249,6 +254,85 @@ _subProps = prop (Proxy :: Proxy "subProps")
 
 --
 
+data Capability
+  = Unknown CapabilityDetails
+  | OnOff CapabilityDetails
+  | Covering CapabilityDetails
+  | Brightness CapabilityDetails
+  | ColorTemperature CapabilityDetails
+  | ColorTempStartup CapabilityDetails
+  | ColorXY CapabilityDetails
+  | ColorHue CapabilityDetails
+  | ColorHex CapabilityDetails
+  | ColorGradient CapabilityDetails
+  | GradientScene CapabilityDetails
+  | Hue CapabilityDetails
+  | Saturation CapabilityDetails
+  | IlluminanceLux CapabilityDetails
+  | X CapabilityDetails
+  | Y CapabilityDetails
+  | Switch CapabilityDetails
+  | Contact CapabilityDetails
+  | Occupancy CapabilityDetails
+  | OccupancyTimeout CapabilityDetails
+  | Temperature CapabilityDetails
+  | Humidity CapabilityDetails
+  | AirQuality CapabilityDetails
+  | VOC CapabilityDetails
+  | Position CapabilityDetails
+  -- not specified (i.e. manufacturer can do whatever)
+  -- as of Matter 1.4
+  | PowerOnBehavior CapabilityDetails
+  | Effect CapabilityDetails
+  | LEDControl CapabilityDetails
+  | LinkQuality CapabilityDetails
+  | Battery CapabilityDetails
+  | BatteryLow CapabilityDetails
+  | Tamper CapabilityDetails
+
+capabilityDetails :: Capability -> CapabilityDetails
+capabilityDetails = case _ of
+  Unknown cd -> cd
+  OnOff cd -> cd
+  Covering cd -> cd
+  Brightness cd -> cd
+  ColorTemperature cd -> cd
+  ColorTempStartup cd -> cd
+  ColorXY cd -> cd
+  ColorHue cd -> cd
+  ColorHex cd -> cd
+  ColorGradient cd -> cd
+  GradientScene cd -> cd
+  Hue cd -> cd
+  Saturation cd -> cd
+  IlluminanceLux cd -> cd
+  X cd -> cd
+  Y cd -> cd
+  Switch cd -> cd
+  Contact cd -> cd
+  Occupancy  cd -> cd
+  OccupancyTimeout cd -> cd
+  Temperature  cd -> cd
+  Humidity cd -> cd
+  AirQuality cd -> cd
+  VOC cd -> cd
+  Position cd -> cd
+  PowerOnBehavior cd -> cd
+  Effect cd -> cd
+  LEDControl cd -> cd
+  LinkQuality cd -> cd
+  Battery cd -> cd
+  BatteryLow cd -> cd
+  Tamper cd -> cd
+
+derive instance Eq Capability
+derive instance Generic Capability _
+derive instance Ord Capability -- for Device's Ord
+
+instance Show Capability where
+  show sp = genericShow sp
+
+
 -- Exposes
 
 type Exposes = NonEmptyArray Capability
@@ -258,9 +342,9 @@ type Exposes = NonEmptyArray Capability
 -- Parsing
 --
 
-decodeBaseCapability
-  :: Maybe FeatureType -> Json -> Either JsonDecodeError Capability
-decodeBaseCapability featureType capabilityJson = do
+decodeBaseCapabilityDetails
+  :: Maybe FeatureType -> Json -> Either JsonDecodeError CapabilityDetails
+decodeBaseCapabilityDetails featureType' capabilityJson = do
   obj <- decodeJson capabilityJson
   type' <- obj .: "type"
   name <- obj .: "name"
@@ -270,7 +354,7 @@ decodeBaseCapability featureType capabilityJson = do
   access <- obj .: "access"
   pure
     { type: type'
-    , featureType
+    , featureType: featureType'
     , name
     , description
     , label
@@ -302,48 +386,118 @@ decodeNumeric capabilityJson = do
   unit <- obj .:? "unit"
   pure { valueMax, valueMin, valueStep, unit }
 
-decodeCapability :: Maybe FeatureType -> Json -> Either JsonDecodeError Capability
-decodeCapability featureType capabilityJson = do
+decodeCapabilityDetails :: Maybe FeatureType -> Json -> Either JsonDecodeError CapabilityDetails
+decodeCapabilityDetails featureType' capabilityJson = do
   obj <- decodeJson capabilityJson
-  exposed <- decodeBaseCapability featureType capabilityJson
+  baseCapabilityDetails <- decodeBaseCapabilityDetails featureType' capabilityJson
   mFeatures <- obj .:? "features"
   mItemType <- obj .:? "item_type"
 
-  case exposed.type, mFeatures, mItemType of
+  case baseCapabilityDetails.type, mFeatures, mItemType of
     Binary', _, _ -> do
       binary <- Binary <$> decodeBinary capabilityJson
-      pure $ exposed { subProps = binary }
+      pure $ baseCapabilityDetails { subProps = binary }
     Enum', _, _ -> do
       enum <- Enum <$> decodeEnum capabilityJson
-      pure $ exposed { subProps = enum }
+      pure $ baseCapabilityDetails { subProps = enum }
     Numeric', _, _ -> do
       numeric <- Numeric <$> decodeNumeric capabilityJson
-      pure $ exposed { subProps = numeric }
+      pure $ baseCapabilityDetails { subProps = numeric }
     Composite', Just features, _ -> do
       composite <- Composite <$> (for features $ decodeCapability Nothing)
-      pure $ exposed { subProps = composite }
+      pure $ baseCapabilityDetails { subProps = composite }
     List', _, Just itemType -> do
       list <- List <$> decodeCapability Nothing itemType
-      pure $ exposed { subProps = list }
-    _, _, _ -> pure exposed -- subProps = Null per decodeBaseCapability
+      pure $ baseCapabilityDetails { subProps = list }
+    _, _, _ -> pure baseCapabilityDetails -- subProps = Null per decodeBaseCapabilityDetails
 
 
---
--- WHY DOES THIS TAKE featureType !?!?!
---
+decodeCapability :: Maybe FeatureType -> Json -> Either JsonDecodeError Capability
+decodeCapability featureType' capabilityJson = do
+  details <- decodeCapabilityDetails featureType' capabilityJson
+
+  Right $ case details.name, details.type of
+    "state", Binary' ->
+      OnOff details
+    -- hmm
+    "state", Enum' ->
+      Covering details
+    "brightness", Numeric' ->
+      Brightness details
+    "color_temp", Numeric' ->
+      ColorTemperature details
+    "color_temp_startup", Numeric' ->
+      ColorTempStartup details
+    "color_xy", Composite' ->
+      ColorXY details
+    "color_hs", Composite' ->
+      ColorHue details
+    "hex", Numeric' ->
+      ColorHex details
+    "hex", Text' ->
+      ColorHex details
+    "gradient", List' ->
+      ColorGradient details
+    "gradient_scene", Enum' ->
+      GradientScene details
+    "hue", Numeric' ->
+      Hue details
+    "saturation", Numeric' ->
+      Saturation details
+    "illuminance_lux", Numeric' ->
+      IlluminanceLux details
+    "x", Numeric' ->
+      X details
+    "y", Numeric' ->
+      Y details
+    "action", Enum' ->
+      Switch details
+    "contact", Binary' ->
+      Contact details
+    "occupancy", Binary' ->
+      Occupancy details
+    "occupancy_timeout", Numeric' ->
+      OccupancyTimeout details
+    "temperature", Numeric' ->
+      Temperature details
+    "humidity", Numeric' ->
+      Humidity details
+    "air_quality", Enum' ->
+      AirQuality details
+    "voc", Numeric' ->
+      VOC details
+    "position", Numeric' ->
+      Position details
+    "power_on_behavior", Enum' ->
+      PowerOnBehavior details
+    "effect", Enum' ->
+      Effect details
+    "led_control", Enum' ->
+      LEDControl details
+    "linkquality", Numeric' ->
+      LinkQuality details
+    "battery", Numeric' ->
+      Battery details
+    "battery_low", Binary' ->
+      BatteryLow details
+    "tamper", Binary' ->
+      Tamper details
+    _, _ ->
+      Unknown details
+
 
 -- |
 -- | This flattens out the features array into the same array that
 -- | individual 'exposes' entries are returned in. Zigbee2MQTT
 -- | distinguishes these as 'specific' (the former) vs. 'generic' (the
 -- | latter). However, I don't see much value in separating them like
--- | this given how we'll be looking this data up.
+-- | this given how we want to structure devices vs. capabilities.
 -- |
 -- | https://www.zigbee2mqtt.io/guide/usage/exposes.html
 -- |
 decodeExposes
-  :: Maybe FeatureType -> NonEmptyArray Json -> Either JsonDecodeError Exposes
-decodeExposes _featureType' exposesJson = do
+  :: NonEmptyArray Json -> Either JsonDecodeError Exposes
+decodeExposes exposesJson = do
   --
   -- for
   --   :: Array capabilityJson
@@ -361,3 +515,30 @@ decodeExposes _featureType' exposesJson = do
   foldM (\exposes nextExposes -> Right $ exposes <> nextExposes)
     (head exposesArrays)
     (tail exposesArrays)
+
+
+-- utilities for filtering a collection of Capabilities a.k.a. Exposes
+
+featureType :: Exposes -> FeatureType -> Boolean
+featureType exposes ft =
+  exposes #
+    NonEmpty.filter ((\ft' -> ft' == Just ft) <<< _.featureType <<< capabilityDetails)
+    >>> null
+    >>> not
+
+capabilities :: Exposes -> Array (CapabilityDetails -> Capability) -> Boolean
+capabilities exposes toMatchCapabilities =
+  length(matchingCapabilities exposes toMatchCapabilities) == length(toMatchCapabilities)
+
+matchingCapabilities
+  :: Exposes
+  -> Array (CapabilityDetails -> Capability)
+  -> Array (CapabilityDetails -> Capability)
+matchingCapabilities exposes' toMatchCapabilities =
+  filter
+    (\capCons -> not <<< null <<< NonEmpty.filter (is capCons) $ exposes')
+    toMatchCapabilities
+
+  where
+    is :: (CapabilityDetails -> Capability) -> Capability -> Boolean
+    is cons v = v == (cons <<< capabilityDetails $ v)

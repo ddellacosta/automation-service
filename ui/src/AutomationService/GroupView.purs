@@ -11,7 +11,7 @@ import Data.Array as Array
 -- import Data.Maybe (Maybe)
 import Elmish (Dispatch, ReactElement) -- , (<|), (<?|))
 import Elmish.HTML.Styled as H
-import Prelude (($), (<<<), (<>), (<#>), show)
+import Prelude (($), (<>), (<#>), show)
 
 view :: Devices.State -> Dispatch Devices.Message -> ReactElement
 view _state@{ groups } _dispatch =

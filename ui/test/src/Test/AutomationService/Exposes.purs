@@ -1,21 +1,21 @@
 module Test.AutomationService.Exposes where
 
-import AutomationService.Exposes (CapType(..), FeatureType(..), SubProps(..),
-                                  _access, _description, _featureType, _label, _name,
-                                  _property, _subProps, _type, canGet, canSet,
-                                  isPublished, decodeExposes)
+import AutomationService.Exposes (Capability(..), CapType(..), FeatureType(..), SubProps(..), _access,
+                                  _description, _featureType, _label, _name, _property, _subProps, _type,
+                                  canGet, canSet, capabilityDetails, decodeExposes, -- featureType,
+                                  isPublished)
 import Data.Argonaut.Decode ((.:), (.:?), fromJsonString)
 import Data.Array.NonEmpty (fromArray)
-import Data.Lens ((^?), _Just, _Right, folded, lengthOf)
+import Data.Lens ((^?), _Just, _Right, folded, lengthOf, to)
 import Data.Lens.Index (ix)
 import Data.Maybe (Maybe(..), fromJust)
+import Partial.Unsafe (unsafePartial)
 import Prelude (Unit, ($), (<<<), (<$>), (=<<), bind, discard)
 import Test.AutomationService.Spec (Spec)
+import Test.AutomationService.Helpers (shouldHaveCapabilities)
 import Test.Fixtures (signeFixture)
 import Test.Spec (describe, it)
 import Test.Spec.Assertions (shouldEqual)
-import Partial.Unsafe (unsafePartial)
-
 
 spec :: Spec Unit
 spec =
@@ -23,24 +23,23 @@ spec =
     it "Can parse a collection of Exposes JSON" $ do
 
       let
-        signeExposes = do
+        signe = do
           obj <- fromJsonString signeFixture
           definition <- obj .: "definition"
           exposes' <- definition .:? "exposes"
-          decodeExposes Nothing $
-            unsafePartial $ fromJust $ fromArray =<< exposes'
+          decodeExposes $ unsafePartial $ fromJust $ fromArray =<< exposes'
 
-        brightness = signeExposes ^? _Right <<< ix 1
+        brightness = signe ^? _Right <<< ix 1 <<< to capabilityDetails
         prop cap przm = cap ^? (_Just <<< przm)
         mProp cap przm = cap ^? (_Just <<< przm <<< _Just)
 
         -- I can't seem to compose these with prop/mProp without a
         -- type error about not matching String, but it highlights the
         -- `ix` call for some reason?
-        featureType = signeExposes ^? _Right <<< ix 1 <<< _featureType <<< _Just
-        type' = signeExposes ^? _Right <<< ix 1 <<< _type
-        access = signeExposes ^? _Right <<< ix 1 <<< _access
-        subProps = signeExposes ^? _Right <<< ix 1 <<< _subProps
+        featureType = signe ^? _Right <<< ix 1 <<< to capabilityDetails <<< _featureType <<< _Just
+        type' = signe ^? _Right <<< ix 1 <<< to capabilityDetails <<< _type
+        access = signe ^? _Right <<< ix 1 <<< to capabilityDetails <<< _access
+        subProps = signe ^? _Right <<< ix 1 <<< to capabilityDetails <<< _subProps
 
         subPropsFixture
           = Numeric
@@ -50,9 +49,8 @@ spec =
             , valueStep: Nothing
             }
 
-      -- assertions
 
-      lengthOf (_Right <<< folded) signeExposes `shouldEqual` 11
+      lengthOf (folded <<< folded) signe `shouldEqual` 11
 
       type' `shouldEqual` Just Numeric'
 
@@ -75,3 +73,17 @@ spec =
       (isPublished <$> access) `shouldEqual` Just true
 
       subProps `shouldEqual` Just subPropsFixture
+
+      signe `shouldHaveCapabilities`
+        [ Brightness
+        , ColorGradient
+        , ColorHue
+        , ColorTempStartup
+        , ColorTemperature
+        , ColorXY
+        , Effect
+        , GradientScene
+        , LinkQuality
+        , OnOff
+        , PowerOnBehavior
+        ]
