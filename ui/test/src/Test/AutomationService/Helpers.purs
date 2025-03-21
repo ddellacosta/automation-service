@@ -6,7 +6,7 @@ module Test.AutomationService.Helpers
 where
 
 import AutomationService.Device (Device, DeviceDetails, details)
-import AutomationService.Exposes (CapType(..), Capability, CapabilityDetails, Exposes, SubProps(..), matchingCapabilities)
+import AutomationService.Exposes (Capability, CapabilityDetails, Exposes, SubProps(..), matchingCapabilities)
 import Control.Monad (when)
 import Control.Monad.Error.Class (class MonadThrow, throwError)
 import Data.Array (length)
@@ -102,8 +102,7 @@ shouldHaveCapabilities exposes caps =
 
     dummy :: CapabilityDetails
     dummy =
-      { type: UnknownCT "dummy"
-      , featureType: Nothing
+      { featureType: Nothing
       , name: "dummy"
       , description: Nothing
       , label: "dummy"
