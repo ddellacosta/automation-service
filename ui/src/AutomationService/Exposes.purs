@@ -2,7 +2,6 @@ module AutomationService.Exposes
   ( BinaryProps
   , Capability(..)
   , CapabilityDetails
-  , CapType(..)
   , CompositeProps
   , EnumProps
   , Exposes
@@ -18,7 +17,6 @@ module AutomationService.Exposes
   , _name
   , _property
   , _subProps
-  , _type
   , canGet
   , canSet
   , capabilities
@@ -53,37 +51,6 @@ import Data.Show.Generic (genericShow)
 import Data.Traversable (for)
 import Prelude (class Eq, class Ord, class Show, (<<<), (>>>), ($), (#), (<>), (<$>), (>>=), (=<<), (>), (==), bind, const, not, pure, show)
 import Type.Proxy (Proxy(..))
-
-
--- CapabilityDetails.type
-
-data CapType
-  = Binary'
-  | Composite'
-  | Enum'
-  | List'
-  | Numeric'
-  | Text'
-  | UnknownCT String
-
-derive instance Eq CapType
-derive instance Generic CapType _
-derive instance Ord CapType -- for Device's Ord
-
-instance Show CapType where
-  show = genericShow
-
-instance DecodeJson CapType where
-  decodeJson :: Json -> Either JsonDecodeError CapType
-  decodeJson json = decodeString json >>= \ct ->
-    pure $ case ct of
-      "binary" -> Binary'
-      "composite" -> Composite'
-      "enum" -> Enum'
-      "list" -> List'
-      "numeric" -> Numeric'
-      "text" -> Text'
-      unknown -> UnknownCT unknown
 
 
 -- CapabilityDetails.featureType
@@ -194,6 +161,7 @@ data SubProps
   | List ListProps
   | Null
   | Numeric NumericProps
+  | Text NumericProps
 
 derive instance Eq SubProps
 derive instance Generic SubProps _
@@ -206,8 +174,7 @@ instance Show SubProps where
 -- CapabilityDetails
 
 type CapabilityDetails =
-  { type        :: CapType
-  , featureType :: Maybe FeatureType
+  { featureType :: Maybe FeatureType
   , name        :: String
   , description :: Maybe String
   , label       :: String
@@ -220,10 +187,6 @@ type CapabilityDetails =
 --
 -- lens boilerplate
 --
-_type
-  :: forall a b r. Lens { type :: a | r } { type :: b | r } a b
-_type = prop (Proxy :: Proxy "type")
-
 _featureType
   :: forall a b r. Lens { featureType :: a | r } { featureType :: b | r } a b
 _featureType = prop (Proxy :: Proxy "featureType")
@@ -346,15 +309,13 @@ decodeBaseCapabilityDetails
   :: Maybe FeatureType -> Json -> Either JsonDecodeError CapabilityDetails
 decodeBaseCapabilityDetails featureType' capabilityJson = do
   obj <- decodeJson capabilityJson
-  type' <- obj .: "type"
   name <- obj .: "name"
   description <- obj .:? "description"
   label <- obj .: "label"
   property <- obj .:? "property"
   access <- obj .: "access"
   pure
-    { type: type'
-    , featureType: featureType'
+    { featureType: featureType'
     , name
     , description
     , label
@@ -391,24 +352,27 @@ decodeCapabilityDetails featureType' capabilityJson = do
   obj <- decodeJson capabilityJson
   baseCapabilityDetails <- decodeBaseCapabilityDetails featureType' capabilityJson
   mFeatures <- obj .:? "features"
+  mType <- obj .:? "type"
   mItemType <- obj .:? "item_type"
 
-  case baseCapabilityDetails.type, mFeatures, mItemType of
-    Binary', _, _ -> do
+  case mType, mFeatures, mItemType of
+    Just "binary", _, _ -> do
       binary <- Binary <$> decodeBinary capabilityJson
       pure $ baseCapabilityDetails { subProps = binary }
-    Enum', _, _ -> do
+    Just "enum", _, _ -> do
       enum <- Enum <$> decodeEnum capabilityJson
       pure $ baseCapabilityDetails { subProps = enum }
-    Numeric', _, _ -> do
+    Just "numeric", _, _ -> do
       numeric <- Numeric <$> decodeNumeric capabilityJson
       pure $ baseCapabilityDetails { subProps = numeric }
-    Composite', Just features, _ -> do
+    Just "composite", Just features, _ -> do
       composite <- Composite <$> (for features $ decodeCapability Nothing)
       pure $ baseCapabilityDetails { subProps = composite }
-    List', _, Just itemType -> do
+    Just "list", _, Just itemType -> do
       list <- List <$> decodeCapability Nothing itemType
       pure $ baseCapabilityDetails { subProps = list }
+    Just "text", _, _ -> do
+      pure baseCapabilityDetails
     _, _, _ -> pure baseCapabilityDetails -- subProps = Null per decodeBaseCapabilityDetails
 
 
@@ -416,71 +380,71 @@ decodeCapability :: Maybe FeatureType -> Json -> Either JsonDecodeError Capabili
 decodeCapability featureType' capabilityJson = do
   details <- decodeCapabilityDetails featureType' capabilityJson
 
-  Right $ case details.name, details.type of
-    "state", Binary' ->
+  Right $ case details.name, details.subProps of
+    "state", Binary _ ->
       OnOff details
     -- hmm
-    "state", Enum' ->
+    "state", Enum _ ->
       Covering details
-    "brightness", Numeric' ->
+    "brightness", Numeric _ ->
       Brightness details
-    "color_temp", Numeric' ->
+    "color_temp", Numeric _ ->
       ColorTemperature details
-    "color_temp_startup", Numeric' ->
+    "color_temp_startup", Numeric _ ->
       ColorTempStartup details
-    "color_xy", Composite' ->
+    "color_xy", Composite _ ->
       ColorXY details
-    "color_hs", Composite' ->
+    "color_hs", Composite _ ->
       ColorHue details
-    "hex", Numeric' ->
+    "hex", Numeric _ ->
       ColorHex details
-    "hex", Text' ->
+    "hex", Text _ ->
       ColorHex details
-    "gradient", List' ->
+    "gradient", List _ ->
       ColorGradient details
-    "gradient_scene", Enum' ->
+    "gradient_scene", Enum _ ->
       GradientScene details
-    "hue", Numeric' ->
+    "hue", Numeric _ ->
       Hue details
-    "saturation", Numeric' ->
+    "saturation", Numeric _ ->
       Saturation details
-    "illuminance_lux", Numeric' ->
+    "illuminance_lux", Numeric _ ->
       IlluminanceLux details
-    "x", Numeric' ->
+    "x", Numeric _ ->
       X details
-    "y", Numeric' ->
+    "y", Numeric _ ->
       Y details
-    "action", Enum' ->
+    "action", Enum _ ->
       Switch details
-    "contact", Binary' ->
+    "contact", Binary _ ->
       Contact details
-    "occupancy", Binary' ->
+    "occupancy", Binary _ ->
       Occupancy details
-    "occupancy_timeout", Numeric' ->
+    "occupancy_timeout", Numeric _ ->
       OccupancyTimeout details
-    "temperature", Numeric' ->
+    "temperature", Numeric _ ->
       Temperature details
-    "humidity", Numeric' ->
+    "humidity", Numeric _ ->
       Humidity details
-    "air_quality", Enum' ->
+    "air_quality", Enum _ ->
       AirQuality details
-    "voc", Numeric' ->
+    "voc", Numeric _ ->
       VOC details
-    "position", Numeric' ->
+    "position", Numeric _ ->
       Position details
-    "power_on_behavior", Enum' ->
+    "power_on_behavior", Enum _ ->
       PowerOnBehavior details
-    "effect", Enum' ->
+    "effect", Enum _ ->
       Effect details
-    "led_control", Enum' ->
+    "led_control", Enum _ ->
       LEDControl details
-    "linkquality", Numeric' ->
+    "linkquality", Numeric _ ->
       LinkQuality details
-    "battery", Numeric' ->
+    "battery", Numeric _ ->
       Battery details
-    "battery_low", Binary' ->
+    "battery_low", Binary _ ->
       BatteryLow details
-    "tamper", Binary' ->
+    "tamper", Binary _ ->
       Tamper details
     _, _ ->
       Unknown details

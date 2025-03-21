@@ -1,9 +1,8 @@
 module Test.AutomationService.Exposes where
 
-import AutomationService.Exposes (Capability(..), CapType(..), FeatureType(..), SubProps(..), _access,
-                                  _description, _featureType, _label, _name, _property, _subProps, _type,
-                                  canGet, canSet, capabilityDetails, decodeExposes, -- featureType,
-                                  isPublished)
+import AutomationService.Exposes (Capability(..), FeatureType(..), SubProps(..), _access, _description,
+                                  _featureType, _label, _name, _property, _subProps, canGet, canSet,
+                                  capabilityDetails, decodeExposes, isPublished)
 import Data.Argonaut.Decode ((.:), (.:?), fromJsonString)
 import Data.Array.NonEmpty (fromArray)
 import Data.Lens ((^?), _Just, _Right, folded, lengthOf, to)
@@ -37,7 +36,6 @@ spec =
         -- type error about not matching String, but it highlights the
         -- `ix` call for some reason?
         featureType = signe ^? _Right <<< ix 1 <<< to capabilityDetails <<< _featureType <<< _Just
-        type' = signe ^? _Right <<< ix 1 <<< to capabilityDetails <<< _type
         access = signe ^? _Right <<< ix 1 <<< to capabilityDetails <<< _access
         subProps = signe ^? _Right <<< ix 1 <<< to capabilityDetails <<< _subProps
 
@@ -51,8 +49,6 @@ spec =
 
 
       lengthOf (folded <<< folded) signe `shouldEqual` 11
-
-      type' `shouldEqual` Just Numeric'
 
       featureType `shouldEqual` Just Light
 

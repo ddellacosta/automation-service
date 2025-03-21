@@ -233,7 +233,8 @@ mkFailedParse :: Either JsonDecodeError Json -> Decoded DecodedStatus
 mkFailedParse json
   = Decoded BadJson
   { devices: M.empty
-  , errors: [Left <<< UnexpectedValue =<< json] }
+  , errors: [Left <<< UnexpectedValue =<< json]
+  }
 
 decodeDevices :: Json -> Decoded DecodedStatus
 decodeDevices devicesJson = do
