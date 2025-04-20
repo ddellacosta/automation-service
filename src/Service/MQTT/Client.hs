@@ -19,7 +19,7 @@ import Network.TLS (ClientHooks (..), ClientParams (..), Credentials (..), Share
 import Network.TLS.Extra.Cipher (ciphersuite_default)
 import qualified Service.App as App
 import Service.App (Logger)
-import Service.Env (LogLevel (..), MQTTConfig (..), MQTTDispatch)
+import Service.Env (LogLevel (..), MQTTConfig (..), Subscriptions)
 import UnliftIO.STM (TVar, readTVarIO)
 
 
@@ -105,16 +105,16 @@ mqttClientCallback
   :: (Logger logger)
   => LogLevel
   -> logger
-  -> TVar MQTTDispatch
+  -> TVar Subscriptions
   -> MQTT.MessageCallback
-mqttClientCallback logLevelSet logger mqttDispatch =
+mqttClientCallback logLevelSet logger subscriptions =
   MQTT.SimpleCallback $ \_mc topic msg _props -> do
     when (Debug >= logLevelSet) $
       App.log logger Debug $
         "Received message " <> T.pack (show msg) <> " to " <> T.pack (show topic)
-    mqttDispatch' <- readTVarIO mqttDispatch
-    case M.lookup topic mqttDispatch' of
-      Just msgActions -> mapM_ (\action -> action topic msg) msgActions
+    subscriptions' <- readTVarIO subscriptions
+    case M.lookup topic subscriptions' of
+      Just msgActions -> mapM_ (\action -> action topic msg) $ M.elems msgActions
       Nothing -> do
         when (Warn >= logLevelSet) $
           App.log logger Warn $

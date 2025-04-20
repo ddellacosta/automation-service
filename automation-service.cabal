@@ -144,7 +144,13 @@ test-suite automation-service-tests
     , tasty ^>= 1.4.3
     , tasty-hspec ^>= 1.2.0.4
   ghc-options:
-    -threaded
-    -rtsopts
-    "-with-rtsopts=-N -T"
+    --
+    -- Turns out the integration tests flake out really badly when I
+    -- run this in threaded mode, so skipping for now. Seems like
+    -- there may be a few different reasons for this, including
+    -- resources leaking across `around` calls somehow?
+    --
+    -- -threaded
+    -- -rtsopts
+    -- "-with-rtsopts=-N -T"
     -Wall

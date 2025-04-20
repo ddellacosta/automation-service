@@ -8,6 +8,8 @@ module Test.Integration.Service.DaemonTestHelpers
   )
   where
 
+import Debug.Trace (traceM)
+
 import Control.Lens (view, (%~), (&), (^.))
 import Data.ByteString.Lazy (ByteString)
 import Data.HashMap.Strict (HashMap)
@@ -43,6 +45,7 @@ instance MQTTClient TestMQTTClient where
     atomically $ modifyTVar' mc $ \mqttMsgs ->
       M.insert topic msg mqttMsgs
   subscribeMQTT (TestMQTTClient _mc) _topic = pure ()
+  unsubscribeMQTT (TestMQTTClient _mc) _topic = pure ()
 
 instance Logger TestLogger where
   log :: TestLogger -> LogLevel -> Text -> IO ()
@@ -86,6 +89,9 @@ initAndCleanup runTests = bracket
         writeTVar groupsJsonTV groupsJSON
 
       uuid <- UUID.nextRandom
+
+      -- traceM "Does this run every test"
+
       pure $
         env & config . dbPath %~ \dp -> dp <> "-" <> UUID.toString uuid <> ".db"
   )

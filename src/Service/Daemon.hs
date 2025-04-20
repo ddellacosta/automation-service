@@ -41,7 +41,7 @@ import Service.Env (AutomationEntry, Env, Registrations, RestartConditions (..),
                     appCleanup, automationBroadcast, automationServiceTopic, config,
                     daemonBroadcast, dbPath, deviceRegistrations, devices, devicesRawJSON,
                     groupRegistrations, groups, groupsRawJSON, loadedDevices, loadedGroups,
-                    messageChan, mqttConfig, mqttDispatch, notAlreadyRestarted, restartConditions,
+                    messageChan, mqttConfig, subscriptions, notAlreadyRestarted, restartConditions,
                     scheduledJobs, startupMessages)
 import qualified Service.Group as Group
 import Service.MQTT.Class (MQTTClient)
@@ -54,7 +54,7 @@ import UnliftIO.Async (Async, async, asyncThreadId, cancel)
 import UnliftIO.Concurrent (killThread)
 import UnliftIO.Exception (bracket, finally)
 import UnliftIO.STM (STM, TVar, atomically, dupTChan, modifyTVar', newTVarIO, readTChan, readTVar,
-                     readTVarIO, writeTChan, writeTVar)
+                     readTVarIO, stateTVar, writeTChan, writeTVar)
 
 run
   :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadUnliftIO m)
@@ -122,6 +122,7 @@ run' threadMapTV = do
           stopAutomation threadMapTV automationName
           signalRunningStateUpdate threadMapTV
           publishUpdatedStatus threadMapTV
+          cleanSubscriptions automationName
           go
 
         Daemon.SendTo automationName msg' ->
@@ -482,12 +483,11 @@ run' threadMapTV = do
       -> m ()
     subscribe automationName topic = do
       automationBroadcast' <- view automationBroadcast
-      mqttDispatch' <- view mqttDispatch
+      subscriptions' <- view subscriptions
       atomically $ do
-        -- TODO is this getting cleaned up ever!?
-        modifyTVar' mqttDispatch' $
+        modifyTVar' subscriptions' $
           M.insertWith (<>) topic $
-            (mkDefaultTopicMsgAction automationBroadcast') :| []
+            M.singleton automationName (mkDefaultTopicMsgAction automationBroadcast')
       App.subscribe topic
 
       where
@@ -497,6 +497,38 @@ run' threadMapTV = do
             >>> Automation.Client automationName
             >>> writeTChan automationBroadcast'
             >>> atomically
+
+    cleanSubscriptions
+      :: (MonadIO m, Logger l, MQTTClient mc, MonadReader (Env l mc) m)
+      => AutomationName
+      -> m ()
+    cleanSubscriptions automationName = do
+      subscriptions' <- view subscriptions
+      topicsToUnsub <- atomically $
+        let updatedSubscriptions subs =
+              M.foldrWithKey'
+              (\topic actions (unsubTopics, updated) ->
+                 let
+                   updatedActions =
+                     M.filterWithKey (\autoName _action -> autoName /= automationName) actions
+                 in
+                   ( -- if the topic map has become empty as a
+                     -- result of this operation
+                     if not $ null (M.keys actions) && M.null updatedActions then
+                       unsubTopics <> [topic]
+                     else
+                       unsubTopics
+                   , if M.null updatedActions then
+                       updated
+                     else
+                       M.insert topic updatedActions updated
+                   )
+              )
+              ([], M.empty)
+              subs
+        in
+          stateTVar subscriptions' updatedSubscriptions
+      mapM_ App.unsubscribe topicsToUnsub
 
 loadResources
   :: (MonadUnliftIO m, Hashable k) => (v -> k) -> TVar (HashMap k v) -> [v] -> m ()
