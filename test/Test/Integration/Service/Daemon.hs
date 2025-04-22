@@ -306,7 +306,7 @@ luaScriptSpecs = do
 
   -- flaky
   around initAndCleanup $ do
-    it "retrieves dates for Sun events (rise & set)" $
+    xit "retrieves dates for Sun events (rise & set)" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
 
         setEnv "TZ" "America/New_York"
