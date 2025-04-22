@@ -8,8 +8,6 @@ module Test.Integration.Service.DaemonTestHelpers
   )
   where
 
-import Debug.Trace (traceM)
-
 import Control.Lens (view, (%~), (&), (^.))
 import Data.ByteString.Lazy (ByteString)
 import Data.HashMap.Strict (HashMap)
@@ -89,8 +87,6 @@ initAndCleanup runTests = bracket
         writeTVar groupsJsonTV groupsJSON
 
       uuid <- UUID.nextRandom
-
-      -- traceM "Does this run every test"
 
       pure $
         env & config . dbPath %~ \dp -> dp <> "-" <> UUID.toString uuid <> ".db"
