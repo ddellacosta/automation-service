@@ -169,7 +169,7 @@ defaultTopicActions config' daemonBroadcast' =
              case decode msg of
                Just [] -> pure ()
                Nothing -> pure ()
-               Just devicesJSON -> do
+               Just devicesJSON ->
                  write daemonBroadcast' $ Daemon.DeviceUpdate devicesJSON msg
           )
         )
@@ -180,7 +180,7 @@ defaultTopicActions config' daemonBroadcast' =
              case decode msg of
                Just [] -> pure ()
                Nothing -> pure ()
-               Just groupsJSON -> do
+               Just groupsJSON ->
                  write daemonBroadcast' $ Daemon.GroupUpdate groupsJSON msg
           )
         )

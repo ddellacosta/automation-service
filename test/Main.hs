@@ -1,4 +1,4 @@
-module Main
+module Main --
   ( integration
   , main
   , unit
@@ -6,8 +6,9 @@ module Main
 where
 
 import qualified Test.Integration.Service.Daemon as Daemon
-import Test.Tasty (TestTree, defaultMain, localOption, mkTimeout, testGroup)
+import Test.Tasty (TestTree, defaultIngredients, defaultMainWithIngredients, localOption, mkTimeout, testGroup)
 import Test.Tasty.Hspec (TreatPendingAs (..), testSpec)
+import qualified Test.Tasty.Runners.Reporter as Reporter
 import qualified Test.Unit.Service.Device as Devices
 import qualified Test.Unit.Service.Group as Groups
 import qualified Test.Unit.Service.MQTT.Messages.Daemon as Daemon.Messages
@@ -18,7 +19,9 @@ timeout :: Integer
 timeout = 10
 
 main :: IO ()
-main = defaultMain =<< allTests
+main = defaultMainWithIngredients defaultIngredients' =<< allTests
+  where
+    defaultIngredients' = Reporter.ingredient : defaultIngredients
 
 allTests :: IO TestTree
 allTests = do

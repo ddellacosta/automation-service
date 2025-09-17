@@ -204,20 +204,19 @@ loadAPI filepath logger' mqttClient' daemonBroadcast' broadcastChan devices' gro
     addMinutes :: DocumentedFunction Lua.Exception
     addMinutes =
       defun "addMinutes"
-      ### (\minutes date ->
-              do
-                utcNow <- liftIO C.getCurrentTime
+      ### (\minutes date -> do
+              utcNow <- liftIO C.getCurrentTime
 
-                let
-                  -- is this the best way to do this?
-                  minutes' = toEnum (minutes * (10 ^ (12 :: Int))) :: Pico
-                  initialDate = ISO.iso8601ParseM date :: Maybe UTCTime
-                  updatedDate = case initialDate of
-                    Just initialDate' -> TH.addMinutes minutes' initialDate'
-                    -- I am not sure how to handle failure here
-                    Nothing           -> TH.addMinutes minutes' utcNow
+              let
+                -- is this the best way to do this?
+                minutes' = toEnum (minutes * (10 ^ (12 :: Int))) :: Pico
+                initialDate = ISO.iso8601ParseM date :: Maybe UTCTime
+                updatedDate = case initialDate of
+                  Just initialDate' -> TH.addMinutes minutes' initialDate'
+                  -- I am not sure how to handle failure here
+                  Nothing           -> TH.addMinutes minutes' utcNow
 
-                pure $ ISO.iso8601Show updatedDate
+              pure $ ISO.iso8601Show updatedDate
           )
       <#> parameter LM.peekIntegral "pico" "minutes" "minutes to add"
       <#> parameter LM.peekString "string" "date" "date being added-to"
