@@ -40,12 +40,24 @@ let
       # harvest logs and save status as a file
       set +e
 
+      #
       # kinda weird to do this in the installPhase but ¯\_(ツ)_/¯
+      #
+      # added these three when I kept getting failures when tests
+      # failed, also bumped timeout from 60000 to 120000
+      #
+      #  -a disable-dev-shm-usage \
+      #  -a no-zygote \
+      #  -a single-process \
+      #
       ./node_modules/.bin/mocha-headless-chrome \
-        -t 60000 \
+        -t 120000 \
         -e ${pkgs.chromium}/bin/chromium \
         -a no-sandbox \
         -a disable-setuid-sandbox \
+        -a disable-dev-shm-usage \
+        -a no-zygote \
+        -a single-process \
         -a allow-file-access-from-files \
         -r json \
         -o test-output.json \
@@ -54,6 +66,9 @@ let
 
       status=''${PIPESTATUS[0]}
       set -e
+
+      ls -al
+      ls -al test/browser
 
       # Normalize to 0/1 and save for later jobs
       if [ "$status" -eq 0 ]; then echo 0 > .test-exit-code; else echo 1 > .test-exit-code; fi
