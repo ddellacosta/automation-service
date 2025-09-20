@@ -30,9 +30,6 @@ jobs:
           name: ddellacosta
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
-      # - name: Install Nix
-      #   uses: DeterminateSystems/nix-installer-action@v12
-
       - name: Build frontend allure-results via Nix
         run: |
           nix build .#automation-service-ui-test -o frontend-out
@@ -46,13 +43,6 @@ jobs:
             exit 1
           fi
           cp -a "$FE_ALLURE_RESULTS" allure-results-frontend
-
-          ls -al
-          ls -al allure-results-frontend
-          ls -al frontend-out
-          ls -al frontend-out/share
-          ls -al frontend-out/share/test-exit-code
-          cat frontend-out/share/test-exit-code
 
           FE_TEST_EXIT_CODE="frontend-out/share/test-exit-code"
           if [ ! -f "$FE_TEST_EXIT_CODE" ]; then
@@ -93,17 +83,12 @@ jobs:
           name: ddellacosta
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
-      # - name: Install Nix
-      #   uses: DeterminateSystems/nix-installer-action@v12
-
       - name: Build backend allure-results via Nix
         run: |
           nix build .#automation-service-test -o backend-out
 
       - name: Collect backend allure-results
         run: |
-          ls -al
-
           BE_ALLURE_RESULTS="backend-out/share/allure-results"
           if [ ! -d "$BE_ALLURE_RESULTS" ]; then
             echo "Backend allure-results not found at $BE_ALLURE_RESULTS" >&2
@@ -111,10 +96,6 @@ jobs:
             exit 1
           fi
           cp -a "$BE_ALLURE_RESULTS" allure-results-backend
-
-          ls -al allure-results-backend
-          ls -al backend-out
-          ls -al backend-out/share
 
           BE_TEST_EXIT_CODE="backend-out/share/test-exit-code"
           if [ ! -f "$BE_TEST_EXIT_CODE" ]; then
@@ -140,21 +121,9 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-#  compute-report-id:
-#    runs-on: ubuntu-latest
-#    outputs:
-#      report_id: ${{ steps.out.outputs.report_id }}
-#    steps:
-#      - name: Compute report_id
-#        id: out
-#        shell: bash
-#        run: |
-#          # Namespace report/history per branch; replace '/' to avoid nested paths
-#          echo "report_id=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_OUTPUT"
-
   # Single publisher to avoid gh-pages push conflicts
   publish-reports:
-    needs: [build-frontend-tests, build-backend-tests] #, compute-report-id]
+    needs: [build-frontend-tests, build-backend-tests]
 
     # Skip publishing for forked PRs that can't push to gh-pages
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
@@ -182,28 +151,6 @@ jobs:
         with:
           name: allure-results-backend
           path: allure-results-backend
-
-    #  - name: Publish Frontend Allure report (per-branch history)
-    #    uses: simple-elf/allure-report-action@v1
-    #    env:
-    #      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    #    with:
-    #      gh_pages: gh-pages
-    #      allure_results: allure-results-frontend
-    #      allure_history: allure-history
-    #      keep_reports: 50
-    #      report_id: frontend-${{ needs.compute-report-id.outputs.report_id }}
-
-    #  - name: Publish Backend Allure report (per-branch history)
-    #    uses: simple-elf/allure-report-action@v1
-    #    env:
-    #      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    #    with:
-    #      gh_pages: gh-pages
-    #      allure_results: allure-results-backend
-    #      allure_history: allure-history
-    #      keep_reports: 50
-    #      report_id: backend-${{ needs.compute-report-id.outputs.report_id }}
 
       - name: Initialize gh-pages branch if missing
         shell: bash
@@ -267,136 +214,6 @@ jobs:
           repository: ghp
           branch: gh-pages
           pull_args: --rebase -X ours
-
-#       - name: Compute branch slug
-#         shell: bash
-#         run: echo "BRANCH_SLUG=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_ENV"
-# 
-# #      # Prepare Frontend history (per-branch)
-# #      - name: Prepare Frontend history
-# #        shell: bash
-# #        run: |
-# #          ls -al
-# #          mkdir -p allure-history-frontend/last-history
-# #          # If a prior report exists for this branch subfolder, seed history
-# #          if [ -d "ghp/frontend-${BRANCH_SLUG}/history" ]; then
-# #            rsync -a --delete "ghp/frontend-${BRANCH_SLUG}/history/" "allure-history-frontend/last-history/"
-# #          fi
-# 
-#       # Prepare Frontend history (per-branch) — fix: seed into nested subfolder path
-#       - name: Prepare Frontend history
-#         shell: bash
-#         run: |
-#           set -euo pipefail
-#           ls -al || true
-#           mkdir -p "allure-history-frontend/frontend-${BRANCH_SLUG}/last-history"
-#           # If a prior report exists for this branch subfolder, seed history
-#           if [ -d "ghp/frontend-${BRANCH_SLUG}/history" ]; then
-#             rsync -a --delete \
-#               "ghp/frontend-${BRANCH_SLUG}/history/" \
-#               "allure-history-frontend/frontend-${BRANCH_SLUG}/last-history/"
-#           fi
-# 
-#       - name: Publish Frontend Allure report (per-branch history)
-#         uses: simple-elf/allure-report-action@v1
-#         env:
-#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-#         with:
-#           gh_pages: gh-pages
-#           allure_results: allure-results-frontend
-#           allure_history: allure-history-frontend
-#           # Publish to a unique subfolder on gh-pages so each branch keeps its own history
-#           subfolder: frontend-${{ env.BRANCH_SLUG }}
-# 
-# #      # Prepare Backend history (per-branch)
-# #      - name: Prepare Backend history
-# #        shell: bash
-# #        run: |
-# #          mkdir -p allure-history-backend/last-history
-# #          if [ -d "ghp/backend-${BRANCH_SLUG}/history" ]; then
-# #            rsync -a --delete "ghp/backend-${BRANCH_SLUG}/history/" "allure-history-backend/last-history/"
-# #          fi
-# 
-#       # Prepare Backend history (per-branch) — fix: seed into nested subfolder path
-#       - name: Prepare Backend history
-#         shell: bash
-#         run: |
-#           set -euo pipefail
-#           mkdir -p "allure-history-backend/backend-${BRANCH_SLUG}/last-history"
-#           if [ -d "ghp/backend-${BRANCH_SLUG}/history" ]; then
-#             rsync -a --delete \
-#               "ghp/backend-${BRANCH_SLUG}/history/" \
-#               "allure-history-backend/backend-${BRANCH_SLUG}/last-history/"
-#           fi
-# 
-#       - name: Publish Backend Allure report (per-branch history)
-#         uses: simple-elf/allure-report-action@v1
-#         env:
-#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-#         with:
-#           gh_pages: gh-pages
-#           allure_results: allure-results-backend
-#           allure_history: allure-history-backend
-#           subfolder: backend-${{ env.BRANCH_SLUG }}
-# 
-#       # Optional: Inspect what the action produced locally (helps debug)
-#           find allure-history-backend -maxdepth 3 -print || true
-# 
-#       # Make sure our gh-pages working copy is up-to-date before syncing new files
-#       - name: Refresh gh-pages working copy
-#         shell: bash
-#         run: |
-#           set -euo pipefail
-#           if [ -d ghp/.git ]; then
-#             cd ghp
-#             git fetch origin gh-pages
-#             git checkout gh-pages
-#             git reset --hard origin/gh-pages
-#           else
-#             echo "Missing gh-pages checkout at ./ghp"
-#             exit 1
-#           fi
-# 
-#       # Sync generated reports into gh-pages and push — explicit branch update
-#       - name: Sync generated reports into gh-pages working copy
-#         shell: bash
-#         run: |
-#           set -euo pipefail
-#           rsync -a allure-history-frontend/ ghp/
-#           rsync -a allure-history-backend/ ghp/
-# 
-#       - name: Update root index.html with links (optional but recommended)
-#         shell: bash
-#         run: |
-#           set -euo pipefail
-#           cd ghp
-#           {
-#             echo '<!doctype html><meta charset="utf-8"><title>Allure Reports</title>'
-#             echo '<h1>Allure Reports</h1>'
-#             echo '<h2>Frontend</h2><ul>'
-#             for d in frontend-*; do [ -d "$d" ] && echo "<li><a href=\"$d/\">$d</a></li>"; done
-#             echo '</ul><h2>Backend</h2><ul>'
-#             for d in backend-*; do [ -d "$d" ] && echo "<li><a href=\"$d/\">$d</a></li>"; done
-#             echo '</ul>'
-#           } > index.html
-# 
-#       - name: Commit and push gh-pages
-#         shell: bash
-#         env:
-#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-#         run: |
-#           set -euo pipefail
-#           cd ghp
-#           git config user.name "github-actions[bot]"
-#           git config user.email "github-actions[bot]@users.noreply.github.com"
-#           git add -A
-#           if git diff --cached --quiet; then
-#             echo "No changes to commit."
-#           else
-#             git commit -m "Publish Allure reports for ${GITHUB_REF_NAME} (run ${GITHUB_RUN_NUMBER})"
-#             git push origin gh-pages
-#           fi
-
 
   verify-tests:
     needs: [build-frontend-tests, build-backend-tests]

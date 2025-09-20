@@ -63,5 +63,3 @@ spec = describe "Devices" $ do
     (mirrorLight ^. topic) `shouldBe` "zigbee2mqtt/Mirror Light Strip"
     (mirrorLight ^. topicGet) `shouldBe` "zigbee2mqtt/Mirror Light Strip/get"
     (mirrorLight ^. topicSet) `shouldBe` "zigbee2mqtt/Mirror Light Strip/set"
-
-    (3 :: Int) `shouldBe` (2 :: Int)
