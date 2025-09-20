@@ -140,6 +140,8 @@ spec = before setup $
           find ("div" `withTestId` "last-sent-msg") >>= text
             >>= shouldEqual ("Last sent:" <> mqttMsg)
 
+          (1 :: Int) `shouldEqual` (2 :: Int)
+
           -- wsStr <- liftEffect $ Ref.read store
           -- wsStr `shouldEqual` mqttMsg
 
