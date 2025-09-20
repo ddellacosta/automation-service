@@ -6,9 +6,9 @@ This uses Allure Report (https://allurereport.org) for test reporting. Along wit
 
 ```shell
 > cd ui
-> spago bundle -p automation-service-test; npx mocha-headless-chrome -t 60000 -e (which chromium) -a 'allow-file-access-from-files' -f test/browser/index.html -r json -o test_output.json
+> spago bundle -p automation-service-test; npx mocha-headless-chrome -t 60000 -e (which chromium) -a 'allow-file-access-from-files' -f test/browser/index.html -r json -o test-output.json
 > rm -rf allure-results
-> node test/tools_convert-mocha-to-allure_Version2.mjs test_output.json
+> node test/convert-mocha-to-allure.mjs test-output.json
 Wrote 4 Allure test results to allure-results
 > cd ..
 > cp -r allure-report/history ui/allure-results
@@ -23,7 +23,7 @@ serving "allure-report" at http://127.0.0.1:8080
 ```shell
 > cabal test --test-show-details=always --test-options "--color=always --xml=report.xml"
 > rm -rf allure-results
-> node test/tools_convert-junit-to-allure.mjs report.xml
+> node test/convert-junit-to-allure.mjs report.xml
 Converted 35 testcases to Allure results at allure-results
 > cp -r allure-report/history allure-results
 > allure generate --clean allure-results

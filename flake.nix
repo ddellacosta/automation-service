@@ -36,6 +36,31 @@
           pkgs.buildNpmPackage {
             name = "automation-service-npm-deps";
             # prefetch-npm-deps package-lock.json
+            npmDepsHash = "sha256-LxT+rS1TtlAw1iiClqXisTijXl8idvMQLCdOiaWuMVM=";
+            src = ./.;
+            nodejs = node_version;
+            # need this for spago and logging
+            makeCacheWriteable = true;
+            dontNpmBuild = true;
+
+            env = {
+              PUPPETEER_SKIP_DOWNLOAD = true;
+            };
+
+            installPhase = ''
+              runHook preInstall
+
+              mkdir -p $out/lib
+              cp -r node_modules $out/lib
+
+              runHook postInstall
+            '';
+          };
+
+        automation-service-ui-npm-deps =
+          pkgs.buildNpmPackage {
+            name = "automation-service-npm-deps";
+            # prefetch-npm-deps package-lock.json
             npmDepsHash = "sha256-4sWlMyeFAu/4FkWVqANyJiyQbub5WZWB6bok3ZFav00=";
             src = ./ui;
             nodejs = node_version;
@@ -57,15 +82,14 @@
             '';
           };
 
-        # Frontend build (no tests)
-        automation-service-ui-build =
+        automation-service-ui =
           pkgs.mkSpagoDerivation {
             spagoYaml = ./ui/spago.yaml;
             spagoLock = ./ui/spago.lock;
             src = ./ui;
 
             nativeBuildInputs = [
-              automation-service-npm-deps
+              automation-service-ui-npm-deps
               node_version
               pkgs.esbuild
               pkgs.purs
@@ -75,7 +99,7 @@
             buildPhase = ''
               runHook preBuild
 
-              ln -sf ${automation-service-npm-deps}/lib/node_modules ./node_modules
+              ln -sf ${automation-service-ui-npm-deps}/lib/node_modules ./node_modules
 
               # Build the application bundle (no tests)
               spago bundle -p automation-service
@@ -97,53 +121,9 @@
             '';
           };
 
-        # Frontend test runner
-        automation-service-ui-test-runner =
-          pkgs.mkSpagoDerivation {
-            spagoYaml = ./ui/spago.yaml;
-            spagoLock = ./ui/spago.lock;
-            src = ./ui;
-
-            nativeBuildInputs = [
-              automation-service-npm-deps
-              node_version
-              pkgs.chromium
-              pkgs.esbuild
-              pkgs.purs
-              pkgs.spago-unstable
-            ];
-
-            buildPhase = ''
-              runHook preBuild
-
-              ln -sf ${automation-service-npm-deps}/lib/node_modules ./node_modules
-              cp node_modules/mocha/mocha.js node_modules/mocha/mocha.css test/browser/
-
-              # Build bundle
-              spago bundle -p automation-service-test
-
-              runHook postBuild
-            '';
-
-            installPhase = ''
-              runHook preInstall
-
-              # kinda weird to do this in the installPhase but ¯\_(ツ)_/¯
-              ./node_modules/.bin/mocha-headless-chrome \
-                -t 60000 \
-                -e ${pkgs.chromium}/bin/chromium \
-                -a no-sandbox \
-                -a disable-setuid-sandbox \
-                -a allow-file-access-from-files \
-                -r json \
-                -o test_output.json \
-                -f test/browser/index.html
-
-              mkdir -p $out/ui-test
-              cp test_output.json $out/ui-test/
-
-              runHook postInstall
-            '';
+        automation-service-ui-test =
+          import ./nix/frontend-test.nix {
+            inherit automation-service-ui-npm-deps node_version pkgs;
           };
 
         haskellOverrides = self: super: {
@@ -160,11 +140,10 @@
             }) {};
         };
 
-        # Backend application builder function
         automation-service = devTools:
           let
             addBuildTools = (t.flip hl.addBuildTools) (devTools ++ [
-              automation-service-ui-build
+              automation-service-ui
               pkgs.zlib
             ]);
           in
@@ -188,22 +167,20 @@
               ];
             };
 
-        # New: a pure derivation that runs Haskell tests and emits report.xml into the output
-        backend-junit-report =
-          import ./nix/backend-junit-report.nix {
-            inherit pkgs;
-            src = ./.;
+        automation-service-test =
+          import ./nix/backend-test.nix {
+            inherit automation-service-npm-deps node_version pkgs; 
             overrides = haskellOverrides;
           };
 
       in {
         packages = {
-          automation-service = automation-service [ ];
-          backend-junit-report = backend-junit-report;
-
           automation-service-npm-deps = automation-service-npm-deps;
-          automation-service-ui = automation-service-ui-build;
-          automation-service-ui-test-runner = automation-service-ui-test-runner;
+          automation-service-ui = automation-service-ui;
+          automation-service-ui-test = automation-service-ui-test;
+
+          automation-service = automation-service [ ];
+          automation-service-test = automation-service-test;
 
           default = pkgs.dockerTools.buildImage {
             name = "automation-service";
@@ -213,7 +190,7 @@
               mkdir ./app
               chmod 755 ./app
 
-              cp -r ${automation-service-ui-build}/ui ./app/ui
+              cp -r ${automation-service-ui}/ui ./app/ui
             '';
 
             copyToRoot = pkgs.buildEnv {
