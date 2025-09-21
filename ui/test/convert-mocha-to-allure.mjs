@@ -1,3 +1,7 @@
+//
+// This was written by ChatGPT 5.0 and should be considered disposable
+// code. -DD
+//
 // Usage: node tools/convert-mocha-to-allure.mjs test_output.json [allure-results-dir]
 import fs from "fs";
 import path from "path";

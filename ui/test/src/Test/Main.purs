@@ -143,9 +143,6 @@ spec = before setup $
           -- wsStr <- liftEffect $ Ref.read store
           -- wsStr `shouldEqual` mqttMsg
 
-      (1 :: Int) `shouldEqual` (2 :: Int)
-
-
    where
      setup :: Aff TestWS
      setup = do

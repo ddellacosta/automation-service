@@ -35,7 +35,11 @@ let
       set -e
 
       # Normalize to 0/1 and save for later jobs
-      if [ "$status" -eq 0 ]; then echo 0 > .test-exit-code; else echo 1 > .test-exit-code; fi
+      if [ "$status" -eq 0 ]; then
+        echo 0 > .test-exit-code
+      else
+        echo 1 > .test-exit-code
+      fi
 
       runHook postCheck
     '';

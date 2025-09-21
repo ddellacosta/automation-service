@@ -43,10 +43,6 @@
             makeCacheWriteable = true;
             dontNpmBuild = true;
 
-            env = {
-              PUPPETEER_SKIP_DOWNLOAD = true;
-            };
-
             installPhase = ''
               runHook preInstall
 
@@ -59,7 +55,7 @@
 
         automation-service-ui-npm-deps =
           pkgs.buildNpmPackage {
-            name = "automation-service-npm-deps";
+            name = "automation-service-ui-npm-deps";
             # prefetch-npm-deps package-lock.json
             npmDepsHash = "sha256-4sWlMyeFAu/4FkWVqANyJiyQbub5WZWB6bok3ZFav00=";
             src = ./ui;
@@ -107,8 +103,6 @@
               cd css
               npx sass .
               cd ..
-
-              ls -al
 
               runHook postBuild
             '';

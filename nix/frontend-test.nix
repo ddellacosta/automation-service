@@ -71,7 +71,11 @@ let
       ls -al test/browser
 
       # Normalize to 0/1 and save for later jobs
-      if [ "$status" -eq 0 ]; then echo 0 > .test-exit-code; else echo 1 > .test-exit-code; fi
+      if [ "$status" -eq 0 ]; then
+        echo 0 > .test-exit-code
+      else
+        echo 1 > .test-exit-code
+      fi
 
       # Ship status/log for later use (same pattern as backend)
       cp -v .test-exit-code $out/share/test-exit-code || echo 1 > $out/share/test-exit-code
