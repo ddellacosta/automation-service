@@ -510,7 +510,7 @@ run' threadMapTV = do
               (\topic actions (unsubTopics, updated) ->
                  let
                    updatedActions =
-                     M.filterWithKey (\autoName _action -> autoName /= automationName) actions
+                     M.filterWithKey (\thisAutomationName _action -> thisAutomationName /= automationName) actions
                  in
                    ( -- if the topic map has become empty as a
                      -- result of this operation

@@ -1,6 +1,6 @@
 //
-// This was written by ChatGPT 5.0 and should be considered disposable
-// code. -DD
+// This was written by Copilot using GPT 5.0 and should be considered
+// disposable code. -DD
 //
 // Usage:
 //   node tools/convert-junit-to-allure.mjs path/to/report.xml [allure-results-dir]

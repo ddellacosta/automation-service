@@ -1,4 +1,4 @@
-module Main --
+module Main
   ( integration
   , main
   , unit

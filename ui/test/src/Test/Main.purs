@@ -85,7 +85,7 @@ spec :: Spec Unit
 spec = before setup $
   describe "Main app" $
     it "Can navigate to different pages" $ \wsState@(TestWS { store: _store, ws }) -> do
-      let mqttMsg = "{\"start\": \"ttest\"}"
+      let mqttMsg = "{\"start\": \"test\"}"
 
       newDsUpdateTimers <- liftEffect $ Ref.new M.empty
 

@@ -143,7 +143,6 @@ test-suite automation-service-tests
     , hspec ^>= 2.11.8
     , tasty ^>= 1.4.3
     , tasty-hspec ^>= 1.2.0.4
-    -- , tasty-json
     , tasty-test-reporter
   ghc-options:
     --

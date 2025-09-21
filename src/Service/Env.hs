@@ -77,7 +77,6 @@ invertRegistrations = M.foldlWithKey'
      foldl' (\inverted' v -> M.insertWith (<>) v (k :| []) inverted') inverted)
   M.empty
 
-
 type MsgAction = Topic -> ByteString -> IO ()
 type Subscriptions = HashMap Topic (HashMap AutomationName MsgAction)
 
@@ -149,7 +148,6 @@ initialize configFilePath mkLogger mkMQTTClient = do
     <*> (newTVarIO "")      -- devicesRawJSON
     <*> (newTVarIO "")      -- groupsRawJSON
     <*> pure (loggerCleanup >> mcCleanup)
-
 
 defaultTopicActions :: Config -> TChan Daemon.Message -> Subscriptions
 defaultTopicActions config' daemonBroadcast' =
