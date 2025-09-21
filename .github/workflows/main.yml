@@ -140,6 +140,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - uses: cachix/install-nix-action@v25
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Download frontend results
         uses: actions/download-artifact@v4
         with:
@@ -206,6 +210,14 @@ jobs:
           report_id: 'backend-tests'
           gh_pages: 'ghp'
           report_dir: 'allure-results-backend'
+
+      - name: Update Allure Index Page to Include New Branch
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          nix build .#automation-service-allure-generator
+          result/bin/generate-allure
 
       - name: Git Commit and Push Action
         uses: mgrybyk-org/git-commit-pull-push-action@v1
