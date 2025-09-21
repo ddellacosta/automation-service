@@ -291,6 +291,10 @@ jobs:
     name: Build and push image
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      packages: write
+
     steps:
       - name: Checkout Push to Registry action
         uses: actions/checkout@v3
