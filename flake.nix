@@ -167,6 +167,32 @@
             overrides = haskellOverrides;
           };
 
+        automation-service-allure-generator = devTools:
+          let
+            addBuildTools = (t.flip hl.addBuildTools) (devTools ++ [
+              pkgs.zlib
+            ]);
+          in
+            haskellPackages.developPackage {
+              root = ./.;
+              name = "generate-allure";
+              returnShellEnv = !(devTools == []);
+
+              overrides = haskellOverrides;
+
+              modifier = (t.flip t.pipe) [
+                addBuildTools
+                hl.dontHaddock
+                hl.dontCheck # Don't run tests during build
+                hl.enableExecutableProfiling
+                (drv: hl.overrideCabal drv (attrs: {
+                  configureFlags = [
+                    "--ghc-options=-fprof-auto -fno-prof-count-entries"
+                  ];
+                }))
+              ];
+            };
+
       in {
         packages = {
           automation-service-npm-deps = automation-service-npm-deps;
@@ -175,6 +201,8 @@
 
           automation-service = automation-service [ ];
           automation-service-test = automation-service-test;
+
+          automation-service-allure-generator = automation-service-allure-generator [];
 
           default = pkgs.dockerTools.buildImage {
             name = "automation-service";
