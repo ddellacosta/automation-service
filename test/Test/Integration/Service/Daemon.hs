@@ -39,7 +39,7 @@ import Service.Automation (name)
 import Service.AutomationName (AutomationName (..), parseAutomationName, serializeAutomationName)
 import Service.Env (RestartConditions (..), automationServiceTopic, config, daemonBroadcast, dbPath,
                     deviceRegistrations, devicesRawJSON, groupRegistrations, httpPort, logger,
-                    mqttClient, mqttConfig, mqttDispatch, restartConditions, scheduledJobs)
+                    mqttClient, mqttConfig, subscriptions, restartConditions, scheduledJobs)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
 import System.Environment (setEnv)
@@ -154,7 +154,7 @@ luaScriptSpecs = do
 
   -- flaky
   around initAndCleanup $ do
-    xit "allows scripts to register devices" $
+    it "allows scripts to register devices" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
@@ -167,7 +167,8 @@ luaScriptSpecs = do
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testRegistration")
 
         -- see comment in test below
-        threadDelay 10000
+        -- so does this just need more time
+        threadDelay 100000
 
         mirrorLightAutos <- readTVarIO registrations <&> M.lookup mirrorLightID
         mirrorLightAutos
@@ -195,15 +196,14 @@ luaScriptSpecs = do
           `shouldBe`
           (Just (LuaScript "testRegistration" :| [Gold]))
 
-  -- flaky
   -- I don't love this test
   around initAndCleanup $ do
-    xit "subscribes to topic and receives topic messages" $
+    it "subscribes to topic and receives topic messages, and removes subscription *internally* when automation is stopped" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
           (TestLogger qLogger) = env ^. logger
-          mqttDispatch' = env ^. mqttDispatch
+          subscriptions' = env ^. subscriptions
           Just topic = mkTopic "testTopic"
           expectedLogEntry = "Debug: testSubscribe: Msg: hey"
 
@@ -211,7 +211,7 @@ luaScriptSpecs = do
 
         --
         -- Seems like without a small wait here, the read on
-        -- mqttDispatch' below produces a deadlock on that TVar and
+        -- subscriptions' below produces a deadlock on that TVar and
         -- makes this time out, which I guess I should have assumed?
         --
         -- Somehow I thought readTVarIO wouldn't behave that way
@@ -219,9 +219,9 @@ luaScriptSpecs = do
         -- `atomically . readTVar` but works much faster, because it
         -- doesn't perform a complete transaction," but I guess I'm
         -- misunderstanding? Or, is what is causing the deadlock/timeout
-        -- not the read on the mqttDispatch TVar?
+        -- not the read on the subscriptions TVar?
         --
-        -- Previously I was doing `readTVarIO mqttDispatch'` in a
+        -- Previously I was doing `readTVarIO subscriptions'` in a
         -- loop, and then tried it with the retry package (retrying
         -- with various policies, including backoff and explicit
         -- delays for a fixed number of times). Finally I realized
@@ -250,8 +250,12 @@ luaScriptSpecs = do
         --
         threadDelay 80000
 
-        dispatchActions <- M.lookup topic <$> readTVarIO mqttDispatch'
+        dispatchActions <- M.lookup topic <$> readTVarIO subscriptions'
         for_ (fromJust dispatchActions) (\action -> action topic "{\"msg\": \"hey\"}")
+
+        waitUntilEq True $ do
+          subscriptions'' <- readTVarIO subscriptions'
+          pure . M.member topic $ subscriptions''
 
         -- Probably the slowest part of the entire test suite. Would
         -- be good to find another way to test this. Also the lookup
@@ -260,9 +264,16 @@ luaScriptSpecs = do
           logs <- readTVarIO qLogger
           pure . fromMaybe "" . headMay . filter (== expectedLogEntry) $ logs
 
-  -- flaky?
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "testSubscribe")
+
+        -- the topic should be removed since there are no other
+        -- subscribers once we stop the Automation
+        waitUntilEq False $ do
+          subscriptions'' <- readTVarIO subscriptions'
+          pure $ M.member topic subscriptions''
+
   around initAndCleanup $ do
-    xit "removes Device and Group Registration entries upon cleanup" $
+    it "removes Device and Group Registration entries upon cleanup" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
@@ -320,7 +331,7 @@ luaScriptSpecs = do
         length matches `shouldBe` 2
 
   around initAndCleanup $ do
-    xit "can send Daemon messages in Lua scripts" $
+    it "can send Daemon messages in Lua scripts" $
       testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
@@ -352,7 +363,6 @@ threadMapSpecs = do
         waitUntilEqSTM (Just Gold) $
           preview (ix Gold . _1 . name) <$> readTVar threadMapTV
 
-  -- flaky? -seen again
   around initAndCleanup $ do
     it "removes entries from ThreadMap when stopping" $
       testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
@@ -370,9 +380,8 @@ threadMapSpecs = do
         -- value
         (void . M.lookup Gold) threadMap `shouldBe` Nothing
 
-  -- flaky
   around initAndCleanup $ do
-    xit "removes entries from ThreadMap for LuaScript automations as well after stopping" $
+    it "removes entries from ThreadMap for LuaScript automations as well after stopping" $
       testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
         let daemonBroadcast' = env ^. daemonBroadcast
 
@@ -390,7 +399,6 @@ threadMapSpecs = do
         -- same as above wrt void
         (void . M.lookup (LuaScript "test")) threadMap' `shouldBe` Nothing
 
-  -- flaky
   around initAndCleanup $ do
     --
     -- This preserves this semantics that starting an Automation that
@@ -418,7 +426,6 @@ threadMapSpecs = do
             gold1ThreadStatus `shouldBe` ThreadFinished
           Nothing -> expectationFailure "Couldn't find Gold instance 1 in threadMap"
 
-  -- flaky? x2
   around initAndCleanup $ do
     it "removes entries from ThreadMap for automations when they are not shut down via message" $
       testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
@@ -460,9 +467,8 @@ stateStoreSpecs = do
         -- should always be present.
         findMatchingSerialized "StateManager" res `shouldBe` ["StateManager"]
 
-  -- flaky, this fails because the db is locked
   around initAndCleanup $ do
-    xit "updates stored automations when an automation is shut down" $
+    it "updates stored automations when an automation is shut down" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
@@ -532,7 +538,7 @@ stateStoreSpecs = do
 
         --
         -- This is because scripts are often dependent on loading
-        -- groups and devices--and I don't device/group registration
+        -- groups and devices--and I don't (?) device/group registration
         -- to block in scripts, even if I have some kind of
         -- exponential backoff failure thing which eventually logs,
         -- since regardless that will prevent speedy diagnosis when
@@ -655,7 +661,6 @@ stateStoreSpecs = do
 
 schedulerSpecs :: Spec
 schedulerSpecs = do
-  -- flaky? x2
   around initAndCleanup $ do
     it "stores Schedule jobs when they come in, and removes then when Unscheduled" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
@@ -689,9 +694,8 @@ schedulerSpecs = do
 
 statusMessageSpecs :: Spec
 statusMessageSpecs = do
-  -- flaky
   around initAndCleanup $ do
-    xit "sends a status message when Daemon.Status is received" $
+    it "sends a status message when Daemon.Status is received" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
@@ -720,9 +724,8 @@ statusMessageSpecs = do
 
 httpSpecs :: Spec
 httpSpecs = do
-  -- flaky, just times-out sometimes for no reason I can understand
   around initAndCleanup $ do
-    xit "sends device data over websockets" $
+    it "sends device data over websockets" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
         let
           port = env ^. config . httpPort
@@ -739,6 +742,7 @@ httpSpecs = do
             pure msg
 
         devices' <- readTVarIO devices
+
         devicesReceived `shouldBe` devices'
 
   around initAndCleanup $ do

@@ -4,7 +4,7 @@ module Service.Env
   ( module Service.Env.Config
   , AutomationEntry
   , Env(..)
-  , MQTTDispatch
+  , Subscriptions
   , Registrations
   , RestartConditions(..)
   , ScheduledJobs
@@ -26,7 +26,7 @@ module Service.Env
   , logger
   , messageChan
   , mqttClient
-  , mqttDispatch
+  , subscriptions
   , notAlreadyRestarted
   , restartConditions
   , scheduledJobs
@@ -47,7 +47,7 @@ import Network.MQTT.Topic (Topic, unTopic)
 import Service.App.Logger (Logger (..))
 import qualified Service.Automation as Automation
 import Service.Automation (Automation)
-import Service.AutomationName (AutomationName)
+import Service.AutomationName (AutomationName(..))
 import Service.Device (Device, DeviceId)
 import Service.Env.Config (Config, LogLevel (..), MQTTConfig (..), automationServiceTopic,
                            configDecoder, dbPath, httpPort, logFilePath, logLevel, luaScriptPath,
@@ -77,9 +77,8 @@ invertRegistrations = M.foldlWithKey'
      foldl' (\inverted' v -> M.insertWith (<>) v (k :| []) inverted') inverted)
   M.empty
 
-
 type MsgAction = Topic -> ByteString -> IO ()
-type MQTTDispatch = HashMap Topic (NonEmpty MsgAction)
+type Subscriptions = HashMap Topic (HashMap AutomationName MsgAction)
 
 type ScheduledJobs =
   HashMap Daemon.JobId (Daemon.AutomationSchedule, Daemon.Message, ThreadId)
@@ -98,7 +97,7 @@ data Env logger mqttClient = Env
   { _config              :: Config
   , _logger              :: logger
   , _mqttClient          :: mqttClient
-  , _mqttDispatch        :: TVar MQTTDispatch
+  , _subscriptions       :: TVar Subscriptions
   , _daemonBroadcast     :: TChan Daemon.Message
   , _automationBroadcast :: TChan Automation.Message
   , _messageChan         :: TChan Daemon.Message
@@ -122,7 +121,7 @@ initialize
   :: (Logger logger, MQTTClient mqttClient)
   => FilePath
   -> (Config -> IO (logger, IO ()))
-  -> (Config -> logger -> TVar MQTTDispatch -> IO (mqttClient, IO ()))
+  -> (Config -> logger -> TVar Subscriptions -> IO (mqttClient, IO ()))
   -> IO (Env logger mqttClient)
 initialize configFilePath mkLogger mkMQTTClient = do
   -- need to handle a configuration error? Dhall provides a lot of error output
@@ -132,12 +131,12 @@ initialize configFilePath mkLogger mkMQTTClient = do
 
   (logger', loggerCleanup) <- mkLogger config'
 
-  mqttDispatch' <- newTVarIO $ defaultTopicActions config' daemonBroadcast'
-  (mc, mcCleanup) <- mkMQTTClient config' logger' mqttDispatch'
+  subscriptions' <- newTVarIO $ defaultTopicActions config' daemonBroadcast'
+  (mc, mcCleanup) <- mkMQTTClient config' logger' subscriptions'
 
   automationBroadcast' <- newBroadcastTChanIO
 
-  Env config' logger' mc mqttDispatch' daemonBroadcast' automationBroadcast'
+  Env config' logger' mc subscriptions' daemonBroadcast' automationBroadcast'
     <$> (atomically $ dupTChan daemonBroadcast') -- messageChan
     <*> (newTVarIO M.empty) -- devices
     <*> (newTVarIO M.empty) -- deviceRegistrations
@@ -150,38 +149,44 @@ initialize configFilePath mkLogger mkMQTTClient = do
     <*> (newTVarIO "")      -- groupsRawJSON
     <*> pure (loggerCleanup >> mcCleanup)
 
+defaultTopicActions :: Config -> TChan Daemon.Message -> Subscriptions
+defaultTopicActions config' daemonBroadcast' =
+  let
+    (automationServiceTopic', statusTopic') =
+      config' ^. mqttConfig . lensProduct automationServiceTopic statusTopic
+    setTopic = parseTopic . (<> "/set") . unTopic $ automationServiceTopic'
+  in
+    M.fromList
+      [ ( setTopic
+        , M.singleton Null (\_topic msg -> for_ (decode msg) $ write daemonBroadcast')
+        )
+
+      , ( Zigbee2MQTT.devicesTopic
+        , M.singleton Null
+          (\_topic msg ->
+             case decode msg of
+               Just [] -> pure ()
+               Nothing -> pure ()
+               Just devicesJSON ->
+                 write daemonBroadcast' $ Daemon.DeviceUpdate devicesJSON msg
+          )
+        )
+
+      , ( Zigbee2MQTT.groupsTopic
+        , M.singleton Null
+          (\_topic msg ->
+             case decode msg of
+               Just [] -> pure ()
+               Nothing -> pure ()
+               Just groupsJSON ->
+                 write daemonBroadcast' $ Daemon.GroupUpdate groupsJSON msg
+          )
+        )
+
+      , ( statusTopic'
+        , M.singleton Null (\_topic _msg -> write daemonBroadcast' Daemon.Status)
+        )
+      ]
   where
     write :: TChan Daemon.Message -> Daemon.Message -> IO ()
-    write daemonBroadcast' = atomically . writeTChan daemonBroadcast'
-
-    defaultTopicActions config' daemonBroadcast' =
-      let
-        (automationServiceTopic', statusTopic') =
-          config' ^. mqttConfig . lensProduct automationServiceTopic statusTopic
-        setTopic = parseTopic . (<> "/set") . unTopic $ automationServiceTopic'
-      in
-        M.fromList
-          [ (setTopic, (\_topic msg -> for_ (decode msg) $ write daemonBroadcast') :| [])
-
-          , (Zigbee2MQTT.devicesTopic,
-             (\_topic msg ->
-                case decode msg of
-                  Just [] -> pure ()
-                  Nothing -> pure ()
-                  Just devicesJSON -> do
-                    write daemonBroadcast' $ Daemon.DeviceUpdate devicesJSON msg
-             ) :| []
-            )
-
-          , (Zigbee2MQTT.groupsTopic,
-             (\_topic msg ->
-                case decode msg of
-                  Just [] -> pure ()
-                  Nothing -> pure ()
-                  Just groupsJSON -> do
-                    write daemonBroadcast' $ Daemon.GroupUpdate groupsJSON msg
-             ) :| []
-            )
-
-          , (statusTopic', (\_topic _msg -> write daemonBroadcast' Daemon.Status) :| [])
-          ]
+    write daemonBroadcast'' = atomically . writeTChan daemonBroadcast''

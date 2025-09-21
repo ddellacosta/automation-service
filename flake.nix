@@ -10,11 +10,14 @@
     flake-utils.url = "github:numtide/flake-utils";
     mkSpagoDerivation.url = "github:jeslie0/mkSpagoDerivation";
     ps-overlay.url = "github:thomashoneyman/purescript-overlay";
+    purescript-registry = {
+      url = "github:purescript/registry";
+      flake = false;
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, mkSpagoDerivation, ps-overlay }:
+  outputs = { self, nixpkgs, flake-utils, mkSpagoDerivation, ps-overlay, purescript-registry }:
     flake-utils.lib.eachSystem ["x86_64-linux"] (system:
-      # with nixpkgs.legacyPackages.${system};
       let
         pkgs = import nixpkgs {
           inherit system;
@@ -33,7 +36,28 @@
           pkgs.buildNpmPackage {
             name = "automation-service-npm-deps";
             # prefetch-npm-deps package-lock.json
-            npmDepsHash = "sha256-X5In3SxY2ANptnAQ4ORNHjCdhkDpnv/j6KKmpSg3Ico=";
+            npmDepsHash = "sha256-LxT+rS1TtlAw1iiClqXisTijXl8idvMQLCdOiaWuMVM=";
+            src = ./.;
+            nodejs = node_version;
+            # need this for spago and logging
+            makeCacheWriteable = true;
+            dontNpmBuild = true;
+
+            installPhase = ''
+              runHook preInstall
+
+              mkdir -p $out/lib
+              cp -r node_modules $out/lib
+
+              runHook postInstall
+            '';
+          };
+
+        automation-service-ui-npm-deps =
+          pkgs.buildNpmPackage {
+            name = "automation-service-ui-npm-deps";
+            # prefetch-npm-deps package-lock.json
+            npmDepsHash = "sha256-4sWlMyeFAu/4FkWVqANyJiyQbub5WZWB6bok3ZFav00=";
             src = ./ui;
             nodejs = node_version;
             # need this for spago and logging
@@ -61,48 +85,19 @@
             src = ./ui;
 
             nativeBuildInputs = [
-              automation-service-npm-deps
+              automation-service-ui-npm-deps
               node_version
-              pkgs.chromium
               pkgs.esbuild
               pkgs.purs
               pkgs.spago-unstable
-              pkgs.which
             ];
-
-            version = "0.1.0";
 
             buildPhase = ''
               runHook preBuild
 
-              ln -sf ${automation-service-npm-deps}/lib/node_modules ./node_modules
-              cp node_modules/mocha/mocha.js node_modules/mocha/mocha.css test/browser/
+              ln -sf ${automation-service-ui-npm-deps}/lib/node_modules ./node_modules
 
-              spago bundle -p automation-service-test
-
-              #  > \Error: Failed to launch the browser process!
-              #        > [342:342:0206/014943.932611:FATAL:setuid_sandbox_host.cc(163)]
-              # The SUID sandbox helper binary was found, but is not
-              # configured correctly. Rather than run without
-              # sandboxing I'm aborting now. You need to make sure
-              # that /nix/store/499bwk374kxvq6kylfwqgcx70h40zyas-chromium-129.0.6668.100-sandbox/bin/__chromium-suid-sandbox
-              # is owned by root and has mode 4755.
-              #
-              # '--no-sandbox' is the hacky unsafe solution to the above. See e.g.
-              # https://github.com/flathub/com.visualstudio.code/issues/223
-              npx mocha-headless-chrome \
-                -t 60000 \
-                -e $(which chromium) \
-                -a no-sandbox \
-                -a disable-setuid-sandbox \
-                -a allow-file-access-from-files \
-                -f test/browser/index.html
-
-              # dump out chrome logs to the file chrome_debug.log in
-              # the current directory
-              # npx mocha-headless-chrome -t 60000 -p raf -e $(which chromium) -a v=1 -a enable-logging -a user-data-dir=./ -a no-sandbox -a disable-setuid-sandbox -a allow-file-access-from-files -f test/browser/index.html
-              # cat chrome_debug.log
-
+              # Build the application bundle (no tests)
               spago bundle -p automation-service
 
               cd css
@@ -114,13 +109,30 @@
 
             installPhase = ''
               runHook preInstall
-
               mkdir -p $out/ui
               cp -r . $out/ui/.
-
               runHook postInstall
             '';
           };
+
+        automation-service-ui-test =
+          import ./nix/frontend-test.nix {
+            inherit automation-service-ui-npm-deps node_version pkgs;
+          };
+
+        haskellOverrides = self: super: {
+          astro = hl.dontCheck (hl.markUnbroken super.astro);
+
+          # https://github.com/stoeffel/tasty-test-reporter/pull/13
+          tasty-test-reporter = self.callCabal2nix "tasty-test-reporter"
+            (pkgs.fetchFromGitHub {
+              owner = "jberthold";
+              repo = "tasty-test-reporter";
+              rev = "3abbfa942553f0986393af44eda0cb69bcaba6ad";
+              # ref = "bump-upper-bounds-and-enable-tasty-1.5";
+              sha256 = "sha256-lyOmsC4nm5ofmRrUawkXFERzyU0WERlZ3x+g/7l7sCM=";
+            }) {};
+        };
 
         automation-service = devTools:
           let
@@ -130,21 +142,16 @@
             ]);
           in
             haskellPackages.developPackage {
-              # this prevents CHANGELOG/LICENSE/etc. from being found
-              # root = lib.sourceFilesBySuffices ./. [ ".cabal" ".hs" ];
               root = ./.;
               name = name;
               returnShellEnv = !(devTools == []);
 
-              # https://hydra.nixos.org/build/225575437
-              # https://github.com/ddellacosta/automation-service/issues/8
-              overrides = _self: super: {
-                astro = hl.dontCheck (hl.markUnbroken super.astro);
-              };
+              overrides = haskellOverrides;
 
               modifier = (t.flip t.pipe) [
                 addBuildTools
                 hl.dontHaddock
+                hl.dontCheck # Don't run tests during build
                 hl.enableExecutableProfiling
                 (drv: hl.overrideCabal drv (attrs: {
                   configureFlags = [
@@ -154,11 +161,20 @@
               ];
             };
 
+        automation-service-test =
+          import ./nix/backend-test.nix {
+            inherit automation-service-npm-deps node_version pkgs; 
+            overrides = haskellOverrides;
+          };
+
       in {
         packages = {
-          automation-service = automation-service [ ];
           automation-service-npm-deps = automation-service-npm-deps;
           automation-service-ui = automation-service-ui;
+          automation-service-ui-test = automation-service-ui-test;
+
+          automation-service = automation-service [ ];
+          automation-service-test = automation-service-test;
 
           default = pkgs.dockerTools.buildImage {
             name = "automation-service";
@@ -205,9 +221,11 @@
           haskell-language-server
           hlint
           node_version
+          pkgs.allure
           pkgs.chromium
           pkgs.esbuild
           pkgs.jq
+          pkgs.libxml2 # for xmllint
           pkgs.lua
           pkgs.mosquitto
           pkgs.prefetch-npm-deps

@@ -106,7 +106,7 @@ mkRunAutomation port broadcastChan = do
       -> TVar (HashMap GroupId Group)
       -> TChan Daemon.Message
       -> WS.ServerApp
-    ws logger' devicesRaw groupsRaw devicesTV groupsTV daemonBC pending  = do
+    ws logger' devicesRaw groupsRaw devicesTV groupsTV daemonBC pending = do
       logDebugMsg logger' "WebSockets connected"
       conn <- WS.acceptRequest pending
 

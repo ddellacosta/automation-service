@@ -15,6 +15,7 @@
     "@uiw/react-color-wheel": "^2.3.2",
     "color-convert": "^2.0.1",
     "mocha": "^11.0.1",
+    "mocha-ctrf-json-reporter": "^0.0.9",
     "mocha-headless-chrome": "^3.1.0",
     "purescript-language-server": "^0.18.2",
     "purs-tidy": "^0.11.0",

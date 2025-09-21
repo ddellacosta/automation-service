@@ -10,6 +10,7 @@ module Service.App
   , publish
   , runAutomationService
   , subscribe
+  , unsubscribe
   , warn
   )
   where
@@ -101,6 +102,13 @@ subscribe
   -> m ()
 subscribe topic =
   view mqttClient >>= \mc -> liftIO $ subscribeMQTT mc topic
+
+unsubscribe
+  :: (Logger l, MQTTClient mc, MonadReader (Env l mc) m, MonadIO m)
+  => Topic
+  -> m ()
+unsubscribe topic =
+  view mqttClient >>= \mc -> liftIO $ unsubscribeMQTT mc topic
 
 
 -- not sure where to put this, but eventually I want to just get rid

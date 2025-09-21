@@ -1,4 +1,4 @@
-module Main where
+module Main (main) where
 
 import Prelude hiding (log)
 
@@ -11,7 +11,7 @@ import qualified Service.App as App
 import Service.App (Logger)
 import qualified Service.Daemon as Daemon
 import qualified Service.Env as Env
-import Service.Env (Config, MQTTDispatch, logLevel, mqttConfig)
+import Service.Env (Config, Subscriptions, logLevel, mqttConfig)
 import Service.MQTT.Client (initMQTTClient, mqttClientCallback)
 import System.Log.FastLogger (TimedFastLogger, newTimedFastLogger)
 import UnliftIO.STM (TVar, readTVarIO)
@@ -30,18 +30,18 @@ mkMQTTClient
   :: (Logger logger)
   => Config
   -> logger
-  -> TVar MQTTDispatch
+  -> TVar Subscriptions
   -> IO (MQTT.MQTTClient, IO ())
-mkMQTTClient config logger mqttDispatch = do
-  mqttDispatch' <- readTVarIO mqttDispatch
+mkMQTTClient config logger subscriptions = do
+  subscriptions' <- readTVarIO subscriptions
 
   let
     (mqttConfig', logLevelSet) = config ^. lensProduct mqttConfig logLevel
-    mqttSubs = flip M.foldMapWithKey mqttDispatch' $ \topic _action ->
+    mqttSubs = flip M.foldMapWithKey subscriptions' $ \topic _action ->
       [(toFilter topic, MQTT.subOptions)]
 
   -- handle errors from not being able to connect, etc.?
-  mc <- initMQTTClient (mqttClientCallback logLevelSet logger mqttDispatch) mqttConfig'
+  mc <- initMQTTClient (mqttClientCallback logLevelSet logger subscriptions) mqttConfig'
   (_eithers, _props) <- MQTT.subscribe mc mqttSubs []
 
   pure (mc, MQTT.normalDisconnect mc)

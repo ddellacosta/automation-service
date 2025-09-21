@@ -51,9 +51,10 @@ decodeGroup devices groupJson = do
       :: forall a. (Json -> Either JsonDecodeError a)
       -> Array Json
       -> Either JsonDecodeError (Array a)
-    decodeGroupResource decodeFn grs = case (filter isRight $ decodeFn <$> grs) of
-      [] -> Right []
-      grs' -> sequence grs'
+    decodeGroupResource decodeFn grs =
+      case (filter isRight $ decodeFn <$> grs) of
+        [] -> Right []
+        grs' -> sequence grs'
 
     decodeMember :: Devices -> Json -> Either JsonDecodeError GroupDevice
     decodeMember devices' memberJson = do

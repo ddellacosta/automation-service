@@ -1,6 +1,13 @@
 name: "Build (feature branch) or build and publish image to ghcr.io (main branch)"
 
-on: push
+on:
+  push:
+    branches:
+      - "**"
+      - "!gh-pages"   # prevent publish loop
+
+permissions:
+  contents: write
 
 env:
   IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
@@ -8,8 +15,256 @@ env:
   REGISTRY_PASSWORD: ${{ github.token }}
 
 jobs:
+  build-frontend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v25
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: cachix/cachix-action@v14
+        with:
+          name: ddellacosta
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+      - name: Build frontend allure-results via Nix
+        run: |
+          nix build .#automation-service-ui-test -o frontend-out
+
+      - name: Collect frontend artifacts
+        run: |
+          FE_ALLURE_RESULTS="frontend-out/share/allure-results"
+          if [ ! -d "$FE_ALLURE_RESULTS" ]; then
+            echo "Frontend allure-results not found at $FE_ALLURE_RESULTS" >&2
+            find frontend-out -maxdepth 6 -type d -name 'allure-results' -print | sed 's/^/  -> /' || true
+            exit 1
+          fi
+          cp -a "$FE_ALLURE_RESULTS" allure-results-frontend
+
+          FE_TEST_EXIT_CODE="frontend-out/share/test-exit-code"
+          if [ ! -f "$FE_TEST_EXIT_CODE" ]; then
+            echo "Frontend test-exit-code not found at $FE_TEST_EXIT_CODE" >&2
+            find frontend-out -maxdepth 6 -type d -name 'test-exit-code' -print | sed 's/^/  -> /' || true
+            exit 1
+          fi
+          cp -a "$FE_TEST_EXIT_CODE" test-exit-code-frontend
+
+      - name: Upload frontend allure-results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-frontend
+          path: allure-results-frontend
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload frontend test-exit-code artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-exit-code-frontend
+          path: test-exit-code-frontend
+          if-no-files-found: error
+          retention-days: 7
+
+  build-backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v25
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: cachix/cachix-action@v14
+        with:
+          name: ddellacosta
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+      - name: Build backend allure-results via Nix
+        run: |
+          nix build .#automation-service-test -o backend-out
+
+      - name: Collect backend allure-results
+        run: |
+          BE_ALLURE_RESULTS="backend-out/share/allure-results"
+          if [ ! -d "$BE_ALLURE_RESULTS" ]; then
+            echo "Backend allure-results not found at $BE_ALLURE_RESULTS" >&2
+            find backend-out -maxdepth 6 -type d -name 'allure-results' -print | sed 's/^/  -> /' || true
+            exit 1
+          fi
+          cp -a "$BE_ALLURE_RESULTS" allure-results-backend
+
+          BE_TEST_EXIT_CODE="backend-out/share/test-exit-code"
+          if [ ! -f "$BE_TEST_EXIT_CODE" ]; then
+            echo "Backend test-exit-code not found at $BE_TEST_EXIT_CODE" >&2
+            find backend-out -maxdepth 6 -type d -name 'test-exit-code' -print | sed 's/^/  -> /' || true
+            exit 1
+          fi
+          cp -a "$BE_TEST_EXIT_CODE" test-exit-code-backend
+
+      - name: Upload backend results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-backend
+          path: allure-results-backend
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload backend test-exit-code artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-exit-code-backend
+          path: test-exit-code-backend
+          if-no-files-found: error
+          retention-days: 7
+
+  # Single publisher to avoid gh-pages push conflicts
+  publish-reports:
+    needs: [build-frontend-tests, build-backend-tests]
+
+    # Skip publishing for forked PRs that can't push to gh-pages
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+
+    # Ensure only one publish job (across all workflow runs) pushes at a time
+    concurrency:
+      group: gh-pages-publish-${{ github.repository }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download frontend results
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-results-frontend
+          path: allure-results-frontend
+
+      - name: Download backend results
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-results-backend
+          path: allure-results-backend
+
+      - name: Initialize gh-pages branch if missing
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Check if gh-pages exists on origin
+          if ! git ls-remote --exit-code --heads "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages >/dev/null 2>&1; then
+            echo "Initializing gh-pages branch..."
+            tmpdir="$(mktemp -d)"
+            pushd "$tmpdir" >/dev/null
+            git init
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            echo "<!doctype html><meta charset=utf-8><title>Allure Reports</title><h1>Allure Reports</h1>" > index.html
+            touch .nojekyll
+            git add .
+            git commit -m "Initialize gh-pages branch"
+            git branch -M gh-pages
+            git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            git push -u origin gh-pages
+            popd >/dev/null
+            rm -rf "$tmpdir"
+          else
+            echo "gh-pages already exists."
+          fi
+
+      # Try to fetch existing gh-pages (may not exist on first run)
+      - name: Checkout gh-pages (if exists)
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          ref: gh-pages
+          path: ghp
+
+      - name: Allure Report Action - Frontend Tests
+        uses: mgrybyk-org/allure-report-branch-js-action@v1
+        if: always()
+        continue-on-error: true
+        id: allure-frontend # used in comment to PR
+        with:
+          report_id: 'frontend-tests'
+          gh_pages: 'ghp'
+          report_dir: 'allure-results-frontend'
+
+      - name: Allure Report Action - Backend Tests
+        uses: mgrybyk-org/allure-report-branch-js-action@v1
+        if: always()
+        continue-on-error: true
+        id: allure-backend # used in comment to PR
+        with:
+          report_id: 'backend-tests'
+          gh_pages: 'ghp'
+          report_dir: 'allure-results-backend'
+
+      - name: Git Commit and Push Action
+        uses: mgrybyk-org/git-commit-pull-push-action@v1
+        if: always()
+        with:
+          repository: ghp
+          branch: gh-pages
+          pull_args: --rebase -X ours
+
+  verify-tests:
+    needs: [build-frontend-tests, build-backend-tests]
+    runs-on: ubuntu-latest
+  
+    steps:
+      - name: Download frontend test-exit-status artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: test-exit-code-frontend
+          path: test-exit-code-frontend
+  
+      - name: Download backend test-exit-status artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: test-exit-code-backend
+          path: test-exit-code-backend
+  
+      - name: Fail if frontend or backend tests failed
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          fe="test-exit-code-frontend/test-exit-code-frontend"
+          be="test-exit-code-backend/test-exit-code-backend"
+  
+          missing=0
+          [[ -f "$fe" ]] || { echo "Missing $fe from artifact 'test-exit-code-frontend'"; missing=1; }
+          [[ -f "$be" ]] || { echo "Missing $be from artifact 'test-exit-code-backend'";  missing=1; }
+          if (( missing )); then
+            echo "One or more required test-exit-code files are missing."
+            exit 1
+          fi
+  
+          fe_code=$(<"$fe")
+          be_code=$(<"$be")
+  
+          failed=0
+          if [[ "$fe_code" -ne 0 ]]; then
+            echo "Frontend tests failed"
+            failed=1
+          fi
+          if [[ "$be_code" -ne 0 ]]; then
+            echo "Backend tests failed"
+            failed=1
+          fi
+          exit $failed
+
   build-only:
     if: github.ref_name != 'main'
+    needs: [verify-tests]
     name: Build image to confirm a successful build
     runs-on: ubuntu-latest
 
@@ -17,9 +272,14 @@ jobs:
       - name: Checkout Push to Registry action
         uses: actions/checkout@v3
 
-      - uses: cachix/install-nix-action@v20
+      - uses: cachix/install-nix-action@v25
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: cachix/cachix-action@v14
+        with:
+          name: ddellacosta
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
       - name: Build
         id: build
@@ -27,6 +287,7 @@ jobs:
 
   build-and-push:
     if: github.ref_name == 'main'
+    needs: [verify-tests]
     name: Build and push image
     runs-on: ubuntu-latest
 
@@ -34,9 +295,14 @@ jobs:
       - name: Checkout Push to Registry action
         uses: actions/checkout@v3
 
-      - uses: cachix/install-nix-action@v20
+      - uses: cachix/install-nix-action@v25
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: cachix/cachix-action@v14
+        with:
+          name: ddellacosta
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
       - name: Log in to the Container registry
         uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
