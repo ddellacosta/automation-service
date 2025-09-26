@@ -1,17 +1,13 @@
 { automation-service-npm-deps
+, automation-service-ui
 , node_version
-, overrides
+, haskellPackages
 , pkgs
 , src ? ../.
 }:
 
 let
   hl = pkgs.haskell.lib;
-
-  # Customize the Haskell package set if needed
-  haskellPackages = pkgs.haskell.packages.ghc964.override {
-    overrides = overrides;
-  };
 
   base = haskellPackages.callCabal2nix "automation-service" src { };
   baseNoDocs = hl.dontHaddock base;
