@@ -107,7 +107,7 @@ branchRunRowHtml branch suite idx fileData = do
 
     testRunLink :: String -> H.AttributeValue
     testRunLink runUniqueId = fromString $
-      allurePath branch suite <> "/" <> runUniqueId <> "/"
+      "/" <> allurePath branch suite <> "/" <> runUniqueId <> "/"
 
 --
 -- Does the majority of the heavy lifting with stuffing branch rows
@@ -231,6 +231,7 @@ branchesPage branches = do
 --
 generateSite :: IO ()
 generateSite = do
+  -- should probably make this configurable at some point
   setCurrentDirectory "ghp"
   files <- listDirectory "allure-action"
   branchesRuns :: [(Integer, String, [(String, [Html])])] <- branchesRunsHtml files
