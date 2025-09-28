@@ -26,7 +26,23 @@
         };
         t = pkgs.lib.trivial;
         hl = pkgs.haskell.lib;
-        haskellPackages = pkgs.haskell.packages.ghc964;
+        haskellPackagesWithoutOverrides = pkgs.haskell.packages.ghc964;
+
+        haskellPackages = haskellPackagesWithoutOverrides.override {
+          overrides = self: super: {
+            astro = hl.dontCheck (hl.markUnbroken super.astro);
+
+            # https://github.com/stoeffel/tasty-test-reporter/pull/13
+            tasty-test-reporter = self.callCabal2nix "tasty-test-reporter"
+              (pkgs.fetchFromGitHub {
+                owner = "jberthold";
+                repo = "tasty-test-reporter";
+                rev = "3abbfa942553f0986393af44eda0cb69bcaba6ad";
+                # ref = "bump-upper-bounds-and-enable-tasty-1.5";
+                sha256 = "sha256-lyOmsC4nm5ofmRrUawkXFERzyU0WERlZ3x+g/7l7sCM=";
+              }) {};
+          };
+        };
 
         name = "automation-service";
 
@@ -120,23 +136,9 @@
             inherit automation-service-ui-npm-deps node_version pkgs;
           };
 
-        haskellOverrides = self: super: {
-          astro = hl.dontCheck (hl.markUnbroken super.astro);
-
-          # https://github.com/stoeffel/tasty-test-reporter/pull/13
-          tasty-test-reporter = self.callCabal2nix "tasty-test-reporter"
-            (pkgs.fetchFromGitHub {
-              owner = "jberthold";
-              repo = "tasty-test-reporter";
-              rev = "3abbfa942553f0986393af44eda0cb69bcaba6ad";
-              # ref = "bump-upper-bounds-and-enable-tasty-1.5";
-              sha256 = "sha256-lyOmsC4nm5ofmRrUawkXFERzyU0WERlZ3x+g/7l7sCM=";
-            }) {};
-        };
-
-        automation-service = devTools:
+        automation-service =
           let
-            addBuildTools = (t.flip hl.addBuildTools) (devTools ++ [
+            addBuildTools = (t.flip hl.addBuildTools) ( [
               automation-service-ui
               pkgs.zlib
             ]);
@@ -144,14 +146,11 @@
             haskellPackages.developPackage {
               root = ./.;
               name = name;
-              returnShellEnv = !(devTools == []);
-
-              overrides = haskellOverrides;
 
               modifier = (t.flip t.pipe) [
                 addBuildTools
                 hl.dontHaddock
-                hl.dontCheck # Don't run tests during build
+                hl.dontCheck # Don't run tests during real build
                 hl.enableExecutableProfiling
                 (drv: hl.overrideCabal drv (attrs: {
                   configureFlags = [
@@ -161,11 +160,50 @@
               ];
             };
 
+        #
+        # I need this separate for a dev environment because
+        # apparently hl.dontCheck prevents my test dependency
+        # overrides (tasty-test-reporter) from being visible to cabal:
+        #
+        automation-service-dev =
+          haskellPackages.developPackage {
+            root = ./.;
+            name = name;
+            returnShellEnv = true;
+
+            modifier = (t.flip t.pipe) [
+              hl.dontHaddock
+              hl.enableExecutableProfiling
+              (drv: hl.overrideCabal drv (attrs: {
+                configureFlags = [
+                  "--ghc-options=-fprof-auto -fno-prof-count-entries"
+                ];
+              }))
+            ];
+          };
+
         automation-service-test =
           import ./nix/backend-test.nix {
-            inherit automation-service-npm-deps node_version pkgs; 
-            overrides = haskellOverrides;
+            inherit automation-service-npm-deps automation-service-ui haskellPackages node_version pkgs;
           };
+
+        allure-site-generator = devTools:
+          let
+            addBuildTools = (t.flip hl.addBuildTools) (devTools ++ [
+              pkgs.zlib
+            ]);
+          in
+            haskellPackages.developPackage {
+              root = ./generate-allure-site/.;
+              name = "generate-allure-site";
+              returnShellEnv = !(devTools == []);
+
+              modifier = (t.flip t.pipe) [
+                addBuildTools
+                hl.dontHaddock
+                hl.enableExecutableProfiling
+              ];
+            };
 
       in {
         packages = {
@@ -173,8 +211,10 @@
           automation-service-ui = automation-service-ui;
           automation-service-ui-test = automation-service-ui-test;
 
-          automation-service = automation-service [ ];
+          automation-service = automation-service;
           automation-service-test = automation-service-test;
+
+          allure-site-generator = allure-site-generator [];
 
           default = pkgs.dockerTools.buildImage {
             name = "automation-service";
@@ -213,28 +253,32 @@
           };
         };
 
-        devShell = automation-service (with haskellPackages; [
-          cabal-fmt
-          cabal-install
-          ghc-events
-          ghcid
-          haskell-language-server
-          hlint
-          node_version
-          pkgs.allure
-          pkgs.chromium
-          pkgs.esbuild
-          pkgs.jq
-          pkgs.libxml2 # for xmllint
-          pkgs.lua
-          pkgs.mosquitto
-          pkgs.prefetch-npm-deps
-          pkgs.purs
-          pkgs.skopeo # for calculating sha256 of docker image
-          pkgs.spago-unstable
-          pkgs.watchexec
-          stylish-haskell
-          # threadscope # marked as broken :-(
-        ]);
+        devShell = pkgs.mkShell {
+          inputsFrom = [ automation-service-dev ];
+          nativeBuildInputs = (with haskellPackages; [
+            cabal-fmt
+            cabal-install
+            ghc-events
+            ghcid
+            haskell-language-server
+            hlint
+            node_version
+            pkgs.allure
+            pkgs.chromium
+            pkgs.esbuild
+            pkgs.jq
+            pkgs.libxml2 # for xmllint
+            pkgs.lua
+            pkgs.mosquitto
+            pkgs.prefetch-npm-deps
+            pkgs.purs
+            pkgs.skopeo # for calculating sha256 of docker image
+            pkgs.spago-unstable
+            pkgs.watchexec
+            pkgs.zlib
+            stylish-haskell
+            # threadscope # marked as broken :-(
+          ]);
+        };
       });
 }

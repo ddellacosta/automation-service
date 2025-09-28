@@ -1,3 +1,0 @@
-constraints: lua +system-lua +pkg-config +apicheck
-ignore-project: False
-tests: True

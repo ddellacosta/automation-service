@@ -1,0 +1,53 @@
+cabal-version:      3.4
+name:               generate-allure-site
+version:            0.1.0.0
+-- synopsis:
+-- description:
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Dave Della Costa
+maintainer:         ddellacosta@gmail.com
+-- copyright:
+category:           Testing
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+-- extra-source-files:
+
+common shared
+  ghc-options:      -Wall
+  default-language: GHC2021
+
+  build-depends:
+      aeson
+    , base ^>= 4.18.2.0
+    , blaze-html
+    , blaze-markup
+    , bytestring
+    , containers
+    , directory
+    , lens
+    , lens-aeson
+    , pretty-simple
+    , tagsoup 
+    , text
+    , vector
+    , wai-app-static
+    , warp
+
+  default-extensions:
+      DeriveGeneric
+    , FunctionalDependencies
+    , LambdaCase
+    , OverloadedStrings
+    , StrictData
+    , TupleSections
+
+executable generate-allure-site
+  import:           shared
+  main-is:          Main.hs
+  hs-source-dirs:   app
+
+executable serve
+  import:           shared
+  main-is:          Main.hs
+  hs-source-dirs:   app
