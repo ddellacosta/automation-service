@@ -72,8 +72,8 @@ localizedTimestamp branch suite ts idx' = H.td $ do
 -- and I need to check the data or make this more robust. For now it's
 -- not worth the effort.
 --
-branchRunRowHtml :: String -> String -> Int -> ByteString -> Maybe (Integer, [Html])
-branchRunRowHtml branch suite idx fileData = do
+branchRunRowHtml :: String -> String -> String -> Int -> ByteString -> Maybe (Integer, [Html])
+branchRunRowHtml rootPrefix branch suite idx fileData = do
   runUniqueId <- fileData ^? nth idx . key "runUniqueId" . _String
 
   let
@@ -107,15 +107,15 @@ branchRunRowHtml branch suite idx fileData = do
 
     testRunLink :: String -> H.AttributeValue
     testRunLink runUniqueId = fromString $
-      allurePath branch suite <> "/" <> runUniqueId <> "/"
+      rootPrefix <> allurePath branch suite <> "/" <> runUniqueId <> "/"
 
 --
 -- Does the majority of the heavy lifting with stuffing branch rows
 -- into Html (tr) and extracting the most recent timestamp from each
 -- branch so we can compare later for sorting.
 --
-branchesRunsHtml :: [String] -> IO [(Integer, String, [(String, [Html])])]
-branchesRunsHtml branches =
+branchesRunsHtml :: String -> [String] -> IO [(Integer, String, [(String, [Html])])]
+branchesRunsHtml rootPrefix branches =
   for branches $ \branch -> do
 
     -- collects the most recent timestamp and tuples of
@@ -140,7 +140,7 @@ branchesRunsHtml branches =
               let
                 (newTimestamp, branchSuiteRowHtml) =
                   fromMaybe (0, []) $
-                    branchRunRowHtml branch suite idx fileData
+                    branchRunRowHtml rootPrefix branch suite idx fileData
               in
                 (max newTimestamp maxTimestamp, branchSuiteHtml <> branchSuiteRowHtml)
 
@@ -223,6 +223,14 @@ branchesPage branches = do
         H.h2 ! A.class_ "m-2 p-1" $ "automation-service - Branch Test Runs"
         branches
 
+getRootPrefix :: IO String
+getRootPrefix = do
+  args <- getArgs
+  pure $ 
+    case args of
+      (rp:_) -> rp
+      _     -> ""
+
 --
 -- this is hacky test page generation code and I'm not being very
 -- careful about configuration, so keep in mind how many assumptions
@@ -231,9 +239,11 @@ branchesPage branches = do
 --
 generateSite :: IO ()
 generateSite = do
+  -- should probably make this configurable at some point
   setCurrentDirectory "ghp"
   files <- listDirectory "allure-action"
-  branchesRuns :: [(Integer, String, [(String, [Html])])] <- branchesRunsHtml files
+  rootPrefix <- getRootPrefix
+  branchesRuns :: [(Integer, String, [(String, [Html])])] <- branchesRunsHtml rootPrefix files
   let
     branchesRuns' = sortBy (\(ts1, _, _) (ts2, _, _) -> compare ts2 ts1) branchesRuns
     branchesRunsOutput =

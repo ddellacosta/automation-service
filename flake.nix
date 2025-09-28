@@ -165,22 +165,31 @@
         # apparently hl.dontCheck prevents my test dependency
         # overrides (tasty-test-reporter) from being visible to cabal:
         #
-        automation-service-dev =
-          haskellPackages.developPackage {
-            root = ./.;
-            name = name;
-            returnShellEnv = true;
+        automation-service-dev = devTools:
+          let
+            addBuildTools = (t.flip hl.addBuildTools) (devTools ++ [
+              automation-service-ui
+              pkgs.zlib
+            ]);
+          in
+            haskellPackages.developPackage {
+              # this prevents CHANGELOG/LICENSE/etc. from being found
+              # root = lib.sourceFilesBySuffices ./. [ ".cabal" ".hs" ];
+              root = ./.;
+              name = name;
+              returnShellEnv = true;
 
-            modifier = (t.flip t.pipe) [
-              hl.dontHaddock
-              hl.enableExecutableProfiling
-              (drv: hl.overrideCabal drv (attrs: {
-                configureFlags = [
-                  "--ghc-options=-fprof-auto -fno-prof-count-entries"
-                ];
-              }))
-            ];
-          };
+              modifier = (t.flip t.pipe) [
+                addBuildTools
+                hl.dontHaddock
+                hl.enableExecutableProfiling
+                (drv: hl.overrideCabal drv (attrs: {
+                  configureFlags = [
+                    "--ghc-options=-fprof-auto -fno-prof-count-entries"
+                  ];
+                }))
+              ];
+            };
 
         automation-service-test =
           import ./nix/backend-test.nix {
@@ -253,32 +262,35 @@
           };
         };
 
-        devShell = pkgs.mkShell {
-          inputsFrom = [ automation-service-dev ];
-          nativeBuildInputs = (with haskellPackages; [
-            cabal-fmt
-            cabal-install
-            ghc-events
-            ghcid
-            haskell-language-server
-            hlint
-            node_version
-            pkgs.allure
-            pkgs.chromium
-            pkgs.esbuild
-            pkgs.jq
-            pkgs.libxml2 # for xmllint
-            pkgs.lua
-            pkgs.mosquitto
-            pkgs.prefetch-npm-deps
-            pkgs.purs
-            pkgs.skopeo # for calculating sha256 of docker image
-            pkgs.spago-unstable
-            pkgs.watchexec
-            pkgs.zlib
-            stylish-haskell
-            # threadscope # marked as broken :-(
-          ]);
-        };
+        # pkgs.mkShell using inputsFrom [ automation-service-dev] and
+        # setting build inputs using nativeBuildInputs seems to not
+        # include test development dependencies so going back to this
+        # way of setting up the devShell:
+        #
+        devShell = automation-service-dev (with haskellPackages; [
+          cabal-fmt
+          cabal-install
+          ghc-events
+          ghcid
+          haskell-language-server
+          hlint
+          node_version
+          pkgs.allure
+          pkgs.chromium
+          pkgs.esbuild
+          pkgs.jq
+          pkgs.libxml2 # for xmllint
+          pkgs.lua
+          pkgs.mosquitto
+          pkgs.prefetch-npm-deps
+          pkgs.purs
+          pkgs.skopeo # for calculating sha256 of docker image
+          pkgs.spago-unstable
+          pkgs.watchexec
+          pkgs.zlib
+          stylish-haskell
+          # threadscope # marked as broken :-(
+        ]);
+
       });
 }

@@ -216,12 +216,12 @@ jobs:
           gh_pages: 'ghp'
           report_dir: 'allure-results-backend'
 
-      - name: Update Allure Index Page to Include New Branch
+      - name: Update Allure Index Page to Include Branch Runs
         shell: bash
         run: |
           set -euo pipefail
           nix build .#allure-site-generator
-          result/bin/generate-allure-site
+          result/bin/generate-allure-site /automation-service/
 
       - name: Git Commit and Push Action
         uses: mgrybyk-org/git-commit-pull-push-action@v1
