@@ -221,7 +221,7 @@ jobs:
         run: |
           set -euo pipefail
           nix build .#allure-site-generator
-          result/bin/generate-allure-site
+          result/bin/generate-allure-site /automation-service/
 
       - name: Git Commit and Push Action
         uses: mgrybyk-org/git-commit-pull-push-action@v1
