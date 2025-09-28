@@ -107,7 +107,7 @@ branchRunRowHtml branch suite idx fileData = do
 
     testRunLink :: String -> H.AttributeValue
     testRunLink runUniqueId = fromString $
-      "/" <> allurePath branch suite <> "/" <> runUniqueId <> "/"
+      "/automation-service/" <> allurePath branch suite <> "/" <> runUniqueId <> "/"
 
 --
 -- Does the majority of the heavy lifting with stuffing branch rows
