@@ -2,6 +2,8 @@
 
 [![Build and publish image to ghcr.io](https://github.com/ddellacosta/automation-service/actions/workflows/main.yml/badge.svg)](https://github.com/ddellacosta/automation-service/actions/workflows/main.yml)
 
+[Test Runs](https://ddellacosta.github.io/automation-service/test-runs/)
+
 <img style="width: 45%" src="docs/ha-custom-card.png" alt="screenshot of HA custom card" />
 
 automation-service is a tool for setting up simple-to-complicated home automations, like triggering lighting to go on when you enter a room, or reading from and responding to sensors--and much more. Its goals include:
@@ -184,6 +186,26 @@ Frontend tests:
 ```shell
 watchexec -w src -w test/src -- "spago bundle -p automation-service-test; npx mocha-headless-chrome -t 60000 -e (which chromium) -a 'allow-file-access-from-files' -f test/browser/index.html"
 ```
+
+#### Test Run Reporting - Allure Report
+
+This project uses Allure Report for generating visual reports about test runs in Github Actions (see the `publish-reports` job in [.github/workflows/main.yml](https://github.com/ddellacosta/automation-service/blob/d46654fa28acbc9c024c149dc8e63b570612a6c6/.github/workflows/main.yml#L125) for details).
+
+As part of the process to publish test run reports to Github Pages, the Haskell application in generate-allure-site is run. This application collects the branch test runs and lists all test run links in a single place, sorted by how recent runs were made in CI (https://ddellacosta.github.io/automation-service/test-runs/).
+
+You can run this locally:
+
+```shell
+# assumes gh-pages branch is at ghp, as is set in Github Actions
+> git clone --single-branch --branch gh-pages https://github.com/ddellacosta/automation-service ghp
+> nix build -L .#allure-site-generator
+> result/bin/generate-allure-site
+# this also builds a utility for serving a static site
+# it defaults to 8000 if you don't pass a port
+> cd ghp; ../result/bin/serve 8080
+```
+
+There is more manual documentation about how allure report works with each test suite [here](/docs/allure_report.md).
 
 
 ## License/Copyright

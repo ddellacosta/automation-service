@@ -243,7 +243,7 @@ generateSite = do
         (\idx (_ts, branch, branchRuns) -> branchesHtml idx branch branchRuns)
         [0..]
         branchesRuns'
-  writeFile "index.html" (renderMarkup $ branchesPage $ fold branchesRunsOutput)
+  writeFile "test-runs/index.html" (renderMarkup $ branchesPage $ fold branchesRunsOutput)
 
 serve :: IO ()
 serve = do
