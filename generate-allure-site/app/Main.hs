@@ -6,7 +6,7 @@ import Control.Lens ((^?), to)
 import Data.Aeson.Lens (_Array, _Integer, _String, key, nth)
 import Data.ByteString.Lazy (ByteString, writeFile, readFile)
 import Data.Foldable (fold, foldl', foldMap)
-import Data.List (maximum, sortBy)
+import Data.List (maximum, sortBy, zipWith)
 import Data.Maybe (Maybe, fromMaybe)
 import Data.String (String, fromString)
 import Data.Text (Text)
@@ -15,15 +15,16 @@ import Data.Traversable (for)
 import qualified Data.Vector as V
 import Network.Wai.Application.Static (defaultFileServerSettings, staticApp)
 import Network.Wai.Handler.Warp (run)
-import Prelude (FilePath, IO, Int, Integer, Show, (.), ($), (<$>), (<>), (-), (==), compare, flip, fst, succ, max, mempty, pure, show, snd)
+import Prelude (IO, Int, Integer, Show, (.), ($), (<$>), (<>), (-), (==), compare, flip, fst, max, mempty, pure, putStrLn, show, snd)
 import System.Directory (listDirectory, setCurrentDirectory)
-import System.Environment (getProgName)
+import System.Environment (getArgs, getProgName)
 import Text.Blaze ((!))
 import Text.Blaze.Html (Html, toHtml)
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
 import Text.Blaze.Internal (customAttribute)
 import Text.Blaze.Renderer.Utf8 (renderMarkup)
+import Text.Read (readMaybe)
 
 
 allurePath :: String -> String -> String
@@ -44,6 +45,7 @@ dataBsTarget = customAttribute "data-bs-target"
 dataBsParent :: H.AttributeValue -> H.Attribute
 dataBsParent = customAttribute "data-bs-parent"
 
+-- strings in Haskell, always fun
 toText :: Show a => a -> Text
 toText = T.pack . show
 
@@ -63,17 +65,15 @@ localizedTimestamp branch suite ts idx' = H.td $ do
       <> ts
       <> ").toLocaleString();"
 
-ffoldl' :: b -> [a] -> (b -> a -> b) -> b
-ffoldl' b ta f = foldl' f b ta
-
+--
+-- Kinda bad how this will fail if one of these values is a Nothing,
+-- but this is hacky utility code for generating test result views, so
+-- if nothing shows up for a bunch of rows that's my signal this broke
+-- and I need to check the data or make this more robust. For now it's
+-- not worth the effort.
+--
 branchRunRowHtml :: String -> String -> Int -> ByteString -> Maybe (Integer, [Html])
 branchRunRowHtml branch suite idx fileData = do
-  --
-  -- I love how this could all just break immediately with a single Nothing lol
-  -- I'm just hackin' on some code brah
-  --
-  -- Okay but for real Data.Aeson.Lens is sick
-  --
   runUniqueId <- fileData ^? nth idx . key "runUniqueId" . _String
 
   let
@@ -109,42 +109,55 @@ branchRunRowHtml branch suite idx fileData = do
     testRunLink runUniqueId = fromString $
       allurePath branch suite <> "/" <> runUniqueId <> "/"
 
-branchesRunsHtml :: [FilePath] -> IO [(Integer, FilePath, [(FilePath, [Html])])]
+--
+-- Does the majority of the heavy lifting with stuffing branch rows
+-- into Html (tr) and extracting the most recent timestamp from each
+-- branch so we can compare later for sorting.
+--
+branchesRunsHtml :: [String] -> IO [(Integer, String, [(String, [Html])])]
 branchesRunsHtml branches =
   for branches $ \branch -> do
-    branchRuns :: [(Integer, (FilePath, [Html]))] <-
+
+    -- collects the most recent timestamp and tuples of
+    -- suite/collected Html rows for that branch suite
+    branchRuns :: [(Integer, (String, [Html]))] <-
       for ["frontend-tests", "backend-tests"] $ \suite -> do
         fileData <- readFile $ allurePath branch suite <> "/data.json"
 
         let
-          mBranchSuiteRuns :: Maybe (Integer, [Html]) = do
-            -- "Maybe this will work"-level code
-            length <- fileData ^? _Array . to V.length
+          -- lens is kind of insane
+          length = fromMaybe 0 $ fileData ^? _Array . to V.length
 
-            pure $
-              ffoldl' (0, []) [0..(length - 1)] $ \(maxTimestamp, branchSuiteHtml) idx ->
-                let
-                  (newTimestamp, branchSuiteRowHtml) =
-                    fromMaybe (0, []) $
-                      branchRunRowHtml branch suite idx fileData
-                in
-                  (max newTimestamp maxTimestamp, branchSuiteHtml <> branchSuiteRowHtml)
+          -- already exists somewhere?
+          ffoldl' :: b -> [a] -> (b -> a -> b) -> b
+          ffoldl' b ta f = foldl' f b ta
 
-          (maxTimestamp', branchSuiteRuns) = fromMaybe (0, []) mBranchSuiteRuns
+          -- returns the most recent timestamp for the set of runs in
+          -- this branch/suite combo, along with the collected Html
+          -- generated from each row
+          (maxTimestamp', branchSuiteRuns) :: (Integer, [Html]) =
+            ffoldl' (0, []) [0..(length - 1)] $ \(maxTimestamp, branchSuiteHtml) idx ->
+              let
+                (newTimestamp, branchSuiteRowHtml) =
+                  fromMaybe (0, []) $
+                    branchRunRowHtml branch suite idx fileData
+              in
+                (max newTimestamp maxTimestamp, branchSuiteHtml <> branchSuiteRowHtml)
 
         pure (maxTimestamp', (suite, branchSuiteRuns))
 
+    -- return the most recent timestamp in the branch out of both
+    -- suites, the branch name, and a list of each suite and its
+    -- collected Html rows for all runs
     pure (maximum $ fst <$> branchRuns, branch, snd <$> branchRuns)
 
-branchLink :: [Html] -> Html
-branchLink testResults =
-  H.table ! A.class_ "table" $ do
-    H.thead $
-      H.tr $
-        foldMap (H.th . toHtml)
-          (["Date", "Pass", "Fail", "Broken", "Skip", "Total", "Duration", "Test Run"] :: [Text])
-    H.tbody $ fold testResults
-
+--
+-- Takes the collected HTML for each given branch and displays it
+-- inside Bootstrap accordions
+-- (https://getbootstrap.com/docs/5.3/components/accordion/). The top
+-- position (most recent branch built by CI) only will be uncollapsed
+-- by default.
+--
 branchesHtml :: Int -> String -> [(String, [Html])] -> Html
 branchesHtml pos branch branchRunsHtml = do
   let parentId = "branch-" <> branch
@@ -157,6 +170,8 @@ branchesHtml pos branch branchRunsHtml = do
         let targetId = "collapse-" <> branch <> "-" <> suite
         H.h3 ! A.class_ "accordion-header" $
           H.button
+          -- if we're at the top of the list (most recent) we show
+          -- this opened up by default; otherwise we collapse
             ! (A.class_ $
                 "accordion-button" <> (if pos == 0 then "" else " collapsed"))
             ! dataBsToggle "collapse"
@@ -164,6 +179,7 @@ branchesHtml pos branch branchRunsHtml = do
             ! A.type_ "button"
             $ toHtml suite
         H.div
+        -- see above comment re: first position
           ! (A.class_ $
               "accordion-collapse collapse" <> (if pos == 0 then " show" else ""))
           ! (A.id . fromString $ targetId)
@@ -171,7 +187,20 @@ branchesHtml pos branch branchRunsHtml = do
           H.div ! A.class_ "accordion-body" $
             H.div ! A.class_ "accordion-item" $ branchLink branchSuiteRuns
 
-branchesPage :: [Html] -> Html
+  where
+    branchLink :: [Html] -> Html
+    branchLink testResults =
+      H.table ! A.class_ "table" $ do
+        H.thead $
+          H.tr $
+            foldMap (H.th . toHtml)
+              (["Date", "Pass", "Fail", "Broken", "Skip", "Total", "Duration", "Test Run"] :: [Text])
+        H.tbody $ fold testResults
+
+--
+-- Stuffs the collected branch HTML into the main page template
+--
+branchesPage :: Html -> Html
 branchesPage branches = do
   H.html $ do
     H.head $ do
@@ -192,8 +221,7 @@ branchesPage branches = do
     H.body $
       H.div ! A.class_ "container" $ do
         H.h2 ! A.class_ "m-2 p-1" $ "automation-service - Branch Test Runs"
-        fold branches
-
+        branches
 
 --
 -- this is hacky test page generation code and I'm not being very
@@ -207,17 +235,25 @@ generateSite = do
   files <- listDirectory "allure-action"
   branchesRuns :: [(Integer, String, [(String, [Html])])] <- branchesRunsHtml files
   let
-    branchesRuns' = sortBy (\(ts1, _b1, _rs1) (ts2, _b2, _rs2) -> compare ts2 ts1) branchesRuns
-    (_idx, branchesRunsOutput) =
-      foldl'
-        (\(idx, html) (_ts, branch, branchRuns) ->
-           (succ idx, html <> [branchesHtml idx branch branchRuns]))
-        (0, [])
+    branchesRuns' = sortBy (\(ts1, _, _) (ts2, _, _) -> compare ts2 ts1) branchesRuns
+    branchesRunsOutput =
+      -- seems like there's a more obvious function to map over a list
+      -- with an index that I'm missing but whatever
+      zipWith
+        (\idx (_ts, branch, branchRuns) -> branchesHtml idx branch branchRuns)
+        [0..]
         branchesRuns'
-  writeFile "index.html" (renderMarkup $ branchesPage branchesRunsOutput)
+  writeFile "index.html" (renderMarkup $ branchesPage $ fold branchesRunsOutput)
 
 serve :: IO ()
-serve = run 8000 $ staticApp (defaultFileServerSettings ".")
+serve = do
+  args <- getArgs
+  let
+    port = case args of
+      (p:_) -> fromMaybe 8000 (readMaybe p)
+      _     -> 8000
+  putStrLn $ "Starting static file server on port " <> show port <> "..."
+  run port $ staticApp (defaultFileServerSettings ".")
 
 main :: IO ()
 main = do
