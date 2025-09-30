@@ -1,0 +1,5 @@
+"DESCRIPTION","DURATION IN MS","NAME","PARENT SUITE","START TIME","STATUS","STOP TIME","SUB SUITE","SUITE","TEST CLASS","TEST METHOD"
+"","1","Can parse a collection of Exposes JSON","","Tue Sep 30 01:44:06 UTC 2025","passed","Tue Sep 30 01:44:06 UTC 2025","","frontend","",""
+"","8","Decode all properties of a Device","","Tue Sep 30 01:44:06 UTC 2025","passed","Tue Sep 30 01:44:06 UTC 2025","","frontend","",""
+"","2","Decode all properties of a Group","","Tue Sep 30 01:44:06 UTC 2025","passed","Tue Sep 30 01:44:06 UTC 2025","","frontend","",""
+"","303","Can navigate to different pages","","Tue Sep 30 01:44:05 UTC 2025","passed","Tue Sep 30 01:44:06 UTC 2025","","frontend","",""
