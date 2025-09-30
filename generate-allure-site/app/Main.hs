@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Main (main) where
 
 import Control.Lens ((^?), to)
@@ -72,8 +70,8 @@ localizedTimestamp branch suite ts idx' = H.td $ do
 -- and I need to check the data or make this more robust. For now it's
 -- not worth the effort.
 --
-branchRunRowHtml :: String -> String -> String -> Int -> ByteString -> Maybe (Integer, [Html])
-branchRunRowHtml rootPrefix branch suite idx fileData = do
+branchRunHtml :: String -> String -> String -> Int -> ByteString -> Maybe (Integer, [Html])
+branchRunHtml rootPrefix branch suite idx fileData = do
   runUniqueId <- fileData ^? nth idx . key "runUniqueId" . _String
 
   let
@@ -112,7 +110,7 @@ branchRunRowHtml rootPrefix branch suite idx fileData = do
 --
 -- Does the majority of the heavy lifting with stuffing branch rows
 -- into Html (tr) and extracting the most recent timestamp from each
--- branch so we can compare later for sorting.
+-- branch -> suite run so we can compare later for sorting.
 --
 branchesRunsHtml :: String -> [String] -> IO [(Integer, String, [(String, [Html])])]
 branchesRunsHtml rootPrefix branches =
@@ -140,7 +138,7 @@ branchesRunsHtml rootPrefix branches =
               let
                 (newTimestamp, branchSuiteRowHtml) =
                   fromMaybe (0, []) $
-                    branchRunRowHtml rootPrefix branch suite idx fileData
+                    branchRunHtml rootPrefix branch suite idx fileData
               in
                 (max newTimestamp maxTimestamp, branchSuiteHtml <> branchSuiteRowHtml)
 
@@ -223,14 +221,6 @@ branchesPage branches = do
         H.h2 ! A.class_ "m-2 p-1" $ "automation-service - Branch Test Runs"
         branches
 
-getRootPrefix :: IO String
-getRootPrefix = do
-  args <- getArgs
-  pure $ 
-    case args of
-      (rp:_) -> rp
-      _     -> ""
-
 --
 -- this is hacky test page generation code and I'm not being very
 -- careful about configuration, so keep in mind how many assumptions
@@ -254,6 +244,15 @@ generateSite = do
         [0..]
         branchesRuns'
   writeFile "test-runs/index.html" (renderMarkup $ branchesPage $ fold branchesRunsOutput)
+
+  where
+    getRootPrefix :: IO String
+    getRootPrefix = do
+      args <- getArgs
+      pure $
+        case args of
+          (rp:_) -> rp
+          _     -> ""
 
 serve :: IO ()
 serve = do

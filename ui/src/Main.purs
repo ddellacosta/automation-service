@@ -40,6 +40,7 @@ type State ws =
   , publishMsg :: String
   , lastSentMsg :: Maybe String
   , websocket :: Maybe ws
+  , websocketPort :: String
   }
 
 init
@@ -58,6 +59,7 @@ init newDsUpdateTimers connectToWS = do
     , publishMsg: "{}"
     , lastSentMsg: Nothing
     , websocket: Nothing
+    , websocketPort: ""
     }
 
 update
@@ -70,10 +72,10 @@ update s = case _ of
     pure $ s { currentPage = newPage }
 
   DeviceMsg deviceMsg -> do
-    Devices.update s.websocket s.devices deviceMsg #
+    Devices.update s.websocket s.websocketPort s.devices deviceMsg #
       bimap DeviceMsg (s { devices = _ })
 
-  InitWS ws -> do
+  InitWS wsPort ws -> do
     forks $ \{ dispatch: msgSink } -> do
       let
         msgSink' = msgSink <<< DeviceMsg
@@ -136,7 +138,7 @@ update s = case _ of
 
       liftEffect $ addWSEventListener ws messageHandler
 
-    pure $ s { websocket = Just ws }
+    pure $ s { websocket = Just ws, websocketPort = wsPort }
 
   PublishMsgChanged msg -> do
     pure $ s { publishMsg = msg }

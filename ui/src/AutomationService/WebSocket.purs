@@ -20,7 +20,7 @@ import Effect.Class (liftEffect)
 import Elmish.Component (Command)
 import Foreign (unsafeFromForeign)
 import Parsing (runParser)
-import Prelude (Unit, (<<<), ($), (<>), (=<<), bind, const, flip, identity, pure)
+import Prelude (Unit, (<<<), ($), (<>), (=<<), bind, const, discard, flip, identity, pure)
 import URI.Authority (_hosts)
 import URI.HierarchicalPart (_authority)
 import URI.Host as Host
@@ -61,32 +61,40 @@ instance WebSocket WS.WebSocket where
 
 connectToWS :: Command Aff (Main.Message WS.WebSocket)
 connectToWS { dispatch } = do
-  wsUrl <- liftEffect getWsUrl
+  {port, wsUrl} <- liftEffect getWsUrl
   ws <- liftEffect $ create wsUrl []
-  liftEffect $ dispatch (Main.InitWS ws)
+  liftEffect $ dispatch (Main.InitWS port ws)
 
 -- URI parsing util
 
-getWsUrl :: Effect String
+getWsUrl :: Effect ({ port :: String, wsUrl :: String })
 getWsUrl = do
   htmlDocument <- Window.document =<< HTML.window
   uriStr <- Document.documentURI <<< HTMLDocument.toDocument $ htmlDocument
   let
     protocolStr = "ws://"
     localhostStr = "localhost"
-    defaultWsUrl = protocolStr <> localhostStr
+    defaultPortAndWsUrl = { port: "", wsUrl: protocolStr <> localhostStr }
     parseUriResult = runParser uriStr $ URI.parser options
   -- this is all very tedious
-  pure $ flip (either $ const defaultWsUrl) parseUriResult $ \uri ->
+  pure $ flip (either $ const defaultPortAndWsUrl) parseUriResult $ \uri ->
     let
       hosts = uri ^? _hierPart <<< _authority <<< _hosts <<< _Just
     in
-     flip (maybe defaultWsUrl) hosts $ case _ of
-       This hostName -> protocolStr <> Host.print hostName
+     flip (maybe defaultPortAndWsUrl) hosts $ case _ of
+       This hostName ->
+         { port: ""
+         , wsUrl: (protocolStr <> Host.print hostName)
+         }
        -- this would be strange ¯\_(ツ)_/¯
-       That port -> defaultWsUrl <> Port.print port
+       That port ->
+         { port: Port.print port
+         , wsUrl: (defaultPortAndWsUrl.wsUrl <> Port.print port)
+         }
        Both hostName port ->
-         protocolStr <> Host.print hostName <> Port.print port
+         { port: Port.print port
+         , wsUrl: (protocolStr <> Host.print hostName <> Port.print port)
+         }
 
 options :: Record (URIOptions UserInfo (HostPortPair Host Port) Path HierPath Query Fragment)
 options =

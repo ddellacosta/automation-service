@@ -73,7 +73,7 @@ instance WebSocket TestWS where
 
 connectToWS :: TestWS -> Command Aff (Message TestWS)
 connectToWS wsState { dispatch: msgSink } =
-  liftEffect <<< msgSink <<< InitWS $ wsState
+  liftEffect <<< msgSink <<< InitWS "" $ wsState
 
 sendMessage :: EventTarget -> String -> Effect Unit
 sendMessage ws msg = do
