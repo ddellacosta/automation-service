@@ -176,7 +176,7 @@ Running main application test suite:
 
 ```shell
 # watchexec is handy:
-> watchexec -w test -w src -w app -i "*.db" -i "test/dbs/*" 'cabal test --test-show-details=always --test-options "--color=always"'
+> watchexec -w test -w src -w app -i "*.db" -i "test/dbs/*" 'cabal test --test-show-details=always --test-options "--color=always --reporter=local"' # local reporter so we list each test result in the console vs. sending to an xml file.
 > cabal test --test-show-details=always --test-options '--color=always -l -p Unit'
 > cabal test --test-show-details=always --test-options '--color=always -l -p Integration'
 ```
