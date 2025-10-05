@@ -138,16 +138,17 @@ initialize configFilePath mkLogger mkMQTTClient = do
 
   Env config' logger' mc subscriptions' daemonBroadcast' automationBroadcast'
     <$> (atomically $ dupTChan daemonBroadcast') -- messageChan
-    <*> (newTVarIO M.empty) -- devices
-    <*> (newTVarIO M.empty) -- deviceRegistrations
-    <*> (newTVarIO M.empty) -- groups
-    <*> (newTVarIO M.empty) -- groupRegistrations
-    <*> (newTVarIO M.empty) -- scheduledJobs
-    <*> (newTVarIO $ RestartConditions False False True)
-    <*> (newTVarIO [])      -- startupMessages
-    <*> (newTVarIO "")      -- devicesRawJSON
-    <*> (newTVarIO "")      -- groupsRawJSON
-    <*> pure (loggerCleanup >> mcCleanup)
+    <*> (newTVarIO M.empty)                      -- devices
+    <*> (newTVarIO M.empty)                      -- deviceRegistrations
+    <*> (newTVarIO M.empty)                      -- groups
+    <*> (newTVarIO M.empty)                      -- groupRegistrations
+    <*> (newTVarIO M.empty)                      -- scheduledJobs
+    <*> (newTVarIO $
+          RestartConditions False False True)    -- restartConditions
+    <*> (newTVarIO [])                           -- startupMessages
+    <*> (newTVarIO "")                           -- devicesRawJSON
+    <*> (newTVarIO "")                           -- groupsRawJSON
+    <*> pure (loggerCleanup >> mcCleanup)        -- appCleanup
 
 defaultTopicActions :: Config -> TChan Daemon.Message -> Subscriptions
 defaultTopicActions config' daemonBroadcast' =
@@ -157,30 +158,34 @@ defaultTopicActions config' daemonBroadcast' =
     setTopic = parseTopic . (<> "/set") . unTopic $ automationServiceTopic'
   in
     M.fromList
-      [ ( setTopic
-        , M.singleton Null (\_topic msg -> for_ (decode msg) $ write daemonBroadcast')
+      [ ( setTopic -- as in, the topic for setting
+        , M.singleton
+            Null
+            (\_topic msg -> for_ (decode msg) $ write daemonBroadcast')
         )
 
       , ( Zigbee2MQTT.devicesTopic
-        , M.singleton Null
-          (\_topic msg ->
-             case decode msg of
-               Just [] -> pure ()
-               Nothing -> pure ()
-               Just devicesJSON ->
-                 write daemonBroadcast' $ Daemon.DeviceUpdate devicesJSON msg
-          )
+        , M.singleton
+            Null
+            (\_topic msg ->
+               case decode msg of
+                 Just [] -> pure ()
+                 Nothing -> pure ()
+                 Just devicesJSON ->
+                   write daemonBroadcast' $ Daemon.DeviceUpdate devicesJSON msg
+            )
         )
 
       , ( Zigbee2MQTT.groupsTopic
-        , M.singleton Null
-          (\_topic msg ->
-             case decode msg of
-               Just [] -> pure ()
-               Nothing -> pure ()
-               Just groupsJSON ->
-                 write daemonBroadcast' $ Daemon.GroupUpdate groupsJSON msg
-          )
+        , M.singleton
+            Null
+            (\_topic msg ->
+               case decode msg of
+                 Just [] -> pure ()
+                 Nothing -> pure ()
+                 Just groupsJSON ->
+                   write daemonBroadcast' $ Daemon.GroupUpdate groupsJSON msg
+            )
         )
 
       , ( statusTopic'

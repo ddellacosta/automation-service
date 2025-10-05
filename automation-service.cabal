@@ -48,6 +48,7 @@ common shared
     , mtl ^>= 2.3.1
     , net-mqtt ^>= 0.8.6.0
     , network-uri ^>= 2.6.4.2
+    , optparse-applicative ^>= 0.18.1.0
     , pretty-simple
     , random ^>= 1.2.1.2
     , retry ^>= 0.9.3.1

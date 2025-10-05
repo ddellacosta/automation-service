@@ -391,6 +391,11 @@ loadAPI filepath logger' mqttClient' daemonBroadcast' broadcastChan devices' gro
                 go = do
                   msg <- atomically . readTChan $ listenerChan
                   case msg of
+                    (Client autoName Shutdown)
+                      -- this is here to enable AsyncCancelled to get
+                      -- picked up if readTChan is blocking
+                      | autoName == thisAutoName -> pure "Shutdown"
+                      | otherwise -> go
                     (Client autoName (ValueMsg v))
                       | autoName == thisAutoName -> pure v
                       | otherwise -> go

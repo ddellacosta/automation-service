@@ -8,8 +8,6 @@ where
 
 import Prelude hiding (pred)
 
-import Text.Pretty.Simple (pPrint)
-
 import Control.Exception (SomeException, handle)
 import Control.Lens (_1, _2, _3, _Just, _head, folded, ix, preview, (<&>), (^.), (^..), (^?))
 import Control.Monad (guard, void)
@@ -209,46 +207,11 @@ luaScriptSpecs = do
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testSubscribe")
 
-        --
-        -- Seems like without a small wait here, the read on
-        -- subscriptions' below produces a deadlock on that TVar and
-        -- makes this time out, which I guess I should have assumed?
-        --
-        -- Somehow I thought readTVarIO wouldn't behave that way
-        -- because of docs [0] saying that, "this is equivalent to
-        -- `atomically . readTVar` but works much faster, because it
-        -- doesn't perform a complete transaction," but I guess I'm
-        -- misunderstanding? Or, is what is causing the deadlock/timeout
-        -- not the read on the subscriptions TVar?
-        --
-        -- Previously I was doing `readTVarIO subscriptions'` in a
-        -- loop, and then tried it with the retry package (retrying
-        -- with various policies, including backoff and explicit
-        -- delays for a fixed number of times). Finally I realized
-        -- that, no matter what, if I didn't have the delay here it
-        -- would lock up, and otherwise I didn't really need to do
-        -- anything but check it once like I'm now doing below. but I
-        -- still don't understand why it doesn't work without this
-        -- delay first.
-        --
-        -- NOTE this was written before I switched from using
-        -- tryReadTChan (does not block, returns Nothing when nothing
-        -- is present, so it is appropriate for polling) to readTChan
-        -- (blocks) in LuaScript subscribe functions. the readTVarIO
-        -- lookup does not block any more, but I still need the
-        -- threadDelay.
-        --
-        -- [0] https://hackage.haskell.org/package/base-4.16.3.0/docs/GHC-Conc.html#v:readTVarIO
-        --
-        -- SECOND NOTE: update after added sqlite state-storage to the
-        -- mix, now the smallest I can make this without having tests
-        -- fail is 60000 microseconds.
-        --
-        -- Part 3: moved all the functions that weren't exposed at the
-        -- module level to where terms, seemed to slow everything down
-        -- somehow?
-        --
-        threadDelay 80000
+        -- Under 20000 seems to produce deadlocks/hanging, so giving it a
+        -- little buffer and leaving it at 25000. Previously seemed like it
+        -- needed 60-80k but I suspect removing concurrency changed the
+        -- behavior here somehow.
+        threadDelay 25000
 
         dispatchActions <- M.lookup topic <$> readTVarIO subscriptions'
         for_ (fromJust dispatchActions) (\action -> action topic "{\"msg\": \"hey\"}")
@@ -271,6 +234,19 @@ luaScriptSpecs = do
         waitUntilEq False $ do
           subscriptions'' <- readTVarIO subscriptions'
           pure $ M.member topic subscriptions''
+
+        -- I introduced a bug with cleanAutomations where it was
+        -- unsubscribing from too many topics, so adding a check to
+        -- confirm our subscribe/unsubscribe calls via the MQTT client
+        -- mock:
+        waitUntilEq [ "subscribe testTopic"
+                    , "unsubscribe testTopic"
+                    ] $ do
+          let
+            (TestMQTTClient testmcTV) = env ^. mqttClient
+          (mqttHistory, _mqttClient') <- readTVarIO testmcTV
+          pure mqttHistory
+
 
   around initAndCleanup $ do
     it "removes Device and Group Registration entries upon cleanup" $
@@ -306,7 +282,7 @@ luaScriptSpecs = do
 
   -- flaky
   around initAndCleanup $ do
-    xit "retrieves dates for Sun events (rise & set)" $
+    it "retrieves dates for Sun events (rise & set)" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
 
         setEnv "TZ" "America/New_York"
@@ -700,13 +676,13 @@ statusMessageSpecs = do
         let
           daemonBroadcast' = env ^. daemonBroadcast
           automationServiceTopic' = env ^. config . mqttConfig . automationServiceTopic
-          (TestMQTTClient topicMapTV) = env ^. mqttClient
+          (TestMQTTClient testmcTV) = env ^. mqttClient
 
         atomically $ writeTChan daemonBroadcast' Daemon.Status
 
         threadDelay 50000
 
-        topicMap <- readTVarIO topicMapTV
+        (_subsHistory, topicMap) <- readTVarIO testmcTV
 
         let
           autoServiceTopic = do
@@ -750,7 +726,7 @@ httpSpecs = do
       testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
-          (TestMQTTClient mqttMsgs) = env ^. mqttClient
+          (TestMQTTClient testmcTV) = env ^. mqttClient
           topicStr = "device/lamp/set"
           Just topic = mkTopic . T.decodeUtf8 . toStrictBS $ topicStr
 
@@ -778,9 +754,10 @@ httpSpecs = do
 
         mMsg `shouldBe` Just (Daemon.Start (LuaScript "test"))
 
+        (_mqttHistory, mqttMsgs) <- readTVarIO testmcTV
         sentMMsg <- retrying (exponentialBackoff 3000 <> limitRetries 15)
           (\_retryStatus msg -> pure $ msg /= Just "{\"state\":\"ON\"}")
-          (\_retryStatus -> M.lookup topic <$> readTVarIO mqttMsgs)
+          (\_retryStatus -> pure $ M.lookup topic mqttMsgs)
 
         sentMMsg `shouldBe` Just "{\"state\":\"ON\"}"
 

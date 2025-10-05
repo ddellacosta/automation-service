@@ -17,6 +17,7 @@ import qualified Data.Text as T
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 import Network.MQTT.Client (Topic)
+import Network.MQTT.Topic (unTopic)
 import qualified Service.App as App
 import Service.App (Logger (..))
 import qualified Service.Daemon as Daemon
@@ -34,22 +35,26 @@ import UnliftIO.Async (withAsync)
 import UnliftIO.Exception (bracket)
 import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, modifyTVar', newTVarIO, writeTVar)
 
-newtype TestMQTTClient = TestMQTTClient (TVar (HashMap Topic ByteString))
+newtype TestMQTTClient = TestMQTTClient (TVar ([Text], HashMap Topic ByteString))
 
 newtype TestLogger = TestLogger (TVar [Text])
 
 instance MQTTClient TestMQTTClient where
   publishMQTT (TestMQTTClient mc) topic msg =
-    atomically $ modifyTVar' mc $ \mqttMsgs ->
-      M.insert topic msg mqttMsgs
-  subscribeMQTT (TestMQTTClient _mc) _topic = pure ()
-  unsubscribeMQTT (TestMQTTClient _mc) _topic = pure ()
+    atomically $ modifyTVar' mc $ \(subs, mqttMsgs) ->
+      (subs, M.insert topic msg mqttMsgs)
+  subscribeMQTT (TestMQTTClient mc) topic = do
+    atomically $ modifyTVar' mc $ \(subs, mqttMsgs) ->
+      (subs <> ["subscribe " <> unTopic topic], mqttMsgs)
+  unsubscribeMQTT (TestMQTTClient mc) topic = do
+    atomically $ modifyTVar' mc $ \(subs, mqttMsgs) ->
+      (subs <> ["unsubscribe " <> unTopic topic], mqttMsgs)
 
 instance Logger TestLogger where
   log :: TestLogger -> LogLevel -> Text -> IO ()
   log (TestLogger l) level logStr =
     atomically . modifyTVar' l $ \msgs ->
-      msgs <> [ T.pack (show level) <> ": " <> logStr ]
+      msgs <> [ (T.pack . show $ level) <> ": " <> logStr ]
 
 testConfigFilePath :: FilePath
 testConfigFilePath = "test/config.dhall"
@@ -100,7 +105,7 @@ initAndCleanup runTests = bracket
       pure (TestLogger logger, pure ())
 
     mkMQTTClient _config _loggerVariant _mqttDispatch = do
-      fauxMQTTClient <- newTVarIO M.empty
+      fauxMQTTClient <- newTVarIO ([], M.empty)
       pure (TestMQTTClient fauxMQTTClient, pure ())
 
 -- |

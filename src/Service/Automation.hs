@@ -26,6 +26,7 @@ import UnliftIO.STM (TChan)
 data ClientMsg
   = ByteStringMsg [ByteString]
   | ValueMsg Value
+  | Shutdown
   deriving (Eq, Generic, Show)
 
 makePrisms ''ClientMsg

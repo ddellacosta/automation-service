@@ -11,3 +11,6 @@ function loop ()
 
    sleep(1)
 end
+
+function cleanup()
+end
