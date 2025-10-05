@@ -69,10 +69,11 @@ init = pure <<< initState
 update
   :: forall ws. WebSocket ws
   => Maybe ws
+  -> String
   -> State
   -> Message
   -> Transition Message State
-update ws s = case _ of
+update ws wsPort s = case _ of
   LoadDevices newDevices -> do
     forkVoid $ liftEffect $ debug $ "loaded devices: " <> show newDevices
     forkVoid $ do
@@ -80,7 +81,7 @@ update ws s = case _ of
         let
           -- this needs to get passed in from parent state as config, or something
           subscribeMsg =
-            MQTT.subscribe (deviceTopic (_.name <<< details $ d)) "HTTP 8080"
+            MQTT.subscribe (deviceTopic (_.name <<< details $ d)) $ "HTTP " <> wsPort
           pingStateMsg =
             MQTT.publish (getTopic (_.name <<< details $ d)) $ MQTT.state ""
 
@@ -338,7 +339,7 @@ view { devices, deviceStates } dispatch =
 
         Just cap
           | not (canSet cap.access) ->
-            H.div "" $ H.text "Not allowed to turn this one on chief"
+            H.div "" $ H.text "Not allowed to turn this one on"
 
           | otherwise ->
             H.div "form-check form-switch"

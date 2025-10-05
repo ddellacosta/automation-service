@@ -17,7 +17,7 @@ import Data.String.Pattern (Pattern(..), Replacement(..))
 data Message ws
   = SetPage Page
   | DeviceMsg Devices.Message
-  | InitWS ws
+  | InitWS String ws
   | PublishMsgChanged String
   | Publish
 
