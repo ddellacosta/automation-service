@@ -515,7 +515,6 @@ run' threadMapTV = do
       -- type Subscriptions = HashMap Topic (HashMap AutomationName MsgAction)
       subscriptions' <- view subscriptions
       topicsToUnsub <- atomically $
-        -- maybe this should be in a separate module?
         let updatedSubscriptions subs =
               M.foldrWithKey'
               (\topic actions (unsubTopics, updated) ->

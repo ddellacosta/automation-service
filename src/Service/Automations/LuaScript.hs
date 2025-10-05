@@ -392,10 +392,8 @@ loadAPI filepath logger' mqttClient' daemonBroadcast' broadcastChan devices' gro
                   msg <- atomically . readTChan $ listenerChan
                   case msg of
                     (Client autoName Shutdown)
-                      -- this should be something very distinct that
-                      -- is easy to match on in a Lua context (or will
-                      -- it matter at the point this receives
-                      -- AsyncCancelled?)
+                      -- this is here to enable AsyncCancelled to get
+                      -- picked up if readTChan is blocking
                       | autoName == thisAutoName -> pure "Shutdown"
                       | otherwise -> go
                     (Client autoName (ValueMsg v))
