@@ -8,8 +8,6 @@ where
 
 import Prelude hiding (pred)
 
-import Text.Pretty.Simple (pPrint)
-
 import Control.Exception (SomeException, handle)
 import Control.Lens (_1, _2, _3, _Just, _head, folded, ix, preview, (<&>), (^.), (^..), (^?))
 import Control.Monad (guard, void)
@@ -271,6 +269,34 @@ luaScriptSpecs = do
         waitUntilEq False $ do
           subscriptions'' <- readTVarIO subscriptions'
           pure $ M.member topic subscriptions''
+
+        -- I introduced a bug with cleanAutomations, so adding a
+        -- follow-up restart/stop to confirm this is fixed
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testSubscribe")
+
+        waitUntilEq True $ do
+          subscriptions'' <- readTVarIO subscriptions'
+          pure . M.member topic $ subscriptions''
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "testSubscribe")
+
+        -- (again) the topic should be removed since there are no
+        -- other subscribers once we stop the Automation
+        waitUntilEq False $ do
+          subscriptions'' <- readTVarIO subscriptions'
+          pure $ M.member topic subscriptions''
+
+        let
+          (TestMQTTClient testmcTV) = env ^. mqttClient
+        (mqttHistory, _mqttClient') <- readTVarIO testmcTV
+
+        mqttHistory `shouldBe`
+          [ "subscribe testTopic"
+          , "unsubscribe testTopic"
+          , "subscribe testTopic"
+          , "unsubscribe testTopic"
+          ]
 
   around initAndCleanup $ do
     it "removes Device and Group Registration entries upon cleanup" $
@@ -700,13 +726,13 @@ statusMessageSpecs = do
         let
           daemonBroadcast' = env ^. daemonBroadcast
           automationServiceTopic' = env ^. config . mqttConfig . automationServiceTopic
-          (TestMQTTClient topicMapTV) = env ^. mqttClient
+          (TestMQTTClient testmcTV) = env ^. mqttClient
 
         atomically $ writeTChan daemonBroadcast' Daemon.Status
 
         threadDelay 50000
 
-        topicMap <- readTVarIO topicMapTV
+        (_subsHistory, topicMap) <- readTVarIO testmcTV
 
         let
           autoServiceTopic = do
@@ -750,7 +776,7 @@ httpSpecs = do
       testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
-          (TestMQTTClient mqttMsgs) = env ^. mqttClient
+          (TestMQTTClient testmcTV) = env ^. mqttClient
           topicStr = "device/lamp/set"
           Just topic = mkTopic . T.decodeUtf8 . toStrictBS $ topicStr
 
@@ -778,9 +804,10 @@ httpSpecs = do
 
         mMsg `shouldBe` Just (Daemon.Start (LuaScript "test"))
 
+        (_mqttHistory, mqttMsgs) <- readTVarIO testmcTV
         sentMMsg <- retrying (exponentialBackoff 3000 <> limitRetries 15)
           (\_retryStatus msg -> pure $ msg /= Just "{\"state\":\"ON\"}")
-          (\_retryStatus -> M.lookup topic <$> readTVarIO mqttMsgs)
+          (\_retryStatus -> pure $ M.lookup topic mqttMsgs)
 
         sentMMsg `shouldBe` Just "{\"state\":\"ON\"}"
 

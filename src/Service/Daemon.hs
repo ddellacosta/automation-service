@@ -256,8 +256,7 @@ run' threadMapTV = do
       => TVar (ThreadMap m)
       -> AutomationName
       -> m ()
-    initializeAndRunAutomation
-      threadMapTV' automationName = do
+    initializeAndRunAutomation threadMapTV' automationName = do
         startTime <- liftIO getCurrentTime
         let automation = findAutomation automationName $ startTime
 
@@ -307,6 +306,16 @@ run' threadMapTV = do
       info $ "Shutting down Automation " <> serializeAutomationName automationName
 
       threadMap <- atomically . readTVar $ threadMapTV'
+
+      -- Let anything listening on the automations' broadcast channel
+      -- know that we're shutting down, so it can act on it. In
+      -- particular, this is intended to allow anything listening on
+      -- the broadcast channel to stop blocking so that the
+      -- AsyncCancelled can be thrown in that thread, triggering
+      -- shutdown, before the readTChan operation can start again and
+      -- block the thread (as it is a bound thread, running a Lua
+      -- script).
+      sendClientMsg automationName Automation.Shutdown
 
       --
       -- The cancel below is somewhat ironically wrapped in an async
@@ -503,8 +512,10 @@ run' threadMapTV = do
       => AutomationName
       -> m ()
     cleanSubscriptions automationName = do
+      -- type Subscriptions = HashMap Topic (HashMap AutomationName MsgAction)
       subscriptions' <- view subscriptions
       topicsToUnsub <- atomically $
+        -- maybe this should be in a separate module?
         let updatedSubscriptions subs =
               M.foldrWithKey'
               (\topic actions (unsubTopics, updated) ->
@@ -513,8 +524,8 @@ run' threadMapTV = do
                      M.filterWithKey (\thisAutomationName _action -> thisAutomationName /= automationName) actions
                  in
                    ( -- if the topic map has become empty as a
-                     -- result of this operation
-                     if not $ null (M.keys actions) && M.null updatedActions then
+                     -- result of this operation then we unsub it
+                     if M.null updatedActions then
                        unsubTopics <> [topic]
                      else
                        unsubTopics
@@ -527,6 +538,7 @@ run' threadMapTV = do
               ([], M.empty)
               subs
         in
+          -- stateTVar :: TVar s -> (s -> (a, s)) -> STM a
           stateTVar subscriptions' updatedSubscriptions
       mapM_ App.unsubscribe topicsToUnsub
 
