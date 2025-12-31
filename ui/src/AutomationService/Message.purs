@@ -23,7 +23,6 @@ data Message ws
 
 data Page
   = Devices
-  | Groups
   | PublishMQTT
 
 derive instance Generic Page _
@@ -34,7 +33,6 @@ instance Show Page where
 pageName :: Page -> String
 pageName = case _ of
   Devices -> "Devices"
-  Groups -> "Groups"
   PublishMQTT -> "Publish MQTT"
 
 pageNameClass :: Page -> String

@@ -6,7 +6,7 @@ module Test.AutomationService.Helpers
 where
 
 import AutomationService.Device (Device, DeviceDetails, details)
-import AutomationService.Exposes (Capability, CapabilityDetails, Exposes, SubProps(..), matchingCapabilities)
+import AutomationService.Capabilities (Capabilities, Capability, CapabilityDetails, SubProps(..), matchingCapabilities)
 import Control.Monad (when)
 import Control.Monad.Error.Class (class MonadThrow, throwError)
 import Data.Array (length)
@@ -42,8 +42,8 @@ import Type.Proxy (Proxy(..))
 -- | fails, e.g.
 -- |
 -- |     Error:
--- |        (Just (DimmableLight { category: "Router", exposes: (NonEmptyArray [ ... ]) ... } ) )
--- |      ≠ (Just (ExtendedColorLight { category: "Router", exposes: (NonEmptyArray [ ... ]) ... } ) )
+-- |        (Just (DimmableLight { category: "Router", capabilities: (NonEmptyArray [ ... ]) ... } ) )
+-- |      ≠ (Just (ExtendedColorLight { category: "Router", capabilities: (NonEmptyArray [ ... ]) ... } ) )
 -- |
 shouldConstruct
   :: forall m t. MonadThrow Error m
@@ -66,25 +66,25 @@ construct cons v = cons <<< details <$> v
 -- |
 -- | Slightly over-the-top helper for producing good failure messages
 -- | when supplying a test using an array of Capability constructors
--- | to compare against an Exposes object (a.k.a. an array of Capbility
+-- | to compare against an Capabilities object (a.k.a. an array of Capbility
 -- | values), a la
 -- |
 -- |     light `shouldHaveCapabilities` [OnOff, Occupancy]
 -- |
 -- |     -- ...produces test run failure:
 -- |
--- |     1) Exposes
--- |          Can parse a collection of Exposes JSON:
+-- |     1) Capabilities
+-- |          Can parse a collection of Capabilities JSON:
 -- |        Error: Does not have capabilities ["OnOff","Occupancy"], has only (Right ["OnOff"])
 -- |
 shouldHaveCapabilities
   :: forall m t. MonadThrow Error m
   => Traversable t
   => Show (t (Array String))
-  => t Exposes
+  => t Capabilities
   -> Array (CapabilityDetails -> Capability)
   -> m Unit
-shouldHaveCapabilities exposes caps =
+shouldHaveCapabilities capabilities caps =
   for_ isMatch \isMatch' ->
     when (not isMatch') do
       let
@@ -95,7 +95,7 @@ shouldHaveCapabilities exposes caps =
         "Does not have capabilities " <> capNames <> ", has only " <> matchNames
 
   where
-    matches = flip matchingCapabilities caps <$> exposes
+    matches = flip matchingCapabilities caps <$> capabilities
     isMatch = matches <#> \ms -> length ms == length caps
 
     capName cons = capabilityName <<< cons $ dummy

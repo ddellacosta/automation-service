@@ -1,8 +1,8 @@
-module Test.AutomationService.Exposes where
+module Test.AutomationService.Capabilities where
 
-import AutomationService.Exposes (Capability(..), FeatureType(..), SubProps(..), _access, _description,
-                                  _featureType, _label, _name, _property, _subProps, canGet, canSet,
-                                  capabilityDetails, decodeExposes, isPublished)
+import AutomationService.Capabilities (Capability(..), FeatureType(..), SubProps(..), canGet, canSet,
+                                       capabilityDetails, decodeCapabilities, isPublished)
+import AutomationService.Capabilities.Optics (_access, _description, _featureType, _label, _name, _property, _subProps)
 import Data.Argonaut.Decode ((.:), (.:?), fromJsonString)
 import Data.Array.NonEmpty (fromArray)
 import Data.Lens ((^?), _Just, _Right, folded, lengthOf, to)
@@ -18,15 +18,15 @@ import Test.Spec.Assertions (shouldEqual)
 
 spec :: Spec Unit
 spec =
-  describe "Exposes" $
-    it "Can parse a collection of Exposes JSON" $ do
+  describe "decoding Capabilities" $
+    it "Can parse a collection of exposes JSON" $ do
 
       let
         signe = do
           obj <- fromJsonString signeFixture
           definition <- obj .: "definition"
-          exposes' <- definition .:? "exposes"
-          decodeExposes $ unsafePartial $ fromJust $ fromArray =<< exposes'
+          exposes <- definition .:? "exposes"
+          decodeCapabilities $ unsafePartial $ fromJust $ fromArray =<< exposes
 
         brightness = signe ^? _Right <<< ix 1 <<< to capabilityDetails
         prop cap przm = cap ^? (_Just <<< przm)

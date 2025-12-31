@@ -3,11 +3,11 @@ module AutomationService.DeviceMessage
  )
 where
 
-import Prelude (class Show)
+import Prelude (class Show, ($), (<<<), (<>), show)
 
 import AutomationService.Device (Devices, DeviceId)
 import AutomationService.DeviceState (DeviceState)
-import AutomationService.Group (Group)
+import Data.Argonaut (Json, toString)
 import Data.Generic.Rep (class Generic)
 import Data.Show.Generic (genericShow)
 
@@ -21,10 +21,15 @@ data Message
   | PublishDeviceMsg String
   -- group messages
   | LoadGroupsFailed String
-  | LoadGroups (Array Group)
+  | LoadGroups Json
+  | ReLoadGroups
   | PublishGroupMsg String
 
 derive instance Generic Message _
 
 instance Show Message where
-  show = genericShow
+  show = case _ of
+    LoadGroups groupsJson ->
+      "LoadGroups " <> (show <<< toString $ groupsJson)
+    msg ->
+      show msg

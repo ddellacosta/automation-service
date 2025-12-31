@@ -10,7 +10,7 @@ module AutomationService.DeviceState
 where
 
 import AutomationService.Device (Device, DeviceId, details)
-import AutomationService.Exposes (ValueOnOff)
+import AutomationService.Capabilities (ValueOnOff)
 import Control.Alternative ((<|>))
 import Data.Argonaut (Json, JsonDecodeError, decodeJson)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))

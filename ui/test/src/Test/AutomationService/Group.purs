@@ -6,7 +6,7 @@ import AutomationService.Device (Decoded(..), DecodedStatus(..), Device(..), dec
 import Data.Array (head)
 import Data.Array as Array
 import Data.Argonaut.Decode (parseJson)
-import Data.Either (fromRight)
+import Data.Either (Either(..), fromRight)
 import Data.Map as M
 import Data.Maybe (Maybe(..))
 import Data.Traversable (for_)
@@ -29,9 +29,12 @@ spec =
           Decoded DecodingSucceeded { devices } -> devices
           _ -> M.empty
 
+        parsedGroupsJson = parseJson livingRoomStandingLampGroupFixture
+
         -- code under test (decodeGroups)
-        lampGroup = head <<< fromRight [] $
-          decodeGroups bulbs =<< parseJson livingRoomStandingLampGroupFixture
+        lampGroup = head $ case decodeGroups bulbs =<< parsedGroupsJson of
+          Right lampGroups -> lampGroups
+          Left _error -> []
 
         lampDevices = _.members <$> lampGroup
 

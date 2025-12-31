@@ -1,7 +1,6 @@
 module AutomationService.MQTT
  ( brightness
  , hexColor
- , hslColor
  , mkGenericPublishMsg
  , mkPublishMsg
  , publish
@@ -30,14 +29,6 @@ type HSLColor = { color :: HSLValue }
 
 hexColor :: String -> HexColor
 hexColor hexValue = { color: { hex: hexValue }}
-
-hslColor :: forall r. { h :: Number, s :: Number | r } -> HSLColor
-hslColor { h, s } =
-  { color:
-    { hue: floor h
-    , saturation: floor s
-    }
-  }
 
 type Brightness = { brightness :: String }
 

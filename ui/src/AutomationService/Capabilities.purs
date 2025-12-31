@@ -1,28 +1,21 @@
-module AutomationService.Exposes
+module AutomationService.Capabilities
   ( BinaryProps
+  , Capabilities
   , Capability(..)
   , CapabilityDetails
   , CompositeProps
   , EnumProps
-  , Exposes
   , FeatureType(..)
   , ListProps
   , NumericProps
   , SubProps(..)
   , ValueOnOff(..)
-  , _access
-  , _description
-  , _featureType
-  , _label
-  , _name
-  , _property
-  , _subProps
   , canGet
   , canSet
   , capabilities
   , capabilityDetails
   , decodeCapability
-  , decodeExposes
+  , decodeCapabilities
   , enumValues
   , featureType
   , isOn
@@ -126,9 +119,10 @@ serializeValueOnOff = case _ of
   ValueOnOffString s -> s
 
 isOn :: CapabilityDetails -> ValueOnOff -> Boolean
-isOn { subProps } = case subProps of
-  Binary { valueOn } -> (_ == valueOn)
-  _ -> const false
+isOn { subProps } =
+  case subProps of
+    Binary { valueOn } -> (_ == valueOn)
+    _ -> const false
 
 type BinaryProps =
   { valueOn     :: ValueOnOff
@@ -184,36 +178,40 @@ type CapabilityDetails =
   , subProps    :: SubProps
   }
 
---
--- lens boilerplate
---
-_featureType
-  :: forall a b r. Lens { featureType :: a | r } { featureType :: b | r } a b
-_featureType = prop (Proxy :: Proxy "featureType")
-
-_name
-  :: forall a b r. Lens { name :: a | r } { name :: b | r } a b
-_name = prop (Proxy :: Proxy "name")
-
-_description
-  :: forall a b r. Lens { description :: a | r } { description :: b | r } a b
-_description = prop (Proxy :: Proxy "description")
-
-_label
-  :: forall a b r. Lens { label :: a | r } { label :: b | r } a b
-_label = prop (Proxy :: Proxy "label")
-
-_property
-  :: forall a b r. Lens { property :: a | r } { property :: b | r } a b
-_property = prop (Proxy :: Proxy "property")
-
-_access
-  :: forall a b r. Lens { access :: a | r } { access :: b | r } a b
-_access = prop (Proxy :: Proxy "access")
-
-_subProps
-  :: forall a b r. Lens { subProps :: a | r } { subProps :: b | r } a b
-_subProps = prop (Proxy :: Proxy "subProps")
+-- --
+-- -- lens boilerplate. I miss Kmett's Lens library's TemplateHaskell 
+-- -- helpers (e.g. `makeFieldsNoPrefix`) with this kind of stuff, 
+-- -- although I recognize this is all due to the existence of 
+-- -- PureScript's vastly superior Record types so I can't complain that 
+-- -- much
+-- --
+-- _featureType
+--   :: forall a b r. Lens { featureType :: a | r } { featureType :: b | r } a b
+-- _featureType = prop (Proxy :: Proxy "featureType")
+-- 
+-- _name
+--   :: forall a b r. Lens { name :: a | r } { name :: b | r } a b
+-- _name = prop (Proxy :: Proxy "name")
+-- 
+-- _description
+--   :: forall a b r. Lens { description :: a | r } { description :: b | r } a b
+-- _description = prop (Proxy :: Proxy "description")
+-- 
+-- _label
+--   :: forall a b r. Lens { label :: a | r } { label :: b | r } a b
+-- _label = prop (Proxy :: Proxy "label")
+-- 
+-- _property
+--   :: forall a b r. Lens { property :: a | r } { property :: b | r } a b
+-- _property = prop (Proxy :: Proxy "property")
+-- 
+-- _access
+--   :: forall a b r. Lens { access :: a | r } { access :: b | r } a b
+-- _access = prop (Proxy :: Proxy "access")
+-- 
+-- _subProps
+--   :: forall a b r. Lens { subProps :: a | r } { subProps :: b | r } a b
+-- _subProps = prop (Proxy :: Proxy "subProps")
 
 --
 
@@ -253,6 +251,11 @@ data Capability
   | BatteryLow CapabilityDetails
   | Tamper CapabilityDetails
 
+--
+-- This feels like something I could generate with Generics but I 
+-- struggled when trying to figure out how to do it in my first 
+-- attempt. Will take another crack at it some day.
+--
 capabilityDetails :: Capability -> CapabilityDetails
 capabilityDetails = case _ of
   Unknown cd -> cd
@@ -296,9 +299,9 @@ instance Show Capability where
   show sp = genericShow sp
 
 
--- Exposes
+-- Capabilities
 
-type Exposes = NonEmptyArray Capability
+type Capabilities = NonEmptyArray Capability
 
 
 --
@@ -459,14 +462,14 @@ decodeCapability featureType' capabilityJson = do
 -- |
 -- | https://www.zigbee2mqtt.io/guide/usage/exposes.html
 -- |
-decodeExposes
-  :: NonEmptyArray Json -> Either JsonDecodeError Exposes
-decodeExposes exposesJson = do
+decodeCapabilities
+  :: NonEmptyArray Json -> Either JsonDecodeError Capabilities
+decodeCapabilities exposesJson = do
   --
   -- for
   --   :: Array capabilityJson
-  --   -> (capabilityJson -> Either JsonDecodeError Exposes)
-  --   -> Either JsonDecodeError (NonEmptyArray Exposes))
+  --   -> (capabilityJson -> Either JsonDecodeError Capabilities)
+  --   -> Either JsonDecodeError (NonEmptyArray Capabilities))
   --
   exposesArrays <- for exposesJson $ \e -> do
     obj <- decodeJson e
@@ -483,24 +486,24 @@ decodeExposes exposesJson = do
 
 -- utilities for filtering a collection of Capabilities a.k.a. Exposes
 
-featureType :: Exposes -> FeatureType -> Boolean
-featureType exposes ft =
-  exposes #
+featureType :: Capabilities -> FeatureType -> Boolean
+featureType capabilities ft =
+  capabilities #
     NonEmpty.filter ((\ft' -> ft' == Just ft) <<< _.featureType <<< capabilityDetails)
     >>> null
     >>> not
 
-capabilities :: Exposes -> Array (CapabilityDetails -> Capability) -> Boolean
-capabilities exposes toMatchCapabilities =
-  length(matchingCapabilities exposes toMatchCapabilities) == length(toMatchCapabilities)
+capabilities :: Capabilities -> Array (CapabilityDetails -> Capability) -> Boolean
+capabilities capabilities toMatchCapabilities =
+  length(matchingCapabilities capabilities toMatchCapabilities) == length(toMatchCapabilities)
 
 matchingCapabilities
-  :: Exposes
+  :: Capabilities
   -> Array (CapabilityDetails -> Capability)
   -> Array (CapabilityDetails -> Capability)
-matchingCapabilities exposes' toMatchCapabilities =
+matchingCapabilities capabilities toMatchCapabilities =
   filter
-    (\capCons -> not <<< null <<< NonEmpty.filter (is capCons) $ exposes')
+    (\capCons -> not <<< null <<< NonEmpty.filter (is capCons) $ capabilities)
     toMatchCapabilities
 
   where

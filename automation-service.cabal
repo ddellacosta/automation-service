@@ -152,7 +152,13 @@ test-suite automation-service-tests
     -- there may be a few different reasons for this, including
     -- resources leaking across `around` calls somehow?
     --
-    -- -threaded
-    -- -rtsopts
-    -- "-with-rtsopts=-N -T"
+    -- ^ update: I am now achieving this by passing the --num-threads 1
+    -- option to tasty or calling setEnv TASTY_NUM_THREADS 1 in test
+    -- Main.
+    --
+    -- -debug
+    -- "-with-rtsopts=-Ds"
+    -threaded
+    -rtsopts
+    "-with-rtsopts=-N -T -l"
     -Wall

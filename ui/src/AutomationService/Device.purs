@@ -7,7 +7,7 @@ module AutomationService.Device
   , Devices
   , _category
   , _deviceDetails
-  , _exposes
+  , _capabilities
   , _id
   , _manufacturer
   , _model
@@ -23,8 +23,8 @@ module AutomationService.Device
   )
 where
 
-import AutomationService.Exposes (Capability(..), Exposes, FeatureType(..), capabilities, decodeExposes,
-                                  featureType)
+import AutomationService.Capabilities (Capabilities, Capability(..), CapabilityDetails, FeatureType(..), capabilities,
+                                       decodeCapabilities, featureType)
 import Control.Alt ((<|>))
 import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
@@ -57,7 +57,7 @@ type DeviceDetails =
   , category     :: String
   , manufacturer :: Maybe String
   , model        :: Maybe String
-  , exposes      :: Exposes
+  , capabilities :: Capabilities
   }
 
 
@@ -80,8 +80,8 @@ _manufacturer = prop (Proxy :: Proxy "manufacturer")
 _model :: forall a b r. Lens { model :: a | r } { model :: b | r } a b
 _model = prop (Proxy :: Proxy "model")
 
-_exposes :: forall a b r. Lens { exposes :: a | r } { exposes :: b | r } a b
-_exposes = prop (Proxy :: Proxy "exposes")
+_capabilities :: forall a b r. Lens { capabilities :: a | r } { capabilities :: b | r } a b
+_capabilities = prop (Proxy :: Proxy "capabilities")
 
 
 --
@@ -103,7 +103,7 @@ _exposes = prop (Proxy :: Proxy "exposes")
 -- assume everything is a Zigbee2MQTT device as far as DeviceDetails
 -- are concerned, but to generalize the way I reference the
 -- capabilities of the Device (which for now just means the stuff
--- inside of DeviceDetails's exposes field, directly from
+-- inside of DeviceDetails's capabilities field, directly from
 -- https://www.zigbee2mqtt.io/guide/usage/exposes.html). The Device
 -- constructors are modeled after Matter 1.4 spec Device types, and
 -- I'll be adding them as I have use for them unless other people
@@ -276,54 +276,61 @@ decodeDevices devicesJson = do
     deviceArrayToMap =
       foldr (\d -> M.insert (_.id <<< details $ d) d) M.empty
 
-decodeBaseDevice :: Json -> Exposes -> Either JsonDecodeError DeviceDetails
-decodeBaseDevice deviceJson exposes = do
+decodeBaseDevice :: Json -> Capabilities -> Either JsonDecodeError DeviceDetails
+decodeBaseDevice deviceJson capabilities = do
   obj <- decodeJson deviceJson
   id' <- obj .: "ieee_address"
   name' <- obj .: "friendly_name"
   category <- obj .: "type"
   manufacturer <- obj .:? "manufacturer"
   model <- obj .:? "model_id"
-  pure $ { id: id', name: name', category, manufacturer, model, exposes }
+  pure $ { id: id', name: name', category, manufacturer, model, capabilities }
 
 mkDefaultDevice :: DeviceDetails -> Either JsonDecodeError Device
 mkDefaultDevice = Right <<< UnknownDevice
 
+
+-- helper aliases to make all the checking below more legible
+include :: Capabilities -> Array (CapabilityDetails -> Capability) -> Boolean
+include = capabilities
+
+haveFeatureType :: Capabilities -> FeatureType -> Boolean
+haveFeatureType = featureType
 
 --
 -- Matter Device Library Specification R1.4
 -- Chapter 4. Lighting Device Types
 --
 decodeLightDevice :: DeviceDetails -> Either JsonDecodeError Device
-decodeLightDevice baseDevice@{ exposes } =
+decodeLightDevice baseDevice@{ capabilities } =
   let
     defaultDevice = mkDefaultDevice baseDevice
 
     extendedColorLight =
-      if    exposes `capabilities` [OnOff, Brightness, ColorHue]
-         || exposes `capabilities` [OnOff, Brightness, ColorXY]
-         || exposes `capabilities` [OnOff, Brightness, ColorHex]
+      if    capabilities `include` [OnOff, Brightness, ColorHue]
+         || capabilities `include` [OnOff, Brightness, ColorXY]
+         || capabilities `include` [OnOff, Brightness, ColorHex]
       then
         Right <<< ExtendedColorLight $ baseDevice
       else
         Left <<< TypeMismatch $ "Not an ExtendedColorLight"
 
     colorTemperatureLight =
-      if exposes `capabilities` [OnOff, Brightness, ColorTemperature]
+      if capabilities `include` [OnOff, Brightness, ColorTemperature]
       then
         Right <<< ColorTemperatureLight $ baseDevice
       else
         Left <<< TypeMismatch $ "Not a ColorTemperatureLight"
 
     dimmableLight =
-      if exposes `capabilities` [OnOff, Brightness]
+      if capabilities `include` [OnOff, Brightness]
       then
         Right <<< DimmableLight $ baseDevice
       else
         Left <<< TypeMismatch $ "Not a DimmableLight"
 
     onOffLight =
-      if exposes `capabilities` [OnOff]
+      if capabilities `include` [OnOff]
       then
         Right <<< OnOffLight $ baseDevice
       else
@@ -352,7 +359,7 @@ decodeLightDevice baseDevice@{ exposes } =
 -- Chapter 6. Switches and Controls Device Types
 --
 decodeControlsDevice :: DeviceDetails -> Either JsonDecodeError Device
-decodeControlsDevice baseDevice@{ exposes } =
+decodeControlsDevice baseDevice@{ capabilities } =
   let
     defaultDevice = mkDefaultDevice baseDevice
 
@@ -367,7 +374,7 @@ decodeControlsDevice baseDevice@{ exposes } =
     --
 
     genericSwitch =
-      if exposes `capabilities` [Switch]
+      if capabilities `include` [Switch]
       then
         Right <<< GenericSwitch $ baseDevice
       else
@@ -382,7 +389,7 @@ decodeControlsDevice baseDevice@{ exposes } =
 -- Chapter 7. Sensor Device Types
 --
 decodeSensorDevice :: DeviceDetails -> Either JsonDecodeError Device
-decodeSensorDevice baseDevice@{ exposes } =
+decodeSensorDevice baseDevice@{ capabilities } =
   let
     defaultDevice = mkDefaultDevice baseDevice
 
@@ -400,42 +407,42 @@ decodeSensorDevice baseDevice@{ exposes } =
     --
 
     contactSensor =
-      if exposes `capabilities` [Contact]
+      if capabilities `include` [Contact]
       then
         Right <<< ContactSensor $ baseDevice
       else
         Left <<< TypeMismatch $ "Not a ContactSensor"
 
     lightSensor =
-      if exposes `capabilities` [IlluminanceLux]
+      if capabilities `include` [IlluminanceLux]
       then
         Right <<< LightSensor $ baseDevice
       else
         Left <<< TypeMismatch $ "Not a LightSensor"
 
     occupancySensor =
-      if exposes `capabilities` [Occupancy]
+      if capabilities `include` [Occupancy]
       then
         Right <<< OccupancySensor $ baseDevice
       else
         Left <<< TypeMismatch $ "Not an OccupancySensor"
 
     temperatureSensor =
-      if exposes `capabilities` [Temperature]
+      if capabilities `include` [Temperature]
       then
         Right <<< TemperatureSensor $ baseDevice
       else
         Left <<< TypeMismatch $ "Not a TemperatureSensor"
 
     humiditySensor =
-      if exposes `capabilities` [Humidity]
+      if capabilities `include` [Humidity]
       then
         Right <<< HumiditySensor $ baseDevice
       else
         Left <<< TypeMismatch $ "Not a HumiditySensor"
 
     airQualitySensor =
-      if exposes `capabilities` [AirQuality]
+      if capabilities `include` [AirQuality]
       then
         Right <<< AirQualitySensor $ baseDevice
       else
@@ -463,7 +470,7 @@ decodeSensorDevice baseDevice@{ exposes } =
 -- Chapter 8. Closure Device Types
 --
 decodeClosureDevice :: DeviceDetails -> Either JsonDecodeError Device
-decodeClosureDevice baseDevice@{ exposes } =
+decodeClosureDevice baseDevice@{ capabilities } =
   let
     defaultDevice = mkDefaultDevice baseDevice
 
@@ -476,7 +483,7 @@ decodeClosureDevice baseDevice@{ exposes } =
     --
 
     windowCovering =
-      if exposes `capabilities` [Covering]
+      if capabilities `include` [Covering]
       then
         Right <<< WindowCovering $ baseDevice
       else
@@ -497,21 +504,21 @@ decodeDevice deviceJson = do
   --
   mDefinition <- obj .:? "definition"
 
-  exposes <- case mDefinition of
+  capabilities <- case mDefinition of
     Just definition -> do
       exposes <- definition .:? "exposes"
       case fromArray =<< exposes of
-        Just exposes' -> decodeExposes exposes'
+        Just exposes' -> decodeCapabilities exposes'
         _ -> Left (TypeMismatch "Empty exposes list")
     Nothing -> Left (UnexpectedValue deviceJson)
 
-  baseDevice <- decodeBaseDevice deviceJson exposes
+  baseDevice <- decodeBaseDevice deviceJson capabilities
 
   let
     defaultDevice = mkDefaultDevice baseDevice
 
     lightDevice =
-      if exposes `featureType` Light
+      if capabilities `haveFeatureType` Light
       then
         decodeLightDevice baseDevice
       else
@@ -519,7 +526,7 @@ decodeDevice deviceJson = do
 
     -- see comment for sensor values below
     controlsDevice =
-      if exposes `capabilities` [Switch]
+      if capabilities `include` [Switch]
       then
         decodeControlsDevice baseDevice
       else
@@ -534,12 +541,12 @@ decodeDevice deviceJson = do
     -- do it the ugly...er, even uglier way ¯\_(ツ)_/¯
     --
     sensorDevice =
-      if    exposes `capabilities` [Contact]
-         || exposes `capabilities` [IlluminanceLux]
-         || exposes `capabilities` [Occupancy]
-         || exposes `capabilities` [Temperature]
-         || exposes `capabilities` [Humidity]
-         || exposes `capabilities` [AirQuality]
+      if    capabilities `include` [Contact]
+         || capabilities `include` [IlluminanceLux]
+         || capabilities `include` [Occupancy]
+         || capabilities `include` [Temperature]
+         || capabilities `include` [Humidity]
+         || capabilities `include` [AirQuality]
       then
         decodeSensorDevice baseDevice
       else
@@ -552,7 +559,7 @@ decodeDevice deviceJson = do
     -- like lights do wrt featureType being consistent?
     --
     closureDevice =
-      if exposes `featureType` Cover
+      if capabilities `haveFeatureType` Cover
       then
         decodeClosureDevice baseDevice
       else

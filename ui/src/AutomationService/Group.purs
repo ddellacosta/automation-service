@@ -6,15 +6,16 @@ module AutomationService.Group
   )
 where
 
-import AutomationService.Device (Device, Devices)
+import AutomationService.Device (Device, Devices, _deviceDetails, _name)
 import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:))
 import Data.Array (filter)
 import Data.Either (Either(..), isRight)
+import Data.Lens ((^.))
 import Data.Map as M
 import Data.Maybe (Maybe(..))
 import Data.Traversable (sequence)
-import Prelude ((<<<), ($), (<$>), (=<<), (<>), bind, pure)
+import Prelude ((<<<), ($), (<$>), (=<<), (<>), bind, pure, discard)
 
 type GroupScene = { id :: Int, name :: String }
 type GroupDevice = { id :: String, endpoint :: Int, device :: Device }
@@ -42,9 +43,11 @@ decodeGroup devices groupJson = do
   obj <- decodeJson groupJson
   name <- obj .: "friendly_name"
   id <- obj .: "id"
-  members <- decodeGroupResource (decodeMember devices) =<< obj .: "members"
+  -- members <- decodeGroupResource (decodeMember devices) =<< obj .: "members"
+  members :: Array Json <- obj .: "members"
+  deviceMembers <- decodeGroupResource (decodeMember devices) members
   scenes <- decodeGroupResource decodeScene =<< obj .: "scenes"
-  pure { name, id, members, scenes }
+  pure { name, id, members: deviceMembers, scenes }
 
   where
     decodeGroupResource
@@ -62,9 +65,10 @@ decodeGroup devices groupJson = do
       endpoint <- obj .: "endpoint"
       id <- obj .: "ieee_address"
       case M.lookup id devices' of
-        Just device ->
+        Just device -> do
+          let deets = device ^. _deviceDetails
           pure { id, endpoint, device }
-        Nothing ->
+        Nothing -> do
           Left <<< TypeMismatch $ "No device with id " <> id <> " exists"
 
     decodeScene :: Json -> Either JsonDecodeError GroupScene
