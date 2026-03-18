@@ -50,8 +50,8 @@ import Service.Automation (Automation)
 import Service.AutomationName (AutomationName(..))
 import Service.Device (Device, DeviceId)
 import Service.Env.Config (Config, LogLevel (..), MQTTConfig (..), automationServiceTopic,
-                           configDecoder, dbPath, httpPort, logFilePath, logLevel, luaScriptPath,
-                           mqttConfig, statusTopic)
+                           configDecoder, dbPath, httpPort, httpRoot, logFilePath, logLevel,
+                           luaScriptPath, mqttConfig, statusTopic)
 import Service.Group (Group, GroupId)
 import Service.MQTT.Class (MQTTClient (..))
 import qualified Service.MQTT.Messages.Daemon as Daemon

@@ -17,34 +17,44 @@ import Elmish (Dispatch, ReactElement, (<|), (<?|))
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
 import Foreign.Object as O
-import Prelude ((<<<), ($), (<#>), (=<<), (>>=), (<>), bind, not, otherwise, pure, show)
+import Prelude ((<<<), ($), (<#>), (=<<), (>>=), (<>), bind, not, pure, show)
 
-onOffSwitch :: forall r. Dispatch Message -> Message -> Maybe { state :: Maybe ValueOnOff | r } -> CapabilityDetails -> ReactElement
-onOffSwitch dispatch msg mDeviceState cap
-  | not (canSet cap.access) =
-    H.div "" $ H.text "Not allowed to turn this one on"
+onOffSwitch
+  :: forall r. Dispatch Message
+  -> Message
+  -> Maybe { state :: Maybe ValueOnOff | r }
+  -> CapabilityDetails
+  -> ReactElement
+onOffSwitch dispatch msg mDeviceState cap =
+  H.div "form-check form-switch"
+  [ H.input_
+    "form-check-input"
+    { type: "checkbox"
+    , role: "switch"
+    , id: "flexSwitchCheckDefault_" -- <> device.id
+    , checked:
+      case mDeviceState >>= _.state of
+        Just onOffValue -> isOn cap onOffValue
+        _ -> false
+    , onChange: dispatch <| \_e -> msg
+    , disabled: not (canSet cap.access)
+    }
 
-  | otherwise =
-    H.div "form-check form-switch"
-    [ H.input_
-      "form-check-input"
-      { type: "checkbox"
-      , role: "switch"
-      , id: "flexSwitchCheckDefault_" -- <> device.id
-      , checked:
-        case mDeviceState >>= _.state of
-          Just onOffValue -> isOn cap onOffValue
-          _ -> false
-      , onChange: dispatch <| \_e -> msg
-      }
+  , H.label_
+    "form-check-label"
+    { htmlFor: "flexSwitchCheckDefault_" } $
+    H.empty
+  ]
 
-    , H.label_
-      "form-check-label"
-      { htmlFor: "flexSwitchCheckDefault_" } $
-      H.empty
-    ]
-
-colorSelector :: Dispatch Message -> (Color -> Message) -> Maybe DeviceState -> CapabilityDetails -> ReactElement
+-- lol this doesn't even try to read the current state and set it
+-- according to the light type, so it can cheat and get away with
+-- just sending messages in hsl format
+colorSelector
+  :: Dispatch Message
+  -> (Color -> Message)
+  -> Maybe DeviceState
+  -> CapabilityDetails
+  -> ReactElement
 colorSelector dispatch message _mDeviceState _cap =
   H.div "m-1 p-2 border border-secondary-subtle"
   [ colorWheel
@@ -96,34 +106,40 @@ enumSelector
   -> Maybe DeviceState
   -> CapabilityDetails
   -> ReactElement
-enumSelector dispatch message _mDeviceState preset
-  | not (canSet preset.access) =
-      H.div "" $ H.text "no can do buddy"
+enumSelector dispatch message _mDeviceState preset =
+  H.div "border rounded p-2 m-2"
+  [ H.strong "" preset.name
+  , H.select_
+    "form-select"
+    -- how with Elmish?
+    -- aria-label="Default select example"
+    { onChange: dispatch <| message <<< E.selectSelectedValue
+    , disabled: not (canSet preset.access)
+    }
+    $ enumValues preset <#> \v -> H.option_ "" { value: v } v
+  , H.p "" $ H.text $ fromMaybe "" preset.description
+  ]
 
-  | otherwise =
-      H.div "border rounded p-2 m-2"
-      [ H.strong "" preset.name
-      , H.select_
-        "form-select"
-        -- how with Elmish? aria-label="Default select example"
-        { onChange: dispatch <| message <<< E.selectSelectedValue
-        }
-        $ enumValues preset <#> \v -> H.option_ "" { value: v } v
-      , H.p "" $ H.text $ fromMaybe "" preset.description
-      ]
 
+type DeviceOrGroupId = String
+
+--
+-- DeviceOrGroupId is here just as some entropy for generating a
+-- distinct ID.
+--
 numberSlider
   :: Dispatch Message
   -> (String -> Message)
   -> String
   -> Maybe DeviceState
+  -> DeviceOrGroupId
   -> CapabilityDetails
   -> ReactElement
-numberSlider dispatch message propName mDeviceState cap@{ subProps } =
+numberSlider dispatch message propName mDeviceState deviceOrGroupId cap@{ subProps } =
   case subProps of
     Numeric numProps ->
       let
-        idStr = "numericRange_" <> "fooosps" -- device.id
+        idStr = "numericRange_" <> deviceOrGroupId
 
         getProp :: String -> DeviceState -> Maybe Int
         getProp propName' ds' = case propName' of

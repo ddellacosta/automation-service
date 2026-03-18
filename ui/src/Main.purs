@@ -21,6 +21,7 @@ import Data.Traversable (for_)
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
+import Effect.Now (now)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
 import Elmish (Dispatch, ReactElement, Transition, forks, forkVoid, (<|))
@@ -77,6 +78,8 @@ update s = case _ of
       let
         msgSink' = msgSink <<< DeviceMsg
         messageHandler = \msgStr -> do
+          now' <- liftEffect $ now
+
           let
             jsonParseResult = parseJson msgStr
             jsonBlob = case jsonParseResult of
@@ -84,7 +87,7 @@ update s = case _ of
               Left _jsonError -> jsonNull
             devices = fromRight (Devices.mkFailedParse jsonParseResult) $
                         Devices.decodeDevices <$> jsonParseResult
-            deviceState = DeviceState.decodeDeviceState jsonBlob
+            deviceState = DeviceState.decodeDeviceState now' jsonBlob
 
           liftEffect $ do
             debug $ show devices

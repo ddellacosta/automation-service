@@ -9,7 +9,9 @@ import AutomationService.Device (Devices, DeviceId)
 import AutomationService.DeviceState (DeviceState)
 import Data.Argonaut (Json, toString)
 import Data.Generic.Rep (class Generic)
-import Data.Show.Generic (genericShow)
+-- No type class instance was found for
+-- Data.Show.Show Json
+-- import Data.Show.Generic (genericShow)
 
 data Message
   = LoadDevices Devices

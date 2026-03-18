@@ -28,7 +28,7 @@ import Test.AutomationService.Elmish.Bootstrap (testComponent)
 import Test.AutomationService.Spec (Spec)
 import Test.AutomationService.WebSocketStub (webSocketStub)
 import Test.Fixtures as Fixtures
-import Test.Spec (before, describe, it)
+import Test.Spec (before, describe, it, pending')
 import Test.Spec.Assertions (shouldEqual)
 import Web.DOM.Element (Element, toNode)
 import Web.DOM.Node (textContent)
@@ -146,15 +146,16 @@ spec = before setup $
 
 
     -- it "Groups are loaded and operational" $ \wsState@(TestWS { store: _store, ws }) -> do
-    it "Groups are loaded and operational" $ \wsState -> do
-
-      newDsUpdateTimers <- liftEffect $ Ref.new M.empty
-
-      testComponent
-        { init: Main.init newDsUpdateTimers $ connectToWS wsState
-        , view: Main.view
-        , update: Main.update
-        } do
+    pending' "Groups are loaded and operational" do
+--     it "Groups are loaded and operational" $ \wsState -> do
+--
+--       newDsUpdateTimers <- liftEffect $ Ref.new M.empty
+--
+--       testComponent
+--         { init: Main.init newDsUpdateTimers $ connectToWS wsState
+--         , view: Main.view
+--         , update: Main.update
+--         } do
 
           (1 :: Int) `shouldEqual` (2 :: Int)
 

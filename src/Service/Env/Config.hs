@@ -11,6 +11,7 @@ module Service.Env.Config
   , configDecoder
   , dbPath
   , httpPort
+  , httpRoot
   , logFilePath
   , logLevel
   , luaScriptPath
@@ -72,6 +73,7 @@ data Config = Config
   , _luaScriptPath :: FilePath
   , _dbPath        :: FilePath
   , _httpPort      :: Port
+  , _httpRoot      :: FilePath
   }
   deriving (Generic, Show)
 
@@ -87,4 +89,5 @@ configDecoder =
         <*> field "luaScriptPath" string
         <*> field "dbPath" string
         <*> field "httpPort" (Port <$> auto)
+        <*> field "httpRoot" string
     )

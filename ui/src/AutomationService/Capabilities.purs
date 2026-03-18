@@ -6,7 +6,6 @@ module AutomationService.Capabilities
   , CompositeProps
   , EnumProps
   , FeatureType(..)
-  , ListProps
   , NumericProps
   , SubProps(..)
   , ValueOnOff(..)
@@ -18,9 +17,15 @@ module AutomationService.Capabilities
   , decodeCapabilities
   , enumValues
   , featureType
+  , getNumericCapabilities
+  , haveFeatureType
+  , include
+  , is
   , isOn
+  , isPreset
   , isPublished
   , matchingCapabilities
+  , matchingCapabilitiesWithPred
   , serializeValueOnOff
   )
 where
@@ -30,20 +35,19 @@ import Data.Argonaut (Json, JsonDecodeError, decodeJson)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Argonaut.Decode.Class (class DecodeJson)
 import Data.Argonaut.Decode.Decoders (decodeBoolean, decodeString)
-import Data.Array (filter, length)
+import Data.Array (length)
 import Data.Array.NonEmpty (NonEmptyArray, cons', fromArray, head, tail)
 import Data.Array.NonEmpty as NonEmpty
 import Data.Int.Bits ((.&.))
 import Data.Either (Either(..))
-import Data.Foldable (foldM, null)
+import Data.Foldable (any, foldM, null)
 import Data.Generic.Rep (class Generic)
-import Data.Lens (Lens)
-import Data.Lens.Record (prop)
+import Data.Lens ((^..), filtered, folded)
+import Data.List (toUnfoldable)
 import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
 import Data.Traversable (for)
-import Prelude (class Eq, class Ord, class Show, (<<<), (>>>), ($), (#), (<>), (<$>), (>>=), (=<<), (>), (==), bind, const, not, pure, show)
-import Type.Proxy (Proxy(..))
+import Prelude (class Eq, class Ord, class Show, (<<<), (>>>), ($), (#), (<>), (<$>), (>>=), (=<<), (>), (==), bind, const, flip, not, pure, show)
 
 
 -- CapabilityDetails.featureType
@@ -70,6 +74,10 @@ instance DecodeJson FeatureType where
 
 
 -- CapabilityDetails.access
+
+-- honestly after thinking about it for more than a second I'm not
+-- sure if canGet or isPublished are in any sense useful in the
+-- context of the frontend, but I suppose it's good to be consistent
 
 -- |
 -- | https://www.zigbee2mqtt.io/guide/usage/exposes.html#access
@@ -139,8 +147,6 @@ enumValues { subProps } = case subProps of
   Enum { values } -> values
   _ -> []
 
-type ListProps = Capability
-
 type NumericProps =
   { valueMax  :: Maybe Int
   , valueMin  :: Maybe Int
@@ -152,7 +158,7 @@ data SubProps
   = Binary BinaryProps
   | Composite CompositeProps
   | Enum EnumProps
-  | List ListProps
+  | List Capability
   | Null
   | Numeric NumericProps
   | Text NumericProps
@@ -177,43 +183,6 @@ type CapabilityDetails =
   , access      :: Int
   , subProps    :: SubProps
   }
-
--- --
--- -- lens boilerplate. I miss Kmett's Lens library's TemplateHaskell 
--- -- helpers (e.g. `makeFieldsNoPrefix`) with this kind of stuff, 
--- -- although I recognize this is all due to the existence of 
--- -- PureScript's vastly superior Record types so I can't complain that 
--- -- much
--- --
--- _featureType
---   :: forall a b r. Lens { featureType :: a | r } { featureType :: b | r } a b
--- _featureType = prop (Proxy :: Proxy "featureType")
--- 
--- _name
---   :: forall a b r. Lens { name :: a | r } { name :: b | r } a b
--- _name = prop (Proxy :: Proxy "name")
--- 
--- _description
---   :: forall a b r. Lens { description :: a | r } { description :: b | r } a b
--- _description = prop (Proxy :: Proxy "description")
--- 
--- _label
---   :: forall a b r. Lens { label :: a | r } { label :: b | r } a b
--- _label = prop (Proxy :: Proxy "label")
--- 
--- _property
---   :: forall a b r. Lens { property :: a | r } { property :: b | r } a b
--- _property = prop (Proxy :: Proxy "property")
--- 
--- _access
---   :: forall a b r. Lens { access :: a | r } { access :: b | r } a b
--- _access = prop (Proxy :: Proxy "access")
--- 
--- _subProps
---   :: forall a b r. Lens { subProps :: a | r } { subProps :: b | r } a b
--- _subProps = prop (Proxy :: Proxy "subProps")
-
---
 
 data Capability
   = Unknown CapabilityDetails
@@ -487,25 +456,61 @@ decodeCapabilities exposesJson = do
 -- utilities for filtering a collection of Capabilities a.k.a. Exposes
 
 featureType :: Capabilities -> FeatureType -> Boolean
-featureType capabilities ft =
-  capabilities #
+featureType capabilities' ft =
+  capabilities' #
     NonEmpty.filter ((\ft' -> ft' == Just ft) <<< _.featureType <<< capabilityDetails)
     >>> null
     >>> not
 
 capabilities :: Capabilities -> Array (CapabilityDetails -> Capability) -> Boolean
-capabilities capabilities toMatchCapabilities =
-  length(matchingCapabilities capabilities toMatchCapabilities) == length(toMatchCapabilities)
+capabilities capabilities' toMatchCapabilities =
+  length(matchingCapabilities capabilities' toMatchCapabilities) == length(toMatchCapabilities)
 
 matchingCapabilities
   :: Capabilities
   -> Array (CapabilityDetails -> Capability)
-  -> Array (CapabilityDetails -> Capability)
-matchingCapabilities capabilities toMatchCapabilities =
-  filter
-    (\capCons -> not <<< null <<< NonEmpty.filter (is capCons) $ capabilities)
-    toMatchCapabilities
+  -> Array Capability
+matchingCapabilities capabilities' toMatchCapabilities =
+  toUnfoldable $ capabilities' ^.. folded <<< filtered (any is toMatchCapabilities)
 
+matchingCapabilitiesWithPred
+  :: Capabilities
+  -> (Capability -> Boolean)
+  -> Array Capability
+matchingCapabilitiesWithPred capabilities' pred =
+  toUnfoldable $ capabilities' ^.. folded <<< filtered pred
+
+is :: (CapabilityDetails -> Capability) -> Capability -> Boolean
+is cons v = v == (cons <<< capabilityDetails $ v)
+
+isPreset :: String -> Capability -> Boolean
+isPreset presetName cap =
+  case subProps of
+    Enum _props -> name == presetName
+    _ -> false
   where
-    is :: (CapabilityDetails -> Capability) -> Capability -> Boolean
-    is cons v = v == (cons <<< capabilityDetails $ v)
+    { name, subProps } = capabilityDetails cap
+
+getNumericCapabilities :: String -> Capabilities -> Array Capability
+getNumericCapabilities capName =
+  let
+    pred =
+      (capabilityDetails >>>
+       case _ of
+         { name, subProps: Numeric _numProps } ->
+            capName == name
+
+         _ ->
+           false
+      )
+  in
+   flip matchingCapabilitiesWithPred pred
+
+-- helper aliases to make all the checking in
+-- AutomationService.Device more legible
+
+include :: Capabilities -> Array (CapabilityDetails -> Capability) -> Boolean
+include = capabilities
+
+haveFeatureType :: Capabilities -> FeatureType -> Boolean
+haveFeatureType = featureType

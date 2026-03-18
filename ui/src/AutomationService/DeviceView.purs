@@ -9,12 +9,15 @@ module AutomationService.DeviceView
 where
 
 import AutomationService.Device as Device
-import AutomationService.Device (Device(..), DeviceDetails, DeviceId, Devices, _deviceDetails, _capabilities, _id, _name, details, deviceTopic, getTopic, setTopic)
+import AutomationService.Device (Device(..), DeviceDetails, DeviceId, Devices, _deviceDetails,
+                                 _name, details, deviceTopic, getTopic, setTopic)
 import AutomationService.DeviceMessage (Message(..))
 import AutomationService.DeviceState (DeviceState, DeviceStates, getDeviceState)
 import AutomationService.DeviceViewComponents as Components
-import AutomationService.Capabilities (Capability(..), CapabilityDetails, SubProps(..), ValueOnOff(..), canGet, canSet, capabilityDetails, isOn, isPublished)
-import AutomationService.Group (Group, GroupDevice)
+import AutomationService.Capabilities (Capability(..), ValueOnOff, canGet, canSet,
+                                       capabilityDetails, getNumericCapabilities, isPublished, isPreset,
+                                       matchingCapabilities, matchingCapabilitiesWithPred)
+import AutomationService.Group (Group, GroupDevice, findGroupDeviceStates, groupDevicesOnOffState)
 import AutomationService.Group as Group
 import AutomationService.Logging (debug, warn)
 import AutomationService.MQTT as MQTT
@@ -26,17 +29,16 @@ import Data.Argonaut (Json, jsonNull)
 import Data.Argonaut.Core (stringify)
 import Data.Argonaut.Encode.Class (encodeJson)
 import Data.Array as Array
-import Data.Array ((:), catMaybes, head, intercalate, sort)
-import Data.Array.NonEmpty as NonEmpty
+import Data.Array (catMaybes, head, intercalate, sort)
 import Data.DateTime.Instant (Instant)
 import Data.Either (Either(..))
 import Data.Eq (class Eq)
-import Data.Foldable (all, foldMap, foldr)
-import Data.Lens ((^.), folded, foldrOf)
+import Data.Foldable (foldMap, foldr)
+import Data.Lens ((^.))
 import Data.List as L
 import Data.Map as M
 import Data.Map (Map)
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Ord (class Ord)
 import Data.Set as Set
 import Data.Set (Set)
@@ -46,7 +48,7 @@ import Effect.Ref (Ref)
 import Elmish (Transition, Dispatch, ReactElement, forkVoid)
 import Elmish.HTML (_data)
 import Elmish.HTML.Styled as H
-import Prelude (($), (#), (<<<), (>>>), (<$>), (<#>), (*>), (<>), (==), compare, discard, flip, identity, pure, show)
+import Prelude (($), (#), (<<<), (<$>), (<#>), (*>), (<>), compare, discard, pure, show)
 
 
 data Resource
@@ -218,16 +220,10 @@ view state@{ devices, deviceStates, groups } dispatch =
   ]
 
   where
-    -- This is converted to an Array first because there is no
-    -- instance of Elmish.React.ReactChildren (List ReactElement)
-    -- in a few places where I want to map over devices to produce
-    -- HTML output...
-    -- ...maybe there's a better way?
-    devicesA :: Array Device
-    devicesA = L.toUnfoldable $ M.values devices
-
     resources :: Array Resource
-    resources = (DeviceResource <$> devicesA) <> (GroupResource <$> groups)
+    resources =
+          (DeviceResource <$> (L.toUnfoldable $ M.values devices))
+       <> (GroupResource <$> groups)
 
     deviceTitle :: DeviceDetails -> ReactElement
     deviceTitle { name } = H.div "card-title" name
@@ -334,22 +330,16 @@ view state@{ devices, deviceStates, groups } dispatch =
 
     onOffSwitch :: Maybe DeviceState -> DeviceDetails -> ReactElement
     onOffSwitch mDeviceState device@{ capabilities } =
-      let
-        onOffCapabilities = (flip NonEmpty.filter) capabilities \cap -> case cap of
-          OnOff _ -> true
-          _ -> false
+      case head $ capabilityDetails <$> capabilities `matchingCapabilities` [OnOff] of
+        Nothing ->
+          H.div "" $ H.text "Not a light?"
 
-      in
-       case head onOffCapabilities <#> capabilityDetails of
-         Nothing ->
-           H.div "" $ H.text "Not a light?"
-
-         Just cap ->
-           Components.onOffSwitch
-             dispatch
-             (PublishDeviceMsg $ MQTT.mkPublishMsg (setTopic device.name) $ MQTT.state "TOGGLE")
-             mDeviceState
-             cap
+        Just cap ->
+          Components.onOffSwitch
+            dispatch
+            (PublishDeviceMsg $ MQTT.mkPublishMsg (setTopic device.name) $ MQTT.state "TOGGLE")
+            mDeviceState
+            cap
 
     colorSelector :: Maybe DeviceState -> DeviceDetails -> ReactElement
     colorSelector mDeviceState device@{ capabilities } =
@@ -359,14 +349,8 @@ view state@{ devices, deviceStates, groups } dispatch =
           PublishDeviceMsg $
             MQTT.mkPublishMsg topic $
               MQTT.hexColor $ Color.toHexString color
-        colorCapabilityDetails = flip NonEmpty.filter capabilities \cap -> case cap of
-          ColorXY _ -> true
-          ColorHue _ -> true
-          ColorHex _ -> true
-          _ -> false
-
       in
-       case head colorCapabilityDetails <#> capabilityDetails of
+       case head $ capabilityDetails <$> capabilities `matchingCapabilities` [ColorXY, ColorHue, ColorHex] of
          Nothing ->
            H.div "" $ H.text "this doesn't support color selection"
 
@@ -375,39 +359,30 @@ view state@{ devices, deviceStates, groups } dispatch =
 
     enumSelector :: String -> Maybe DeviceState -> DeviceDetails -> ReactElement
     enumSelector presetName mDeviceState device@{ capabilities } =
-      let
-        isPreset :: CapabilityDetails -> Boolean
-        isPreset { name, subProps } =
-          case subProps of
-            Enum _props -> name == presetName
-            _ -> false
+      case head $ capabilityDetails <$> capabilities `matchingCapabilitiesWithPred` isPreset presetName of
+        Nothing -> H.empty
 
-        presetCapabilities = NonEmpty.filter (isPreset <<< capabilityDetails) capabilities
-
-      in
-       case head presetCapabilities <#> capabilityDetails of
-         Nothing -> H.empty
-
-         Just preset ->
-           Components.enumSelector
-             dispatch
-             (PublishDeviceMsg
-              <<< MQTT.mkGenericPublishMsg
-                (setTopic device.name)
-                (fromMaybe "CHECK_YOUR_PROPERTY" preset.property)
-               )
-             mDeviceState
-             preset
+        Just preset ->
+          Components.enumSelector
+            dispatch
+            (PublishDeviceMsg
+             <<< MQTT.mkGenericPublishMsg
+               (setTopic device.name)
+               (fromMaybe "CHECK_YOUR_PROPERTY" preset.property)
+              )
+            mDeviceState
+            preset
 
     numberSlider :: String -> Maybe DeviceState -> DeviceDetails -> ReactElement
     numberSlider propName mDeviceState device@{ capabilities } =
-      case getNumericCap propName <#> capabilityDetails of
+      case head $ capabilityDetails <$> getNumericCapabilities propName capabilities of
         Just cap ->
           Components.numberSlider
             dispatch
             (PublishDeviceMsg <<< MQTT.mkGenericPublishMsg (setTopic device.name) propName)
             propName
             mDeviceState
+            device.id
             cap
 
         Nothing ->
@@ -417,19 +392,6 @@ view state@{ devices, deviceStates, groups } dispatch =
         unsupported =
           "Capability " <> propName <> " is not supported for this device."
 
-        getNumericCap :: String -> Maybe Capability
-        getNumericCap capName =
-          head $
-            NonEmpty.filter
-              (capabilityDetails >>>
-               case _ of
-                 { name, subProps: Numeric _numProps } ->
-                   capName == name
-
-                 _ ->
-                   false
-              )
-              capabilities
 
 
 -- generic helpers for both devices and groups
@@ -515,6 +477,7 @@ renderCapability dispatch group groupState = case _ of
       (PublishDeviceMsg <<< MQTT.mkGenericPublishMsg (Device.setTopic group.name) "brightness") -- TODO
       "brightness"
       Nothing -- TODO
+      (group.name <> "-" <> show group.id)
       cap
 
   ColorTemperature cap ->
@@ -523,6 +486,7 @@ renderCapability dispatch group groupState = case _ of
       (PublishDeviceMsg <<< MQTT.mkGenericPublishMsg (Device.setTopic group.name) "color_temp") -- TODO
       "color_temp"
       Nothing -- TODO
+      (group.name <> "-" <> show group.id)
       cap
 
   ColorTempStartup cap ->
@@ -531,6 +495,7 @@ renderCapability dispatch group groupState = case _ of
       (PublishDeviceMsg <<< MQTT.mkGenericPublishMsg (Device.setTopic group.name) "color_temp_startup") -- TODO
       "color_temp_startup"
       Nothing -- TODO
+      (group.name <> "-" <> show group.id)
       cap
 
 -- ColorXY CapabilityDetails ->
@@ -581,106 +546,6 @@ renderCapability dispatch group groupState = case _ of
 
   c ->
     H.div "" $ H.text ("Hey got: " <> show c)
-
-findGroupDeviceStates :: Group -> DeviceStates -> Array DeviceState
-findGroupDeviceStates group deviceStates =
-  let
-    groupMemberIDs = Set.fromFoldable $ group.members <#> _.id
-  in
-   deviceStates
-   # M.filterKeys (flip Set.member groupMemberIDs)
-   >>> M.values
-   >>> Array.fromFoldable
-
---
--- O((n*m)*o)
--- where n = group memberDevices, m = Capabilities, and o = DeviceStates
---
-groupDevicesOnOffState :: Group -> Array DeviceState -> { state :: Maybe ValueOnOff }
-groupDevicesOnOffState group groupMemberDeviceStates =
-  --
-  -- this all feels pretty tortured, I gotta say
-  -- I'm not sure if it's my fault or the fact that there's no
-  -- defined contract between groups and devices vis-a-vis zigbee2mqtt
-  --
-  -- maybe a little of both
-  --
-  let
-    --
-    -- Extracts the result of evaluating each OnOff value for all
-    -- group member Devices in the context of the DeviceState. This
-    -- will naturally only return a non-empty result in the case that
-    -- the state matches one the of devices.
-    --
-    extractOnOffValues :: DeviceState -> Array GroupDevice -> Array Boolean
-    extractOnOffValues deviceState members =
-      (flip foldMap members) \{ device: memberDevice } ->
-        let
-          memberDeviceId = memberDevice ^. _deviceDetails <<< _id
-        in
-         foldrOf
-           (_deviceDetails <<< _capabilities <<< folded)
-           (\cap onValues' ->
-             -- If the device is the same one that we're evaluating
-             -- state for, and we get an OnOff capability, evaluate
-             -- its state and prepend it to the existing onValues';
-             -- otherwise return onValues' as is and keep going.
-             case deviceState.device.ieeeAddr == memberDeviceId, cap of
-               true, (OnOff cd) ->
-                 -- kinda annoying boilerplate. Would not be
-                 -- necessary if there were DeviceState types per
-                 -- Capability type? Would that more generally
-                 -- simplify a lot of DeviceState <-> Capability
-                 -- calculations?
-                 flip (maybe onValues') deviceState.state \state' ->
-                   isOn cd state' : onValues'
-               _, _ -> onValues'
-           )
-           []
-           memberDevice
-
-    onOffState =
-      foldr
-        (\deviceState groupState ->
-          let
-            onValues = extractOnOffValues deviceState group.members
-          in
-           case groupState, Array.null onValues, all identity onValues of
-             --
-             -- If groupState has turned false then state does not
-             -- change. (False irrevocably converts state to false
-             -- until the entire collection of state values is
-             -- consumed; this group is off.)
-             --
-             false, _,     _    -> false
-             --
-             -- If the existing state is true and the array is not null
-             -- and evaluating the state of this current deviceState
-             -- value in the context of group memberDevices results in
-             -- true, then we carry that state: true value forward.
-             --
-             true,  false, true -> true
-             --
-             -- If the existing state is null and there are no
-             -- onValues to evaluate, carry that state: true value
-             -- forward.
-             --
-             true,  true,  _    -> true
-             --
-             -- In any other case set state: false.
-             --
-             _,     _,     _    -> false
-        )
-        -- We start true as otherwise this will always fail based on
-        -- the foldr logic described above.
-        true
-        groupMemberDeviceStates
-
-  in
-   if onOffState then
-     { state: Just (ValueOnOffString "ON") }
-    else
-     { state: Just (ValueOnOffString "OFF") }
 
 groupSummary :: Group -> State -> Dispatch Message -> ReactElement
 groupSummary group _state@{ deviceStates } dispatch =

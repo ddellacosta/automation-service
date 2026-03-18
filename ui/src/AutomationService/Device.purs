@@ -23,8 +23,8 @@ module AutomationService.Device
   )
 where
 
-import AutomationService.Capabilities (Capabilities, Capability(..), CapabilityDetails, FeatureType(..), capabilities,
-                                       decodeCapabilities, featureType)
+import AutomationService.Capabilities (Capabilities, Capability(..), FeatureType(..),
+                                       decodeCapabilities, haveFeatureType, include)
 import Control.Alt ((<|>))
 import Data.Argonaut (Json, JsonDecodeError(..), decodeJson, toArray)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
@@ -288,14 +288,6 @@ decodeBaseDevice deviceJson capabilities = do
 
 mkDefaultDevice :: DeviceDetails -> Either JsonDecodeError Device
 mkDefaultDevice = Right <<< UnknownDevice
-
-
--- helper aliases to make all the checking below more legible
-include :: Capabilities -> Array (CapabilityDetails -> Capability) -> Boolean
-include = capabilities
-
-haveFeatureType :: Capabilities -> FeatureType -> Boolean
-haveFeatureType = featureType
 
 --
 -- Matter Device Library Specification R1.4

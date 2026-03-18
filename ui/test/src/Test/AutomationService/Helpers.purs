@@ -9,7 +9,7 @@ import AutomationService.Device (Device, DeviceDetails, details)
 import AutomationService.Capabilities (Capabilities, Capability, CapabilityDetails, SubProps(..), matchingCapabilities)
 import Control.Monad (when)
 import Control.Monad.Error.Class (class MonadThrow, throwError)
-import Data.Array (length)
+import Data.Array (length, sort)
 import Data.Eq (class Eq)
 import Data.Functor (class Functor)
 import Data.Generic.Rep (Constructor(..), Sum(..))
@@ -19,7 +19,7 @@ import Data.Show (class Show)
 import Data.Symbol (class IsSymbol, reflectSymbol)
 import Data.Traversable (class Traversable, for_)
 import Effect.Exception (Error, error)
-import Prelude (Unit, ($), (<<<), (<$>), (<#>), (<>), (==), flip, not, show)
+import Prelude (Unit, ($), (<<<), (<$>), (<#>), (<>), (==), flip, map, not, show)
 import Test.Spec.Assertions (shouldEqual)
 import Type.Proxy (Proxy(..))
 
@@ -88,9 +88,10 @@ shouldHaveCapabilities capabilities caps =
   for_ isMatch \isMatch' ->
     when (not isMatch') do
       let
-        capNames = show $ capName <$> caps
-        -- lol
-        matchNames = show $ matches <#> \matches' -> capName <$> matches'
+        capNames = show $ sort $ capName <$> caps
+        -- the `t` in the `t Capabilities` means this will show up
+        -- like e.g. Right ([OnOff, ...])
+        matchNames = show $ sort <$> (map capabilityName) <$> matches
       throwError <<< error $
         "Does not have capabilities " <> capNames <> ", has only " <> matchNames
 
@@ -98,6 +99,7 @@ shouldHaveCapabilities capabilities caps =
     matches = flip matchingCapabilities caps <$> capabilities
     isMatch = matches <#> \ms -> length ms == length caps
 
+    -- this is stupid, but I suppose so is the CapabilityName class
     capName cons = capabilityName <<< cons $ dummy
 
     dummy :: CapabilityDetails
