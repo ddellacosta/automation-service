@@ -1,0 +1,7 @@
+"DESCRIPTION","DURATION IN MS","NAME","PARENT SUITE","START TIME","STATUS","STOP TIME","SUB SUITE","SUITE","TEST CLASS","TEST METHOD"
+"","2","Decode all properties of a Group","","Wed Mar 18 03:19:13 UTC 2026","passed","Wed Mar 18 03:19:13 UTC 2026","","frontend","",""
+"","7","Decode all properties of a Device","","Wed Mar 18 03:19:13 UTC 2026","passed","Wed Mar 18 03:19:13 UTC 2026","","frontend","",""
+"","299","Can navigate to different pages","","Wed Mar 18 03:19:12 UTC 2026","passed","Wed Mar 18 03:19:13 UTC 2026","","frontend","",""
+"","1","Can parse a collection of exposes JSON","","Wed Mar 18 03:19:13 UTC 2026","passed","Wed Mar 18 03:19:13 UTC 2026","","frontend","",""
+"","1","Groups are loaded and operational","","Wed Mar 18 03:19:13 UTC 2026","failed","Wed Mar 18 03:19:13 UTC 2026","","frontend","",""
+"","0","Constructs the WebSocket URL based on the HTTP URL","","Wed Mar 18 03:19:13 UTC 2026","passed","Wed Mar 18 03:19:13 UTC 2026","","frontend","",""
