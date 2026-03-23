@@ -5,25 +5,23 @@ import AutomationService.Device (decodeDevices, mkFailedParse) as Devices
 import AutomationService.DeviceMessage (Message(..)) as Devices
 import AutomationService.DeviceState as DeviceState
 import AutomationService.DeviceView (DeviceStateUpdateTimers, State, initState, update, view) as Devices
-import AutomationService.Group (decodeGroups) as Groups
-import AutomationService.GroupView (view) as Groups
 import AutomationService.Helpers (allElements, maybeHtml)
 import AutomationService.Logging (LogLevel(..), debug, warn)
 import AutomationService.Logging as Logging
 import AutomationService.Message (Message(..), Page(..), pageName, pageNameClass)
 import AutomationService.Message as Page
 import AutomationService.WebSocket (class WebSocket, addWSEventListener, connectToWS, sendString)
-import Control.Monad (when)
-import Data.Argonaut (parseJson)
+import Data.Argonaut (parseJson, jsonNull)
 import Data.Array (null)
 import Data.Bifunctor (bimap)
-import Data.Either (either, fromRight)
+import Data.Either (Either(..), either, fromRight, isLeft)
 import Data.Map as M
 import Data.Maybe (Maybe(..))
 import Data.Traversable (for_)
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
+import Effect.Now (now)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
 import Elmish (Dispatch, ReactElement, Transition, forks, forkVoid, (<|))
@@ -32,7 +30,7 @@ import Elmish.Component (Command)
 import Elmish.HTML (_data)
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
-import Prelude (Unit, ($), (#), (<>), (<<<), (<$>), (<#>), (=<<), bind, discard, not, pure, show)
+import Prelude (Unit, ($), (#), (<>), (<<<), (<$>), (<#>), bind, discard, not, pure, show, when)
 
 type State ws =
   { currentPage :: Page
@@ -80,16 +78,16 @@ update s = case _ of
       let
         msgSink' = msgSink <<< DeviceMsg
         messageHandler = \msgStr -> do
+          now' <- liftEffect $ now
+
           let
-            jsonBlob = parseJson msgStr
-            devices = fromRight (Devices.mkFailedParse jsonBlob) $
-                        Devices.decodeDevices <$> jsonBlob
-            deviceState = DeviceState.decodeDeviceState =<< jsonBlob
-            groups = case devices of
-              Decoded DecodingSucceeded devices' ->
-                Groups.decodeGroups devices'.devices =<< jsonBlob
-              _ ->
-                Groups.decodeGroups s.devices.devices =<< jsonBlob
+            jsonParseResult = parseJson msgStr
+            jsonBlob = case jsonParseResult of
+              Right jsonBlob' -> jsonBlob'
+              Left _jsonError -> jsonNull
+            devices = fromRight (Devices.mkFailedParse jsonParseResult) $
+                        Devices.decodeDevices <$> jsonParseResult
+            deviceState = DeviceState.decodeDeviceState now' jsonBlob
 
           liftEffect $ do
             debug $ show devices
@@ -112,6 +110,10 @@ update s = case _ of
               -- DeviceState or Groups JSON), so we keep the log
               -- level at debug to avoid a ton of noise:
               liftEffect <<< debug $ "Devices are empty, errors are " <> show errors
+              -- calculate Groups in case this was Groups JSON,
+              -- unless it was DeviceState
+              when (isLeft deviceState) $
+                msgSink' $ Devices.LoadGroups jsonBlob
 
             -- DecodingSucceeded implies we have at least one device
             Decoded DecodingSucceeded { devices: devices', errors } -> do
@@ -121,20 +123,24 @@ update s = case _ of
               when (not null errors) $
                 liftEffect <<< warn $ "Decoding errors: " <> show errors
               msgSink' <<< Devices.LoadDevices $ devices'
+              -- we also need to reload groups every time we
+              -- successfully decode devices, but we can't do that
+              -- here because we need the latest devices in state and
+              -- this handler closes over all state values:
+              msgSink' $ Devices.ReLoadGroups
 
             -- We may also get this when we have mismatched JSON, so
             -- keeping these at debug level as well:
             Decoded DecodingFailed { errors } -> do
               liftEffect <<< debug $ "Decoding failed: " <> show errors
               msgSink' <<< Devices.LoadDevicesFailed <<< show $ errors
+              -- calculate Groups in case this was Groups JSON,
+              -- unless it was DeviceState
+              when (isLeft deviceState) $
+                msgSink' $ Devices.LoadGroups jsonBlob
 
             Decoded BadJson { errors } -> do
               liftEffect <<< debug $ "Bad JSON: " <> show errors
-
-          msgSink' $ either
-            (Devices.LoadGroupsFailed <<< show)
-            Devices.LoadGroups
-            groups
 
       liftEffect $ addWSEventListener ws messageHandler
 
@@ -218,8 +224,6 @@ view state@{ currentPage } dispatch =
           dispatch
 
       Page.Devices -> Devices.view s.devices $ dispatch <<< DeviceMsg
-
-      Page.Groups -> Groups.view s.devices $ dispatch <<< DeviceMsg
 
 
 main :: Effect Unit

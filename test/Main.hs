@@ -10,7 +10,7 @@ import Data.List (isPrefixOf)
 import Data.Proxy (Proxy(..))
 import Data.Typeable (Typeable)
 import qualified Options.Applicative as OptApp
-import System.Environment (getArgs)
+import System.Environment (getArgs, setEnv)
 import qualified Test.Integration.Service.Daemon as Daemon
 import Test.Tasty (TestTree, defaultIngredients, defaultMainWithIngredients, includingOptions, localOption, mkTimeout, testGroup)
 import Test.Tasty.Hspec (TreatPendingAs (..), testSpec)
@@ -58,6 +58,11 @@ main = do
       pure defaultValue
     else
       parseReporter reporterArgs
+
+  -- Ensure we don't run integration tests especially concurrently, as
+  -- there is some resource sharing somehow that is causing flakiness
+  -- when (some?) integration tests are run concurrently:
+  setEnv "TASTY_NUM_THREADS" "1"
 
   case reporter of
     ReporterOpt "local" ->

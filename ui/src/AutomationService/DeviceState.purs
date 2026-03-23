@@ -3,6 +3,7 @@ module AutomationService.DeviceState
  , DeviceState
  , DeviceStates
  , DeviceSummary
+ , PendingStatus(..)
  , Update
  , decodeDeviceState
  , getDeviceState
@@ -10,17 +11,20 @@ module AutomationService.DeviceState
 where
 
 import AutomationService.Device (Device, DeviceId, details)
-import AutomationService.Exposes (ValueOnOff)
+import AutomationService.Capabilities (ValueOnOff)
 import Control.Alternative ((<|>))
 import Data.Argonaut (Json, JsonDecodeError, decodeJson)
 import Data.Argonaut.Decode.Combinators ((.:), (.:?))
 import Data.Argonaut.Decode.Decoders (decodeNumber, decodeString)
+import Data.DateTime.Instant (Instant)
 import Data.Either (Either (..))
+import Data.Generic.Rep (class Generic)
 import Data.Map (Map)
 import Data.Map as M
 import Data.Maybe (Maybe)
+import Data.Show.Generic (genericShow)
 import Data.Traversable (for, traverse)
-import Prelude ((<<<), (<$>), (>>=), (=<<), bind, flip, pure)
+import Prelude (class Eq, class Ord, class Show, (<<<), (<$>), (>>=), (=<<), bind, flip, pure)
 
 type DeviceStates = Map DeviceId DeviceState
 
@@ -127,12 +131,27 @@ decodeUpdate updateJson = do
   state <- obj .: "state"
   pure { installedVersion, latestVersion, state }
 
+data PendingStatus
+  = NotPending
+  | Pending Instant
+  | Timedout
+
+derive instance Eq PendingStatus
+derive instance Generic PendingStatus _
+derive instance Ord PendingStatus
+
+instance Show PendingStatus where
+  show = genericShow
+
+
 --
 -- I _think_ I want this to be a few different types, but not sure
 -- what those are yet
 --
 type DeviceState =
   { device :: DeviceSummary
+
+  , pendingStatus :: PendingStatus
 
   , linkquality :: Int
   , update :: Maybe Update
@@ -160,10 +179,14 @@ type DeviceState =
   , batteryLow :: Maybe Boolean
   }
 
-decodeDeviceState :: Json -> Either JsonDecodeError DeviceState
-decodeDeviceState deviceStateJson = do
+decodeDeviceState :: Instant -> Json -> Either JsonDecodeError DeviceState
+decodeDeviceState now deviceStateJson = do
   obj <- decodeJson deviceStateJson
   device <- decodeDeviceSummary =<< obj .: "device"
+
+  let
+    pendingStatus = (Pending now)
+
   linkquality <- obj .: "linkquality"
   update <- traverse decodeUpdate =<< obj .:? "update"
   updateAvailable <- obj .:? "update_available"
@@ -187,6 +210,7 @@ decodeDeviceState deviceStateJson = do
   batteryLow <- obj .:? "battery_low"
   pure
     { device
+    , pendingStatus
     , linkquality
     , update
     , updateAvailable

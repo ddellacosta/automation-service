@@ -20,5 +20,6 @@ in    { mqttBroker =
       , luaScriptPath = "lua-automations/"
       , dbPath = "automationState.db"
       , httpPort = 8080
+      , httpRoot = "./ui/"
       }
     : ./lib/Config.dhall

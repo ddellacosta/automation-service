@@ -50,8 +50,8 @@ import Service.Automation (Automation)
 import Service.AutomationName (AutomationName(..))
 import Service.Device (Device, DeviceId)
 import Service.Env.Config (Config, LogLevel (..), MQTTConfig (..), automationServiceTopic,
-                           configDecoder, dbPath, httpPort, logFilePath, logLevel, luaScriptPath,
-                           mqttConfig, statusTopic)
+                           configDecoder, dbPath, httpPort, httpRoot, logFilePath, logLevel,
+                           luaScriptPath, mqttConfig, statusTopic)
 import Service.Group (Group, GroupId)
 import Service.MQTT.Class (MQTTClient (..))
 import qualified Service.MQTT.Messages.Daemon as Daemon
@@ -161,7 +161,7 @@ defaultTopicActions config' daemonBroadcast' =
       [ ( setTopic -- as in, the topic for setting
         , M.singleton
             Null
-            (\_topic msg -> for_ (decode msg) $ write daemonBroadcast')
+            (\_topic msg -> for_ (decode msg) write)
         )
 
       , ( Zigbee2MQTT.devicesTopic
@@ -172,7 +172,7 @@ defaultTopicActions config' daemonBroadcast' =
                  Just [] -> pure ()
                  Nothing -> pure ()
                  Just devicesJSON ->
-                   write daemonBroadcast' $ Daemon.DeviceUpdate devicesJSON msg
+                   write . Daemon.DeviceUpdate devicesJSON $ msg
             )
         )
 
@@ -184,14 +184,14 @@ defaultTopicActions config' daemonBroadcast' =
                  Just [] -> pure ()
                  Nothing -> pure ()
                  Just groupsJSON ->
-                   write daemonBroadcast' $ Daemon.GroupUpdate groupsJSON msg
+                   write . Daemon.GroupUpdate groupsJSON $ msg
             )
         )
 
       , ( statusTopic'
-        , M.singleton Null (\_topic _msg -> write daemonBroadcast' Daemon.Status)
+        , M.singleton Null (\_topic _msg -> write Daemon.Status)
         )
       ]
   where
-    write :: TChan Daemon.Message -> Daemon.Message -> IO ()
-    write daemonBroadcast'' = atomically . writeTChan daemonBroadcast''
+    write :: Daemon.Message -> IO ()
+    write = atomically . writeTChan daemonBroadcast'

@@ -4,4 +4,5 @@
 , luaScriptPath : Text
 , dbPath : Text
 , httpPort : Natural
+, httpRoot : Text
 }

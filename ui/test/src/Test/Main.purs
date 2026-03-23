@@ -28,7 +28,7 @@ import Test.AutomationService.Elmish.Bootstrap (testComponent)
 import Test.AutomationService.Spec (Spec)
 import Test.AutomationService.WebSocketStub (webSocketStub)
 import Test.Fixtures as Fixtures
-import Test.Spec (before, describe, it)
+import Test.Spec (before, describe, it, pending')
 import Test.Spec.Assertions (shouldEqual)
 import Web.DOM.Element (Element, toNode)
 import Web.DOM.Node (textContent)
@@ -83,7 +83,8 @@ sendMessage ws msg = do
 
 spec :: Spec Unit
 spec = before setup $
-  describe "Main app" $
+  describe "Main app" $ do
+
     it "Can navigate to different pages" $ \wsState@(TestWS { store: _store, ws }) -> do
       let mqttMsg = "{\"start\": \"test\"}"
 
@@ -142,6 +143,21 @@ spec = before setup $
 
           -- wsStr <- liftEffect $ Ref.read store
           -- wsStr `shouldEqual` mqttMsg
+
+
+    -- it "Groups are loaded and operational" $ \wsState@(TestWS { store: _store, ws }) -> do
+    pending' "Groups are loaded and operational" do
+--     it "Groups are loaded and operational" $ \wsState -> do
+--
+--       newDsUpdateTimers <- liftEffect $ Ref.new M.empty
+--
+--       testComponent
+--         { init: Main.init newDsUpdateTimers $ connectToWS wsState
+--         , view: Main.view
+--         , update: Main.update
+--         } do
+
+          (1 :: Int) `shouldEqual` (2 :: Int)
 
    where
      setup :: Aff TestWS

@@ -27,7 +27,8 @@ import qualified Service.AutomationName as AutomationName
 import Service.AutomationName (Port)
 import Service.Device (Device, DeviceId)
 import Service.Group (Group, GroupId)
-import Service.Env (Env, LogLevel (..), daemonBroadcast, devices, devicesRawJSON, groups, groupsRawJSON, logger)
+import Service.Env (Env, LogLevel (..), config, daemonBroadcast, devices, devicesRawJSON,
+                    groups, groupsRawJSON, httpRoot, logger)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import UnliftIO.Async (concurrently_)
 import UnliftIO.Exception (finally)
@@ -68,7 +69,9 @@ mkRunAutomation port broadcastChan = do
   devices' <- view devices
   groups' <- view groups
 
-  web' <- liftIO $ web devicesRaw groupsRaw
+  httpRoot' <- view $ config . httpRoot
+
+  web' <- liftIO $ web devicesRaw groupsRaw httpRoot'
 
   logger' <- view logger
   daemonBroadcast' <- view daemonBroadcast
@@ -83,11 +86,11 @@ mkRunAutomation port broadcastChan = do
         web'
 
   where
-    web :: TVar ByteString -> TVar ByteString -> IO Wai.Application
-    web devices' groups' = scottyApp $ do
+    web :: TVar ByteString -> TVar ByteString -> FilePath -> IO Wai.Application
+    web devices' groups' httpRoot' = scottyApp $ do
       middleware $ staticPolicy $ addBase "ui"
 
-      get "/" $ file "ui/index.html"
+      get "/" $ file $ httpRoot' <> "index.html"
 
       get "/devices" $ do
         setHeader "Content-Type" "application/json; charset=utf-8"

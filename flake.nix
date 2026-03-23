@@ -289,7 +289,7 @@
           pkgs.watchexec
           pkgs.zlib
           stylish-haskell
-          # threadscope # marked as broken :-(
+          threadscope
         ]);
 
       });

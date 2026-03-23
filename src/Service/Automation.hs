@@ -34,6 +34,7 @@ makePrisms ''ClientMsg
 instance ToJSON ClientMsg where
   toJSON (ByteStringMsg msgBSs) = toJSONList . rights $ T.decodeUtf8' <$> msgBSs
   toJSON (ValueMsg v)           = v
+  toJSON Shutdown               = "shutdown"
 
 instance FromJSON ClientMsg where
   parseJSON :: Value -> Parser ClientMsg
