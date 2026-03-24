@@ -6,6 +6,7 @@
         "core": {
           "dependencies": [
             "aff",
+            "aff-promise",
             "argonaut",
             "argonaut-codecs",
             "arrays",
@@ -51,6 +52,7 @@
           ],
           "build_plan": [
             "aff",
+            "aff-promise",
             "ansi",
             "argonaut",
             "argonaut-codecs",
@@ -141,7 +143,6 @@
         },
         "test": {
           "dependencies": [
-            "elmish-testing-library",
             "spec-node"
           ],
           "build_plan": [
@@ -151,7 +152,6 @@
             "argonaut-core",
             "arraybuffer-types",
             "arrays",
-            "assert",
             "avar",
             "bifunctors",
             "catenable-lists",
@@ -160,12 +160,9 @@
             "contravariant",
             "control",
             "datetime",
-            "debug",
             "distributive",
             "effect",
             "either",
-            "elmish",
-            "elmish-testing-library",
             "enums",
             "exceptions",
             "exists",
@@ -185,7 +182,6 @@
             "lazy",
             "lists",
             "maybe",
-            "media-types",
             "mmorph",
             "newtype",
             "node-buffer",
@@ -208,7 +204,6 @@
             "posix-types",
             "prelude",
             "profunctor",
-            "random",
             "record",
             "refs",
             "safe-coerce",
@@ -221,14 +216,8 @@
             "tuples",
             "type-equality",
             "typelevel-prelude",
-            "undefined-is-not-a-problem",
             "unfoldable",
-            "unsafe-coerce",
-            "web-dom",
-            "web-events",
-            "web-file",
-            "web-html",
-            "web-storage"
+            "unsafe-coerce"
           ]
         }
       },
@@ -237,11 +226,11 @@
         "core": {
           "dependencies": [
             "automation-service",
-            "elmish-testing-library",
             "spec-node"
           ],
           "build_plan": [
             "aff",
+            "aff-promise",
             "ansi",
             "argonaut",
             "argonaut-codecs",
@@ -266,7 +255,6 @@
             "either",
             "elmish",
             "elmish-html",
-            "elmish-testing-library",
             "enums",
             "exceptions",
             "exists",
@@ -891,6 +879,21 @@
         "unsafe-coerce"
       ]
     },
+    "aff-promise": {
+      "type": "registry",
+      "version": "4.0.0",
+      "integrity": "sha256-Jgp3y+NWuuAmwz2V3LlWoX+AvxqfVglY77N5zTw8xnI=",
+      "dependencies": [
+        "aff",
+        "control",
+        "effect",
+        "either",
+        "exceptions",
+        "foreign",
+        "prelude",
+        "transformers"
+      ]
+    },
     "ansi": {
       "type": "registry",
       "version": "7.0.0",
@@ -1198,26 +1201,6 @@
         "unsafe-coerce",
         "web-dom",
         "web-events",
-        "web-html"
-      ]
-    },
-    "elmish-testing-library": {
-      "type": "registry",
-      "version": "0.3.2",
-      "integrity": "sha256-Ow475CoL+CbFdUkmrxOf+G5hk0hjbFnlO0x6LLkiBFw=",
-      "dependencies": [
-        "aff",
-        "arrays",
-        "datetime",
-        "effect",
-        "elmish",
-        "exceptions",
-        "foldable-traversable",
-        "maybe",
-        "nullable",
-        "prelude",
-        "transformers",
-        "web-dom",
         "web-html"
       ]
     },

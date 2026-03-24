@@ -73,7 +73,7 @@
           pkgs.buildNpmPackage {
             name = "automation-service-ui-npm-deps";
             # prefetch-npm-deps package-lock.json
-            npmDepsHash = "sha256-4sWlMyeFAu/4FkWVqANyJiyQbub5WZWB6bok3ZFav00=";
+            npmDepsHash = "sha256-vcwrHSvVL0nLmCVG017Cf/8jsWYCeAoKLHBhNagst7o=";
             src = ./ui;
             nodejs = node_version;
             # need this for spago and logging
@@ -290,6 +290,8 @@
           pkgs.zlib
           stylish-haskell
           threadscope
+          # threadscope # marked as broken :-(
+          pkgs.python3
         ]);
 
       });

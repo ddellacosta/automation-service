@@ -12,10 +12,9 @@ import Data.Maybe (Maybe(..))
 import Data.Traversable (for_)
 import Prelude (Unit, (<<<), ($), (<$>), (=<<), discard)
 import Test.AutomationService.Helpers (shouldConstruct)
-import Test.AutomationService.Spec (Spec)
-import Test.Spec (describe, it)
+import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual)
-import Test.Fixtures (livingRoomStandingLampBulbsFixture, livingRoomStandingLampGroupFixture)
+import Test.Fixtures (devicesWithLivingRoomStandingLampBulbsFixture, groupsWithlivingRoomStandingLampFixture)
 
 spec :: Spec Unit
 spec =
@@ -23,13 +22,13 @@ spec =
     it "Decode all properties of a Group" $ do
 
       let
-        parsedJson = parseJson livingRoomStandingLampBulbsFixture
+        parsedJson = parseJson devicesWithLivingRoomStandingLampBulbsFixture
 
         bulbs = case fromRight (mkFailedParse parsedJson) $ decodeDevices <$> parsedJson of
           Decoded DecodingSucceeded { devices } -> devices
           _ -> M.empty
 
-        parsedGroupsJson = parseJson livingRoomStandingLampGroupFixture
+        parsedGroupsJson = parseJson groupsWithlivingRoomStandingLampFixture
 
         -- code under test (decodeGroups)
         lampGroup = head $ case decodeGroups bulbs =<< parsedGroupsJson of
