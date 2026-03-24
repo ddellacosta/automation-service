@@ -26,5 +26,8 @@
   },
   "scripts": {
     "postinstall": "cp node_modules/mocha/mocha.js node_modules/mocha/mocha.css test/browser/"
+  },
+  "devDependencies": {
+    "playwright": "^1.58.2"
   }
 }
