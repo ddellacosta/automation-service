@@ -2,8 +2,7 @@ module Test.AutomationService.WebSocket where
 
 import AutomationService.WebSocket (getWsUrl')
 import Prelude (Unit, ($), discard)
-import Test.AutomationService.Spec (Spec)
-import Test.Spec (describe, it)
+import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual)
 
 

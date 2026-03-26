@@ -2,10 +2,12 @@ package:
   name: automation-service-test
   dependencies:
     - automation-service
-    - elmish-testing-library
     - spec-node
   bundle:
     module: Test.Runner
-    outfile: "browser/test.js"
-    platform: browser
-    type: "module"
+    outfile: "test.mjs"
+    platform: node
+    type: "app"
+    extraArgs:
+      - "--external:playwright"
+      - "--external:playwright-core"
