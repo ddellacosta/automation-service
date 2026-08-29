@@ -197,16 +197,16 @@ uncollected async MVars, THUNK = unevaluated laziness, etc.). Expect
 the winners to account for roughly the ~7 KB/cycle live growth plus
 the two ~37 KB step events seen in the -S log.
 
-Note on shutdown: the RTS buffers heap-profile output and flushes it
-on clean exit only. The first attempt, with compose's default SIGTERM
-teardown, captured only the first buffered chunk (1.5 MB / 299
-samples / the first ~5s of startup). Both diagnostic overrides
-therefore set `stop_signal: SIGINT` (with a 30s grace period) so
-teardown raises UserInterrupt in the main thread, runs the daemon's
-cleanup, and lets the RTS flush the complete profile. Teardown now
-takes a few seconds; if it ever runs the full 30s and gets
-SIGKILLed, that is the §5 cleanup-hang behavior showing itself —
-report it.
+Note on interpreting the output: .hp sample timestamps are **CPU-seconds,
+not wall-clock** — a mostly-idle app's ~10-minute run spans only ~5
+CPU-seconds, so a profile ending at `t=5.2s` is NOT truncated; it
+covers the whole run. (The SIGINT-based teardown on both diagnostic
+overrides is still worthwhile hygiene: it runs the daemon's cleanup
+and flushes RTS output buffers at exit.) Sample 1 is an empty
+pre-startup snapshot (live=0), so `analyze-hp.sh` measures growth from
+a post-startup baseline sample (30% into the file by default, 2nd
+arg to override). Watch for one-time `STACK` steps — bounded
+thread-stack growth, not a per-cycle leak.
 
 Bonus from the truncated first attempt: GHC 9.6's -hT reports
 constructor-level labels (e.g. `Service.Automation.Client`,
