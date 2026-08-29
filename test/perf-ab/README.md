@@ -57,27 +57,72 @@ From this directory (`test/perf-ab/`):
     AUTOMATION_IMAGE=automation-service:fixed     LABEL=fixed     ./scripts/run-test.sh
 
 Each run: fresh broker + service + db + logs, waits for readiness,
-runs `CYCLES` (default 20) start/stop cycles of the `leaktest` Lua
-automation, samples metrics after each cycle into `results-<LABEL>.csv`,
-then tears everything down. ~6s per cycle.
+runs `CYCLES` (default 20) start/stop cycles of `AUTO_NAME` (default
+`leaktest`, the Lua test script), samples metrics after each cycle
+into `results-<LABEL>.csv`, then tears everything down. ~6s per cycle.
 
 The two runs are strictly sequential (same MQTT topics would collide
 if run in parallel).
 
 ## Expected results
 
-| metric                  | baseline                            | fixed                          |
-|-------------------------|-------------------------------------|--------------------------------|
-| `fds`                   | +2 per cycle (leaked SQLite conns)  | flat                           |
-| `db_handles`            | grows monotonically                 | 0–2 (transient during writes)  |
-| `rss_kb`                | ratchets up cycle over cycle        | plateaus after a few cycles    |
-| `hwm_kb`                | keeps rising                        | plateaus                       |
+| metric                  | baseline                            | fixed                           |
+|-------------------------|-------------------------------------|---------------------------------|
+| `fds`                   | +2 per cycle (leaked SQLite conns)  | flat                            |
+| `db_handles`            | grows monotonically                 | 0 (transient during writes)     |
+| `rss_kb`                | ratchets ~450 KB/cycle              | ~11× slower, still creeping     |
+| `hwm_kb`                | keeps rising                        | rises at the reduced rate       |
+| `threads`               | —                                   | constant                        |
 
 GHC does not eagerly return freed heap to the OS, so judge `rss_kb` by
 its slope over the run (ratchet vs plateau), not by it returning to the
 startup value. A sample taken right after a state write may transiently
 catch 1–2 open db handles in the fixed image — that is the write in
 flight, not a leak; the next cycle's sample will confirm.
+
+Note after the 100-cycle soak on the fixed image: fds and db handles
+stayed perfectly flat (the merged leak fixes holding), but RSS still
+crept at a persistent ~35–45 KB/cycle — a residual leak beyond the
+two merged fixes. The Lua-vs-Gold control run below localizes it.
+
+## Isolating a residual leak: Lua vs Gold control run
+
+The soak's creep is pure heap retention (fds flat). To split it
+between the *daemon machinery* exercised by every start/stop cycle
+(async spawn/cancel, ThreadMap, broadcast-channel churn, SQLite
+writes) and the *Lua path* (two interpreter states per cycle, 28
+registered API-function closures, subscribe machinery), cycle a
+pure-Haskell automation instead of a Lua script:
+
+    AUTO_NAME=Gold      AUTOMATION_IMAGE=automation-service:fixed LABEL=fixed-gold ./scripts/run-test.sh
+    AUTO_NAME=leaktest  AUTOMATION_IMAGE=automation-service:fixed LABEL=fixed-lua  ./scripts/run-test.sh
+
+Gold exercises the same daemon-side machinery per cycle but no Lua.
+Two profile differences, both fine for this comparison:
+
+- Gold finds no registered devices in this environment (no
+  zigbee2mqtt), so its run finishes immediately instead of idling
+  until stopped; the cycle then exercises spawn + cancel of an
+  already-completed async.
+- Gold registers the same device/group on every start, and only
+  Lua-script cleanups deregister, so its registration entries
+  accumulate one NonEmpty element per cycle (a few dozen bytes each —
+  negligible for RSS, but a known issue for the fix list: automations
+  should deregister on stop, and addRegisteredResource should not
+  append duplicates).
+
+Interpretation:
+
+| observation                | verdict                              |
+|----------------------------|----------------------------------------|
+| Gold flat, Lua grows       | leak is Lua-side: interpreter lifecycle (hslua close path, API-function stable pointers) or subscribe machinery |
+| Gold grows too             | daemon-side leak shared by all automation types — prime suspect: the fire-and-forget `async (cancel ...)` in stopAutomation (§3) |
+| `threads` grows (either arm) | thread retention: lingering cancel-asyncs or unreleased bound threads from the Lua lifecycle |
+| both flat                  | residual was allocator/GC behavior; re-run the Lua arm with CYCLES=200 to confirm convergence |
+
+Expect a small constant `threads` baseline (GHC -N workers + main +
+MQTT/HTTP threads + one bound thread per running Lua automation); any
+monotonic growth across cycles is the signal.
 
 ## Troubleshooting
 

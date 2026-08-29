@@ -7,7 +7,10 @@
 #   AUTOMATION_IMAGE=automation-service:fixed     LABEL=fixed     ./scripts/run-test.sh
 #
 # Optional env vars:
-#   CYCLES  number of start/stop cycles (default 20)
+#   CYCLES     number of start/stop cycles (default 20)
+#   AUTO_NAME  automation name to cycle (default "leaktest", the Lua
+#              test script; use "Gold" for the no-Lua control run —
+#              see README.md "Isolating a residual leak")
 #
 # Produces results-<LABEL>.csv in test/perf-ab/ with one sample per
 # cycle. Runs are strictly sequential against a fresh stack (broker,
@@ -20,6 +23,7 @@ cd "$SCRIPT_DIR/.."
 IMAGE="${AUTOMATION_IMAGE:?Set AUTOMATION_IMAGE, e.g. AUTOMATION_IMAGE=automation-service:baseline}"
 LABEL="${LABEL:-run}"
 CYCLES="${CYCLES:-20}"
+AUTO_NAME="${AUTO_NAME:-leaktest}"
 CSV="results-${LABEL}.csv"
 CTR="perf-ab-automation-service"
 export AUTOMATION_IMAGE="$IMAGE"
@@ -41,14 +45,14 @@ die_if_dead() {
   fi
 }
 
-echo "== perf A/B run: image=$IMAGE label=$LABEL cycles=$CYCLES"
+echo "== perf A/B run: image=$IMAGE label=$LABEL cycles=$CYCLES automation=$AUTO_NAME"
 
 # Fresh state for every run
 docker compose down -v --remove-orphans >/dev/null 2>&1 || true
 rm -rf data logs
 mkdir -p data logs
 rm -f "$CSV"
-echo "timestamp_epoch,fds,rss_kb,hwm_kb,db_handles,cycle" > "$CSV"
+echo "timestamp_epoch,fds,rss_kb,hwm_kb,db_handles,threads,cycle" > "$CSV"
 
 # Broker first, then wait until it accepts connections
 docker compose up -d mosquitto >/dev/null
@@ -84,11 +88,11 @@ sleep 5 # let StateManager/HTTPDefault settle
 echo "$("$SCRIPT_DIR/collect-metrics.sh" "$CTR"),0" | tee -a "$CSV"
 
 for i in $(seq 1 "$CYCLES"); do
-  pub '{"start":"leaktest"}'
+  pub "{\"start\":\"$AUTO_NAME\"}"
   sleep 2
   die_if_dead
 
-  pub '{"stop":"leaktest"}'
+  pub "{\"stop\":\"$AUTO_NAME\"}"
   sleep 3
   die_if_dead
 
