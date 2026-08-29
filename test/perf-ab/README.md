@@ -217,6 +217,55 @@ was ~882 KB of which `STACK` was ~532 KB (60%) — the constant
 thread-stack baseline — so the per-cycle live growth must be in the
 non-STACK types, which the full profile will name.
 
+## Verifying the broadcast-channel retention fix
+
+The -hT analysis identified the residual leak: every message ever
+written to `automationBroadcast` is retained for the life of the
+process (~135 KB of live growth over 100 Gold cycles, growing
+linearly). A TChan cell stays reachable while any reader's
+read-pointer still points at or before it, and two readers never
+advance theirs:
+
+- completed asyncs retained forever in the ThreadMap (e.g.
+  `HTTPDefault`) keep their dead thread's stack alive — ThreadId ->
+  TSO -> stack — including the never-advanced read pointer, which
+  anchors every cell written since that automation started;
+- the `HTTP` automation runs forever holding a run-level channel copy
+  it never reads (only per-connection copies read).
+
+The fix (branch `broadcast-chan-retention`): the daemon sweeps
+completed/dead automations from the ThreadMap on every message
+(releasing their anchors, with a warning for automations that died),
+and the HTTP automation drains its run-level copy (per-connection
+behavior unchanged — each dup has its own read pointer).
+
+To verify, build an image from the fix branch and compare against
+the pre-fix profile above:
+
+    docker load -i result \
+      | sed -E 's/^Loaded image: (.+)$/\1/' \
+      | xargs -I{} docker tag {} automation-service:chanfix
+
+    AUTO_NAME=Gold CYCLES=100 \
+      AUTOMATION_IMAGE=automation-service:chanfix LABEL=chanfix \
+      COMPOSE_FILE=compose.yaml:compose.hp.yaml \
+      ./scripts/run-test.sh
+
+    ./scripts/analyze-hp.sh
+
+Expected:
+
+- `Service.Automation.Client`, `TChan.TCons`, `TVAR`, `ValueMsg`, and
+  the aeson `Array`/`Vector`/`String` growth ≈ 0 (pre-fix: the full
+  channel history, ~300 Client constructors over 100 cycles).
+- Remaining live growth limited to the small residuals (registration
+  accumulation; the one-time STACK step).
+- In the CSV, `rss_kb` creep drops correspondingly — the live leak
+  was amplified ~5x in RSS terms by allocator behavior.
+- The `logs/logfile` should no longer report `HTTPDefault` stuck in
+  the running set after startup (the sweep removes it), and Gold
+  entries are swept between Start/Stop messages.
+
 ## Troubleshooting
 
 - `Timed out waiting for mosquitto` — broker didn't come up; check
