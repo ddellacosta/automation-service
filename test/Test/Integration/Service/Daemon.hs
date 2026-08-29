@@ -436,8 +436,14 @@ stateStoreSpecs = do
 
         res <- StateStore.allRunning $ env ^. config . dbPath
 
-        -- HTTPDefault, HTTP <$config.httpPort>, StateManager, LuaScript "test"
-        length res `shouldBe` 4
+        -- HTTP <$config.httpPort>, StateManager, LuaScript "test".
+        -- HTTPDefault is a one-shot bootstrap automation: its run
+        -- completes immediately, and completed automations are swept
+        -- from the running set (cleanDeadAutomations in
+        -- Service.Daemon), so it is not stored as running.
+        length res `shouldBe` 3
+
+        findMatchingSerialized "HTTPDefault" res `shouldBe` []
 
         parseAutomationName . T.unpack <$> (findMatchingSerialized "test" res)
           `shouldBe` [Just (LuaScript "test")]
@@ -464,8 +470,14 @@ stateStoreSpecs = do
 
         res <- StateStore.allRunning dbPath'
 
-        -- HTTPDefault, HTTP <$config.httpPort>, StateManager, LuaScript "test"
-        length res `shouldBe` 4
+        -- HTTP <$config.httpPort>, StateManager, LuaScript "test".
+        -- HTTPDefault is a one-shot bootstrap automation: its run
+        -- completes immediately, and completed automations are swept
+        -- from the running set (cleanDeadAutomations in
+        -- Service.Daemon), so it is not stored as running.
+        length res `shouldBe` 3
+
+        findMatchingSerialized "HTTPDefault" res `shouldBe` []
 
         parseAutomationName . T.unpack <$> (findMatchingSerialized "test" res)
           `shouldBe` [Just (LuaScript "test")]
@@ -681,6 +693,11 @@ statusMessageSpecs = do
           automationServiceTopic' = env ^. config . mqttConfig . automationServiceTopic
           (TestMQTTClient testMCTV) = env ^. mqttClient
 
+        -- Give the boot sequence time to settle so HTTPDefault (a
+        -- one-shot) has completed and been swept from the running set
+        -- before we request a status message.
+        threadDelay 200000
+
         atomically $ writeTChan daemonBroadcast' Daemon.Status
 
         threadDelay 50000
@@ -692,9 +709,12 @@ statusMessageSpecs = do
             decoded :: Maybe Value <- decode =<< M.lookup automationServiceTopic' topicMap
             Just $ decoded ^.. _Just . key "runningAutomations" . _Array . folded . key "name"
 
+        -- HTTPDefault completes immediately and is swept from the
+        -- running set (cleanDeadAutomations in Service.Daemon), so it
+        -- must not be reported as running.
         (null . filter (== Aeson.String "HTTPDefault")) <$> autoServiceTopic
           `shouldBe`
-          Just False
+          Just True
 
         (null . filter (== Aeson.String "StateManager")) <$> autoServiceTopic
           `shouldBe`
