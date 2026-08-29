@@ -124,6 +124,54 @@ Expect a small constant `threads` baseline (GHC -N workers + main +
 MQTT/HTTP threads + one bound thread per running Lua automation); any
 monotonic growth across cycles is the signal.
 
+## GC diagnostic run: live bytes vs fragmentation
+
+The Gold control run showed the residual creep is shared/daemon-side
+(~36 KB/cycle Gold vs ~53 KB/cycle Lua), with no accountable live-data
+growth in the no-Lua code path — leaving two hypotheses: hidden
+retention, or GHC allocator/heap dynamics (GHC does not compact the
+heap by default, and freed heap is not eagerly returned to the OS).
+The discriminator is the RTS's own live-bytes statistics: if live
+bytes at GC grow with cycles it's a real leak; if they're stable
+while RSS grows, it's allocator/fragmentation behavior.
+
+Run the diagnostic on the Gold arm at soak length:
+
+    COMPOSE_FILE=compose.yaml:compose.gc.yaml \
+      AUTO_NAME=Gold CYCLES=100 \
+      AUTOMATION_IMAGE=automation-service:fixed LABEL=fixed-gc \
+      ./scripts/run-test.sh
+
+`compose.gc.yaml` overrides the container command to add
+`+RTS -Slogs/gc.log -RTS` (merged with the image's baked-in
+`-with-rtsopts=-N -T`), writing one statistics line per GC into the
+mounted `logs/` directory. Then:
+
+    ./scripts/analyze-gc.sh          # defaults to logs/gc.log
+
+Interpretation:
+
+- A large column growing roughly linearly first→last, matching the
+  `rss_kb` creep in the CSV → live set is growing: real leak, hunt
+  the object.
+- Live-sized columns flat while `rss_kb` still creeps → allocator/
+  fragmentation dynamics; knobs to try next: `+RTS -c -RTS` (dynamic
+  compaction) in the same override, or `MALLOC_ARENA_MAX=2` for the
+  C-side (glibc arena) component.
+
+Notes:
+
+- `analyze-gc.sh` prints raw samples plus a per-column
+  first/last/min/max summary because the per-GC log format varies by
+  GHC version; if column identification is ambiguous, paste its whole
+  output back for interpretation.
+- If the service fails to start under the override, this GHC may not
+  accept `-S<file>` — change the command to
+  `["+RTS", "-S", "-RTS"]` and capture `docker compose logs
+  automation-service` before the stack is torn down.
+- `logs/` is wiped by the next `run-test.sh` invocation, so run the
+  analyzer (or copy `gc.log` out) right after the diagnostic run.
+
 ## Troubleshooting
 
 - `Timed out waiting for mosquitto` — broker didn't come up; check
