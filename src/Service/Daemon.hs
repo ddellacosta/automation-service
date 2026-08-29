@@ -104,6 +104,16 @@ run' threadMapTV = do
 
   where
     go = do
+      -- Sweep completed/dead automations from the ThreadMap so their
+      -- dead asyncs become garbage. A completed Async retained in the
+      -- ThreadMap keeps its dead thread's stack alive (ThreadId ->
+      -- TSO -> stack), and any TChan read pointers captured in that
+      -- stack anchor the channel's history indefinitely: every
+      -- message written to automationBroadcast after such an
+      -- automation's dup would otherwise be retained for the life of
+      -- the process.
+      cleanDeadAutomations threadMapTV
+
       tryRestoreRunningAutomations
 
       messageChan' <- view messageChan
@@ -223,16 +233,23 @@ run' threadMapTV = do
       => TVar (ThreadMap m)
       -> m ()
     cleanDeadAutomations threadMapTV' = do
-      threadMap <- atomically $ readTVar threadMapTV'
-      cleanupAutoNames <- liftIO $ foldMap'
+      threadMap <- atomically $ readTVar $ threadMapTV'
+      -- First element: everything to remove from the ThreadMap
+      -- (finished or died). Second: died only, for logging; now
+      -- that this sweep runs on every daemon message, crashed
+      -- automations must not vanish from the running set silently.
+      (cleanupAutoNames, diedAutoNames) <- liftIO $ foldMap'
         (\(auto, autoAsync) -> do
             autoStatus <- liftIO . threadStatus . asyncThreadId $ autoAsync
             case autoStatus of
-              ThreadFinished -> pure [_name auto]
-              ThreadDied     -> pure [_name auto]
-              _              -> pure []
+              ThreadFinished -> pure ([_name auto], [])
+              ThreadDied     -> pure ([_name auto], [_name auto])
+              _              -> pure ([], [])
         )
         threadMap
+      for_ diedAutoNames $ \autoName ->
+        warn $ "Automation " <> serializeAutomationName autoName
+          <> " died and is being removed from the running set"
       let cleanedTM = foldl' (flip M.delete) threadMap cleanupAutoNames
       atomically $ writeTVar threadMapTV' cleanedTM
 
