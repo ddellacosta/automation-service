@@ -47,7 +47,7 @@ import Service.MQTT.Messages.Lighting (mkRGB)
 import qualified Service.TimeHelpers as TH
 import System.Random (initStdGen, uniformR)
 import UnliftIO.Concurrent (threadDelay)
-import UnliftIO.Exception (handle, throwIO)
+import UnliftIO.Exception (bracket, handle, throwIO)
 import UnliftIO.STM (TChan, TVar, atomically, readTChan, readTVar, readTVarIO, writeTChan)
 
 luaAutomation
@@ -78,13 +78,21 @@ mkCleanupAutomation filepath = \broadcastChan -> do
     <*> view groups
 
   luaScriptPath' <- view $ config . luaScriptPath
-  luaState <- liftIO Lua.newstate
 
-  luaStatusString <- liftIO . Lua.unsafeRunWith luaState $ do
-    Lua.openlibs -- load the default Lua packages
-    loadAPI filepath logger' mqttClient' daemonBroadcast' broadcastChan devices' groups'
-    loadScript luaScriptPath' filepath *> Lua.callTrace 0 0
-    callWhenExists "cleanup"
+  -- A fresh Lua state is created for each automation run and closed
+  -- when the computation is done, so interpreter states are never
+  -- leaked (they are otherwise retained for the life of the process).
+  -- UnliftIO's bracket runs the release action under
+  -- uninterruptibleMask, so the state is also guaranteed to be closed
+  -- when the automation is interrupted by a cancel (AsyncCancelled)
+  -- while blocked, e.g. in a channel read inside a Lua callback.
+  luaStatusString <- liftIO $
+    bracket Lua.newstate Lua.close $ \luaState ->
+      Lua.unsafeRunWith luaState $ do
+        Lua.openlibs -- load the default Lua packages
+        loadAPI filepath logger' mqttClient' daemonBroadcast' broadcastChan devices' groups'
+        loadScript luaScriptPath' filepath *> Lua.callTrace 0 0
+        callWhenExists "cleanup"
 
   -- ensure all Device and Groups are unregistered
   atomically $ do
@@ -119,22 +127,26 @@ mkRunAutomation filepath = \broadcastChan -> do
   groups' <- view groups
 
   luaScriptPath' <- view $ config . luaScriptPath
-  luaState <- liftIO Lua.newstate
 
   -- TODO think harder about the error handling, in particular make
   -- this failure info available to other parts of the system, in a
   -- more structured data type
+  --
+  -- A fresh Lua state is created for each automation run and closed
+  -- when the computation is done (see the note in mkCleanupAutomation
+  -- for why the bracket guarantees that).
   luaStatusString <- handle (\e -> pure . show $ (e :: Lua.Exception)) $
-    liftIO . Lua.unsafeRunWith luaState $ do
-      Lua.openlibs -- load the default Lua packages
-      loadAPI filepath logger' mqttClient' daemonBroadcast' broadcastChan devices' groups'
-      -- TODO this needs error handling
-      loadScript luaScriptPath' filepath *> Lua.callTrace 0 0
+    liftIO $ bracket Lua.newstate Lua.close $ \luaState ->
+      Lua.unsafeRunWith luaState $ do
+        Lua.openlibs -- load the default Lua packages
+        loadAPI filepath logger' mqttClient' daemonBroadcast' broadcastChan devices' groups'
+        -- TODO this needs error handling
+        loadScript luaScriptPath' filepath *> Lua.callTrace 0 0
 
-      setupStatus <- maybe "setup function doesn't exist" (const "Ok") <$>
-        callWhenExists "setup"
-      liftIO $ logDebugMsg' filepath logger' $ "Setup status: " <> setupStatus
-      loopAutomation
+        setupStatus <- maybe "setup function doesn't exist" (const "Ok") <$>
+          callWhenExists "setup"
+        liftIO $ logDebugMsg' filepath logger' $ "Setup status: " <> setupStatus
+        loopAutomation
 
   debug $
        "LuaScript "
