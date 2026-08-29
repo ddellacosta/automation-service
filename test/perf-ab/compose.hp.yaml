@@ -16,3 +16,12 @@
 services:
   automation-service:
     command: ["/bin/automation-service", "+RTS", "-hT", "-RTS"]
+    # The RTS buffers heap-profile output and flushes on clean exit
+    # only; with compose's default SIGTERM teardown we got just the
+    # first buffered chunk (1.5 MB / 299 samples / the first ~5s of
+    # startup). SIGINT raises UserInterrupt in the main thread, which
+    # unwinds through the daemon's cleanup and lets the RTS flush the
+    # complete profile at exit. If shutdown ever takes the full grace
+    # period, that is the §5 cleanup-hang behavior showing itself.
+    stop_signal: SIGINT
+    stop_grace_period: 30s

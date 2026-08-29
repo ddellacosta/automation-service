@@ -197,6 +197,26 @@ uncollected async MVars, THUNK = unevaluated laziness, etc.). Expect
 the winners to account for roughly the ~7 KB/cycle live growth plus
 the two ~37 KB step events seen in the -S log.
 
+Note on shutdown: the RTS buffers heap-profile output and flushes it
+on clean exit only. The first attempt, with compose's default SIGTERM
+teardown, captured only the first buffered chunk (1.5 MB / 299
+samples / the first ~5s of startup). Both diagnostic overrides
+therefore set `stop_signal: SIGINT` (with a 30s grace period) so
+teardown raises UserInterrupt in the main thread, runs the daemon's
+cleanup, and lets the RTS flush the complete profile. Teardown now
+takes a few seconds; if it ever runs the full 30s and gets
+SIGKILLed, that is the §5 cleanup-hang behavior showing itself —
+report it.
+
+Bonus from the truncated first attempt: GHC 9.6's -hT reports
+constructor-level labels (e.g. `Service.Automation.Client`,
+`stm:...TChan.TCons`, `aeson:...Internal.String`), not just bare
+closure types — so the full profile will be more specific than the
+cheat-sheet terminology above. Also visible: at end-of-startup, live
+was ~882 KB of which `STACK` was ~532 KB (60%) — the constant
+thread-stack baseline — so the per-cycle live growth must be in the
+non-STACK types, which the full profile will name.
+
 ## Troubleshooting
 
 - `Timed out waiting for mosquitto` — broker didn't come up; check

@@ -15,3 +15,11 @@
 services:
   automation-service:
     command: ["/bin/automation-service", "+RTS", "-Slogs/gc.log", "-RTS"]
+    # The RTS flushes buffered statistics on clean exit only; compose's
+    # default SIGTERM teardown kills it without flushing (the gc.log
+    # tail is lost). SIGINT raises UserInterrupt in the main thread,
+    # which unwinds through the daemon's cleanup and lets the RTS exit
+    # cleanly. If shutdown ever takes the full grace period, that is
+    # the §5 cleanup-hang behavior showing itself — report it.
+    stop_signal: SIGINT
+    stop_grace_period: 30s
