@@ -106,4 +106,10 @@ sed -n '2p' "$CSV"
 echo "-- last sample:"
 tail -1 "$CSV"
 
+# Copy out any RTS heap-profile output (automation-service.hp) before
+# teardown — produced by the compose.hp.yaml override (-hT).
+# Harmless no-op when the file does not exist.
+docker compose cp automation-service:/app/automation-service.hp logs/ \
+  >/dev/null 2>&1 || true
+
 docker compose down -v --remove-orphans >/dev/null

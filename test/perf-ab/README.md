@@ -172,6 +172,31 @@ Notes:
 - `logs/` is wiped by the next `run-test.sh` invocation, so run the
   analyzer (or copy `gc.log` out) right after the diagnostic run.
 
+## Closure-type heap profile (-hT): naming the leak
+
+The `-S` diagnostic confirmed the live set really is growing in the
+Gold arm (~7 KB/cycle: 321 KB → 1,031 KB over 100 cycles) — but that
+live growth is only ~1/5 of the RSS creep (~36 KB/cycle), the rest
+being heap/allocator amplification. `-hT` names WHAT is growing: it
+profiles live memory by closure type at every GC (works on normal,
+non-profiling builds) and writes `automation-service.hp`, which
+`run-test.sh` copies into `logs/` before teardown.
+
+    COMPOSE_FILE=compose.yaml:compose.hp.yaml \
+      AUTO_NAME=Gold CYCLES=100 \
+      AUTOMATION_IMAGE=automation-service:fixed LABEL=fixed-hp \
+      ./scripts/run-test.sh
+
+    ./scripts/analyze-hp.sh     # defaults to logs/automation-service.hp
+
+`analyze-hp.sh` diffs per-closure-type live bytes between the first
+and last samples and prints the top growers, with a cheat sheet
+(TSO/STACK = thread retention, ARR_WORDS = accumulating
+ByteString/Text buffers, TVAR/TMVAR = unconsumed TChan cells or
+uncollected async MVars, THUNK = unevaluated laziness, etc.). Expect
+the winners to account for roughly the ~7 KB/cycle live growth plus
+the two ~37 KB step events seen in the -S log.
+
 ## Troubleshooting
 
 - `Timed out waiting for mosquitto` — broker didn't come up; check

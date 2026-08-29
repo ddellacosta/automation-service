@@ -1,0 +1,18 @@
+# Optional compose override for closure-type heap profiling — see
+# README.md "Closure-type heap profile (-hT): naming the leak".
+#
+# Run with compose's multi-file support, e.g.:
+#
+#   COMPOSE_FILE=compose.yaml:compose.hp.yaml \
+#     AUTO_NAME=Gold CYCLES=100 \
+#     AUTOMATION_IMAGE=automation-service:fixed LABEL=fixed-hp \
+#     ./scripts/run-test.sh
+#
+# -hT profiles live memory by closure type at every GC (works on
+# normal, non-profiling builds) and writes automation-service.hp into
+# the container's working directory (/app). run-test.sh copies it into
+# the mounted logs/ directory before tearing the stack down; analyze
+# with scripts/analyze-hp.sh.
+services:
+  automation-service:
+    command: ["/bin/automation-service", "+RTS", "-hT", "-RTS"]
