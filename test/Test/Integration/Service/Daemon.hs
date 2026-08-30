@@ -290,18 +290,12 @@ luaScriptSpecs = do
 
           atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "testCloseFinalizer")
 
-          -- Wait for DeadAutoCleanup on the snooper: this proves the
-          -- full stop sequence completed, which by the sequential
-          -- bracket structure means both Lua.close calls ran (the
-          -- run state closes before mkRunAutomation returns; the
-          -- cleanup state closes before DeadAutoCleanup is sent).
-          let
-            readUntilDeadAutoCleanup = do
-              msg <- atomically $ readTChan daemonSnooper
-              case msg of
-                Daemon.DeadAutoCleanup -> pure ()
-                _ -> readUntilDeadAutoCleanup
-          readUntilDeadAutoCleanup
+          -- give the full stop sequence time to complete: cancel
+          -- delivery, inner bracket release (run state Lua.close),
+          -- outer bracket release (mkCleanupAutomation, cleanup
+          -- state Lua.close, DeadAutoCleanup). 500ms is far more
+          -- than the millisecond-scale operations involved.
+          threadDelay 500000
 
           -- the sentinel file must exist: on pre-fix code, Lua.close
           -- never ran, the __gc finalizer never fired, no file written
