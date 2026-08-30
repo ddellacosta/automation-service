@@ -8,14 +8,13 @@ module Test.Integration.Service.DaemonTestHelpers
   )
   where
 
-import Control.Lens (view, (%~), (&), (^.))
+import Control.Lens (view, (.~), (&), (^.))
 import Data.ByteString.Lazy (ByteString)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as M
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.UUID as UUID
-import qualified Data.UUID.V4 as UUID
 import Network.MQTT.Client (Topic)
 import Network.MQTT.Topic (unTopic)
 import qualified Service.App as App
@@ -28,6 +27,10 @@ import Service.Env (Env, LogLevel, appCleanup, config, daemonBroadcast, dbPath, 
 import qualified Service.Group as Group
 import Service.MQTT.Class (MQTTClient (..))
 import qualified Service.MQTT.Messages.Daemon as Daemon
+import System.Directory (getTemporaryDirectory, removeDirectoryRecursive)
+import System.Environment (lookupEnv)
+import System.IO (hPutStrLn, stderr)
+import System.IO.Temp (createTempDirectory)
 import qualified Test.Helpers as Helpers
 import Test.Helpers (loadTestDevices, loadTestGroups)
 import Test.Hspec (Expectation, shouldBe)
@@ -91,13 +94,24 @@ initAndCleanup runTests = bracket
         writeTVar devicesJsonTV devicesJSON
         writeTVar groupsJsonTV groupsJSON
 
-      uuid <- UUID.nextRandom
+      -- A unique temporary directory for this invocation's db avoids
+      -- path collisions across parallel test runs (previously handled
+      -- by suffixing dbPath with a UUID, which left a new db file
+      -- behind on every test run). Deleted in the release below
+      -- unless AUTOMATION_TEST_KEEP_DB is set.
+      tmpDir <- getTemporaryDirectory >>= \tmpParent ->
+        createTempDirectory tmpParent "automation-service-test"
 
-      pure $
-        env & config . dbPath %~ \dp -> dp <> "-" <> UUID.toString uuid <> ".db"
+      pure (env & config . dbPath .~ tmpDir ++ "/automationState.db", tmpDir)
   )
-  (view appCleanup)
-  runTests
+  (\(env, tmpDir) -> do
+      view appCleanup env
+      keepDb <- isJust <$> lookupEnv "AUTOMATION_TEST_KEEP_DB"
+      if keepDb
+        then hPutStrLn stderr $
+               "AUTOMATION_TEST_KEEP_DB set; keeping test db directory: " ++ tmpDir
+        else removeDirectoryRecursive tmpDir)
+  (\(env, _tmpDir) -> runTests env)
 
   where
     mkLogger _config = do
