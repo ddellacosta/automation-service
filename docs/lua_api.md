@@ -5,6 +5,8 @@
   * [loop](#loop)
   * [cleanup](#cleanup)
 
+* [Lifecycle and memory gotchas](#lifecycle-and-memory-gotchas)
+
 * [Scripting helpers](#scripting-helpers)
   * [addMinutes](#addMinutes)
   * [getSunEvents](#getSunEvents)
@@ -64,6 +66,42 @@ function cleanup ()
    logDebugMsg("This runs when the automation stops, or is stopped.")
 end
 ```
+
+
+## Lifecycle and memory gotchas
+
+Every running automation is given its own read position into the shared broadcast message stream behind `subscribe()`--think of it as a bookmark in an ever-growing archive. The runtime can only discard old messages once *every* automation's bookmark has moved past them, and a bookmark only moves when the automation actually reads, i.e. when a listener returned by `subscribe()` is called and blocks waiting for the next message.
+
+This means:
+
+- **Scripts that listen are fine.** If `loop()` blocks on a `subscribe()` listener (the recommended pattern), the bookmark stays current.
+- **Short-lived scripts that never listen are fine.** When the script ends, the runtime reclaims its bookmark.
+- **A script that runs forever without ever reading leaks memory.** If `loop()` never blocks on a listener, its bookmark never moves, and every message ever broadcast by the whole system--automation starts and stops, other scripts' messages, all of it--is retained in memory for as long as the script runs. The most tempting version of this anti-pattern is a periodic publisher:
+
+```lua
+-- anti-pattern: runs forever, never reads its bookmark
+function loop ()
+   publish(porchLight.topicSet, { effect = "breathe" })
+   sleep(1800)
+end
+```
+
+If you need that pattern, work around it for now by subscribing to a topic, publishing to it yourself each cycle, and consuming your own message so the bookmark keeps moving:
+
+```lua
+function setup ()
+   wake = subscribe("automation-service/wake/porch-blink")
+end
+
+function loop ()
+   publish("automation-service/wake/porch-blink", "1")
+   local _ = wake()   -- returns promptly with our own message
+   publish(porchLight.topicSet, { effect = "breathe" })
+   sleep(1800)
+end
+```
+
+A framework-level fix is planned so that non-reading automations won't hold a read position at all; until then, any long-running script should read *something* regularly.
 
 
 ## Scripting helpers
