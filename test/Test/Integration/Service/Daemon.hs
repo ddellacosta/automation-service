@@ -509,7 +509,7 @@ stateStoreSpecs = do
         let
           daemonBroadcast' = env ^. daemonBroadcast
           dbPath' = env ^. config . dbPath
-          httpName = AutomationName.HTTP (env ^. config . httpPort)
+          httpName = HTTP (env ^. config . httpPort)
           cycles = 15 :: Int
 
         -- Regression test for the StateStore connection leak fixed in
