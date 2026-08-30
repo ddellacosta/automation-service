@@ -22,7 +22,21 @@ import UnliftIO.Exception (bracket)
 --
 withDBConn :: FilePath -> (Connection -> IO a) -> IO a
 withDBConn dbPath =
-  bracket (DB.open dbPath) DB.close
+  bracket acquire DB.close
+  where
+    acquire = do
+      conn <- DB.open dbPath
+      -- SQLite's default busy timeout is zero, so touching the
+      -- database while another connection holds the lock fails
+      -- immediately with SQLITE_BUSY. Waiting briefly instead keeps
+      -- transient concurrent access from crashing the caller — an
+      -- uncaught SQLError in StateManager would kill its thread and
+      -- silently end state persistence, the same failure mode as
+      -- the fd-exhaustion bug this bracket fixed. Exposed by the
+      -- connection-leak regression test polling the running set
+      -- while StateManager was mid-write.
+      DB.execute_ conn "PRAGMA busy_timeout = 5000"
+      pure conn
 
 allRunning :: FilePath -> IO [(Int, Text)]
 allRunning dbPath = withDBConn dbPath $ \dbConn -> do
