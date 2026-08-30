@@ -21,7 +21,6 @@ import qualified Test.Unit.Service.Device as Devices
 import qualified Test.Unit.Service.Group as Groups
 import qualified Test.Unit.Service.MQTT.Messages.Daemon as Daemon.Messages
 import qualified Test.Unit.Service.MQTT.Status as MQTTStatus
-import qualified Test.Unit.Service.StateStore as StateStore
 import qualified Test.Unit.Service.TimeHelpers as TimeHelpers
 
 
@@ -89,14 +88,12 @@ unit = do
   devicesSpec <- testSpec "Devices Spec" Devices.spec
   groupsSpec <- testSpec "Groups Spec" Groups.spec
   mqttStatusSpec <- testSpec "MQTT Status Messages Spec" MQTTStatus.spec
-  stateStoreSpec <- testSpec "StateStore Spec" StateStore.spec
   pure $ testGroup "Unit Tests"
     [ automationMessagesSpec
     , timeHelpersSpec
     , devicesSpec
     , groupsSpec
     , mqttStatusSpec
-    , stateStoreSpec
     ]
 
 integration :: IO TestTree

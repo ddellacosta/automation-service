@@ -8,9 +8,9 @@ where
 
 import Prelude hiding (pred)
 
-import Control.Exception (SomeException, handle)
+import Control.Exception (IOException, SomeException, handle, try)
 import Control.Lens (_1, _2, _3, _Just, _head, folded, ix, preview, (<&>), (^.), (^..), (^?))
-import Control.Monad (guard, void)
+import Control.Monad (filterM, guard, void, when)
 import Data.Aeson (Value, decode, encode)
 import qualified Data.Aeson as Aeson
 import Data.Aeson.Lens (_Array, _Object, key)
@@ -19,7 +19,7 @@ import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Foldable (for_)
 import qualified Data.HashMap.Strict as M
-import Data.List (null)
+import Data.List (null, sort)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Text (Text)
@@ -40,7 +40,10 @@ import Service.Env (RestartConditions (..), automationServiceTopic, config, daem
                     mqttClient, mqttConfig, subscriptions, restartConditions, scheduledJobs)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
+import System.Directory (listDirectory)
 import System.Environment (setEnv)
+import System.Info (os)
+import System.Posix.Files (readSymbolicLink)
 import Test.Hspec (Expectation, Spec, around, expectationFailure, it, shouldBe, xit)
 import Test.Integration.Service.DaemonTestHelpers (TestLogger (..), TestMQTTClient (..),
                                                    initAndCleanup, testWithAsyncDaemon, waitUntilEq,
@@ -419,6 +422,21 @@ threadMapSpecs = do
           Nothing
 
 
+-- | Count open file descriptors pointing at the given path, by
+-- reading the symlink targets in @/proc/self/fd@ (Linux only; the
+-- caller guards on the OS).
+countDbHandles :: FilePath -> IO Int
+countDbHandles dbPath' = do
+  fds <- listDirectory "/proc/self/fd"
+  length <$> filterM (pointsAt dbPath') fds
+  where
+    pointsAt dbPath'' fd = do
+      result <- try (readSymbolicLink ("/proc/self/fd/" ++ fd))
+      pure $ case (result :: Either IOException FilePath) of
+        Right target -> target == dbPath''
+        Left _ -> False
+
+
 stateStoreSpecs :: Spec
 stateStoreSpecs = do
   around initAndCleanup $ do
@@ -484,6 +502,68 @@ stateStoreSpecs = do
         -- started up by Daemon independently if it is not running, so
         -- should always be present.
         findMatchingSerialized "StateManager" res `shouldBe` ["StateManager"]
+
+  around initAndCleanup $ do
+    it "does not leak database connections as the running set is persisted" $
+      testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          dbPath' = env ^. config . dbPath
+          httpName = AutomationName.HTTP (env ^. config . httpPort)
+          cycles = 15 :: Int
+
+        -- Regression test for the StateStore connection leak fixed in
+        -- 9399625: every persisted running-set update used to leak an
+        -- open SQLite connection, exposed through real system use (fd
+        -- exhaustion in the daemon's deployment). Drive real Start/Stop
+        -- cycles through the daemon so StateManager performs real
+        -- updateRunning writes, then count handles pointing at the db
+        -- file before vs. after. On the pre-fix code every cycle leaks
+        -- two connections (one per Start, one per Stop), so this fails
+        -- with a large margin; on fixed code both counts are a stable
+        -- zero (connections close synchronously in DB.close).
+        --
+        -- Counting handles pointing at this exact db path (via
+        -- /proc/self/fd symlink targets) keeps the test immune to
+        -- unrelated fd activity. /proc is Linux-only, so the count
+        -- assertions are skipped on other platforms (the cycles still
+        -- run, and the sentinel wait must still converge).
+
+        -- let the boot sequence's persistence writes settle first
+        threadDelay 200000
+        mBefore <-
+          if os == "linux"
+            then Just <$> countDbHandles dbPath'
+            else pure Nothing
+
+        for_ [1 .. cycles] $ \_ -> do
+          atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
+          waitUntilEqSTM (Just Gold) $
+            preview (ix Gold . _1 . name) <$> readTVar threadMapTV
+          atomically $ writeTChan daemonBroadcast' $ Daemon.Stop Gold
+          waitUntilEqSTM Nothing $
+            preview (ix Gold . _1 . name) <$> readTVar threadMapTV
+
+        -- Writes from the cycles (the final Stop's in particular) may
+        -- still be in flight inside StateManager. Start a sentinel
+        -- automation and wait for the persisted running set to include
+        -- it: that state is only reachable once every prior write has
+        -- committed, because StateManager processes its channel
+        -- sequentially.
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test")
+        waitUntilEq (sort [ serializeAutomationName (LuaScript "test")
+                          , serializeAutomationName StateManager
+                          , serializeAutomationName httpName
+                          ]) $
+          sort . map snd <$> StateStore.allRunning dbPath'
+
+        -- commit visibility can precede the connection close by
+        -- microseconds; give the final write's bracket a moment
+        threadDelay 100000
+
+        for_ mBefore $ \before -> do
+          after <- countDbHandles dbPath'
+          after `shouldBe` before
 
   around initAndCleanup $ do
     it "starts any automations stored in the running table upon load" $ \preEnv -> do
