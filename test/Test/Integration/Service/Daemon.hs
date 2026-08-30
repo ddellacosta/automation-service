@@ -40,9 +40,10 @@ import Service.Env (RestartConditions (..), automationServiceTopic, config, daem
                     mqttClient, mqttConfig, subscriptions, restartConditions, scheduledJobs)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
-import System.Directory (listDirectory)
+import System.Directory (doesFileExist, listDirectory)
 import System.Environment (setEnv)
 import System.Info (os)
+import System.IO.Temp (withSystemTempDirectory)
 import System.Posix.Files (readSymbolicLink)
 import Test.Hspec (Expectation, Spec, around, expectationFailure, it, shouldBe, xit)
 import Test.Integration.Service.DaemonTestHelpers (TestLogger (..), TestMQTTClient (..),
@@ -264,39 +265,52 @@ luaScriptSpecs = do
         -- uses — its run state and its cleanup state — must be closed
         -- when the automation stops. Lua only runs a __gc finalizer
         -- when its object is collected or when its state is closed
-        -- (lua_close runs all pending finalizers), so the fixture
-        -- script registers a finalizer that sends a sentinel message
-        -- via sendMessage, and this test reads from the daemon
-        -- snooper until the sentinel appears for both states. On the
-        -- pre-fix code states were never closed: the finalizers never
-        -- ran, and the read blocks until timeout.
+        -- (lua_close runs all pending finalizers). The fixture
+        -- script registers a finalizer that appends to a sentinel
+        -- file via Lua's io library (pure C, not hslua's function
+        -- machinery, which is unreliable during close due to
+        -- finalizer ordering — see the fixture comment); the test
+        -- waits for the full stop sequence to complete, then
+        -- verifies both closes wrote their entries. On the pre-fix
+        -- code, Lua.close never ran, the finalizers never fired,
+        -- and no file was written.
 
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testCloseFinalizer")
+        withSystemTempDirectory "lua-close-sentinel" $ \tmpDir -> do
+          let sentinelPath = tmpDir ++ "/sentinel"
 
-        -- let setup run and the loop block on its subscription listener
-        threadDelay 25000
+          -- the Lua script reads this in its __gc finalizer; the
+          -- env var is process-wide, but the suite is sequential
+          -- (TASTY_NUM_THREADS=1) and the path is deleted on exit
+          setEnv "LUA_CLOSE_SENTINEL_PATH" sentinelPath
 
-        atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "testCloseFinalizer")
+          atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testCloseFinalizer")
 
-        -- Read from the snooper (a dup of the daemon broadcast)
-        -- until the sentinel message appears twice: once for the run
-        -- state (closed as the cancelled automation unwinds through
-        -- its inner bracket), once for the cleanup state (closed
-        -- after the daemon’s outer bracket release runs
-        -- mkCleanupAutomation). All other daemon messages (boot
-        -- sequence, our Start/Stop, etc.) are consumed and skipped.
-        let
-          isCloseSentinel = \case
-            Daemon.SendTo Null _ -> True
-            _ -> False
+          -- let setup run and the loop block on its subscription listener
+          threadDelay 25000
 
-          readUntilSentinels n
-            | n >= (2 :: Int) = pure ()
-            | otherwise = do
-                msg <- atomically $ readTChan daemonSnooper
-                readUntilSentinels $ if isCloseSentinel msg then n + 1 else n
+          atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "testCloseFinalizer")
 
-        readUntilSentinels 0
+          -- Wait for DeadAutoCleanup on the snooper: this proves the
+          -- full stop sequence completed, which by the sequential
+          -- bracket structure means both Lua.close calls ran (the
+          -- run state closes before mkRunAutomation returns; the
+          -- cleanup state closes before DeadAutoCleanup is sent).
+          let
+            readUntilDeadAutoCleanup = do
+              msg <- atomically $ readTChan daemonSnooper
+              case msg of
+                Daemon.DeadAutoCleanup -> pure ()
+                _ -> readUntilDeadAutoCleanup
+          readUntilDeadAutoCleanup
+
+          -- the sentinel file must exist: on pre-fix code, Lua.close
+          -- never ran, the __gc finalizer never fired, no file written
+          doesFileExist sentinelPath >>= (`shouldBe` True)
+
+          -- both Lua states (run + cleanup) were closed; each close
+          -- fired the __gc finalizer once, appending one line
+          contents <- readFile sentinelPath
+          length (lines contents) `shouldBe` 2
 
 -- -- is this the culprit? Or is this just a function of the order I'm uncommenting these in, and at a certain point it can't handle...something?
 --   around initAndCleanup $ do
@@ -939,8 +953,8 @@ httpSpecs = do
         -- group data on connect (two messages to consume before the
         -- routed one)
         received <- retry $ WS.runClient "127.0.0.1" (fromIntegral port) "" $ \conn -> do
-          _devicesData <- WS.receiveData conn
-          _groupsData <- WS.receiveData conn
+          _devicesData :: ByteString <- WS.receiveData conn
+          _groupsData :: ByteString <- WS.receiveData conn
 
           -- dispatch a message through the subscription action; this
           -- writes to the automation broadcast channel, which both
