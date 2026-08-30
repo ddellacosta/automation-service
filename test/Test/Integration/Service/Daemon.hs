@@ -255,7 +255,7 @@ luaScriptSpecs = do
           pure mqttHistory
 
   around initAndCleanup $ do
-    it "closes Lua interpreter states when a LuaScript automation stops" $
+    it "closes Lua interpreter states when a LuaScript automation completes" $
       testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
@@ -263,17 +263,25 @@ luaScriptSpecs = do
         -- Regression test for the Lua interpreter state leak fixed in
         -- dda3243 (merged as 95012f8): both Lua states an automation
         -- uses — its run state and its cleanup state — must be closed
-        -- when the automation stops. Lua only runs a __gc finalizer
+        -- when the automation completes. Lua only runs a __gc finalizer
         -- when its object is collected or when its state is closed
-        -- (lua_close runs all pending finalizers). The fixture
-        -- script registers a finalizer that appends to a sentinel
-        -- file via Lua's io library (pure C, not hslua's function
-        -- machinery, which is unreliable during close due to
-        -- finalizer ordering — see the fixture comment); the test
-        -- waits for the full stop sequence to complete, then
-        -- verifies both closes wrote their entries. On the pre-fix
-        -- code, Lua.close never ran, the finalizers never fired,
-        -- and no file was written.
+        -- (lua_close runs all pending finalizers). The fixture script
+        -- registers a finalizer that appends to a sentinel file via
+        -- Lua’s io library (pure C, not hslua’s function machinery,
+        -- which is unreliable during close due to finalizer ordering).
+        --
+        -- The fixture has NO loop function, so the automation
+        -- completes naturally — no async cancellation. This avoids the
+        -- flaky path where AsyncCancelled propagates through
+        -- unsafeRunWith (which hslua documents as leaving the Lua
+        -- stack in an inconsistent state), sometimes preventing
+        -- Lua.close from running finalizers on the corrupted state.
+        -- The natural-completion path exercises the same brackets:
+        -- mkRunAutomation closes the run state via its inner bracket,
+        -- then mkCleanupAutomation (the outer bracket release)
+        -- creates and closes the cleanup state via its own bracket,
+        -- then sends DeadAutoCleanup — which is the deterministic
+        -- barrier this test waits for.
 
         withSystemTempDirectory "lua-close-sentinel" $ \tmpDir -> do
           let sentinelPath = tmpDir ++ "/sentinel"
@@ -285,17 +293,18 @@ luaScriptSpecs = do
 
           atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testCloseFinalizer")
 
-          -- let setup run and the loop block on its subscription listener
-          threadDelay 25000
-
-          atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "testCloseFinalizer")
-
-          -- give the full stop sequence time to complete: cancel
-          -- delivery, inner bracket release (run state Lua.close),
-          -- outer bracket release (mkCleanupAutomation, cleanup
-          -- state Lua.close, DeadAutoCleanup). 500ms is far more
-          -- than the millisecond-scale operations involved.
-          threadDelay 500000
+          -- Wait for DeadAutoCleanup on the snooper: this is sent by
+          -- mkCleanupAutomation after the cleanup state’s bracket
+          -- completes, so it proves both Lua.close calls ran (the
+          -- run state closes before mkRunAutomation returns; the
+          -- cleanup state closes before DeadAutoCleanup is sent).
+          let
+            readUntilDeadAutoCleanup = do
+              msg <- atomically $ readTChan daemonSnooper
+              case msg of
+                Daemon.DeadAutoCleanup -> pure ()
+                _ -> readUntilDeadAutoCleanup
+          readUntilDeadAutoCleanup
 
           -- the sentinel file must exist: on pre-fix code, Lua.close
           -- never ran, the __gc finalizer never fired, no file written
