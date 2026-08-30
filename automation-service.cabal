@@ -141,10 +141,12 @@ test-suite automation-service-tests
     , Test.Unit.Service.TimeHelpers
   build-depends:
       automation-service
+    , directory
     , hspec ^>= 2.11.8
     , tasty ^>= 1.4.3
     , tasty-hspec ^>= 1.2.0.4
     , tasty-test-reporter
+    , temporary ^>= 1.3
   ghc-options:
     --
     -- Turns out the integration tests flake out really badly when I
