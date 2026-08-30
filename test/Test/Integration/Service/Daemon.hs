@@ -253,6 +253,38 @@ luaScriptSpecs = do
           (mqttHistory, _mqttClient') <- readTVarIO testMCTV
           pure mqttHistory
 
+  around initAndCleanup $ do
+    it "closes Lua interpreter states when a LuaScript automation stops" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          (TestLogger qLogger) = env ^. logger
+          closeLine = "Debug: testCloseFinalizer: lua state closed"
+
+        -- Regression test for the Lua interpreter state leak fixed in
+        -- dda3243 (merged as 95012f8): both Lua states an automation
+        -- uses — its run state and its cleanup state — must be closed
+        -- when the automation stops. Lua only runs a __gc finalizer
+        -- when its object is collected or when its state is closed
+        -- (lua_close runs all pending finalizers), so the fixture
+        -- script registers a finalizer that logs, and this test waits
+        -- for that line to appear for both states. On the pre-fix
+        -- code states were never closed: the finalizers never ran,
+        -- and this never converges.
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testCloseFinalizer")
+
+        -- let setup run and the loop block on its subscription listener
+        threadDelay 25000
+
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "testCloseFinalizer")
+
+        -- Once for the run state, closed as the cancelled automation
+        -- unwinds through its bracket; once for the cleanup state,
+        -- closed after the daemon's cleanup bracket runs.
+        waitUntilEq True $
+          (2 <=) . length . filter (== closeLine) <$> readTVarIO qLogger
+
 -- -- is this the culprit? Or is this just a function of the order I'm uncommenting these in, and at a certain point it can't handle...something?
 --   around initAndCleanup $ do
 --     it "removes Device and Group Registration entries upon cleanup" $
