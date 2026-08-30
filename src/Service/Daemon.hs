@@ -278,6 +278,17 @@ run' threadMapTV = do
         --
         -- https://hackage.haskell.org/package/unliftio-0.2.24.0/docs/UnliftIO-Exception.html#v:bracket
         --
+        -- Contract: every automation receives its own read position
+        -- ("dup") into the shared automationBroadcast stream, and the
+        -- GC may only reclaim a broadcast message once every read
+        -- position has moved past it. Automations that block on
+        -- reading (Lua subscribe() listeners, StateManager) keep
+        -- theirs current; short-lived automations that never read are
+        -- reclaimed once cleanDeadAutomations drops their entry; but
+        -- long-lived automations that never read MUST drain their
+        -- copy, or they will pin every message ever broadcast for
+        -- the life of the process (see HTTP.hs drainBroadcastChan,
+        -- and docs/lua_api.md "Lifecycle and memory gotchas").
         clientAsync <- async $
           bracket
             (atomically $ dupTChan automationBroadcast')
