@@ -453,6 +453,43 @@ threadMapSpecs = do
           `shouldBe`
           Nothing
 
+  around initAndCleanup $ do
+    it "sweeps completed automations from the ThreadMap" $
+      testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          httpName = HTTP (env ^. config . httpPort)
+
+        -- Regression test for the ThreadMap retention half of the
+        -- broadcast-channel fix (35fd714): completed one-shot
+        -- automations (HTTPDefault) stayed in the ThreadMap forever
+        -- because nothing removed them — the sweep
+        -- (cleanDeadAutomations) only ran when a Lua cleanup
+        -- happened to send DeadAutoCleanup. With the sweep running
+        -- at the top of every daemon message, sending any message
+        -- removes them. Fails on pre-fix code where the entry
+        -- persists forever.
+
+        -- let the boot sequence complete: StateManager (long-running),
+        -- HTTPDefault (one-shot, already finished), HTTP (long-running)
+        threadDelay 200000
+
+        -- any daemon message triggers the sweep at the top of the
+        -- message loop; Status is side-effect-free apart from
+        -- publishing the running set
+        atomically $ writeTChan daemonBroadcast' Daemon.Status
+
+        -- the sweep must have removed HTTPDefault (completed) while
+        -- leaving the running automations alone
+        waitUntilEqSTM Nothing $
+          preview (ix HTTPDefault . _1 . name) <$> readTVar threadMapTV
+
+        waitUntilEqSTM (Just StateManager) $
+          preview (ix StateManager . _1 . name) <$> readTVar threadMapTV
+
+        waitUntilEqSTM (Just httpName) $
+          preview (ix httpName . _1 . name) <$> readTVar threadMapTV
+
 
 -- | Count open file descriptors pointing at the given path, by
 -- reading the symlink targets in @/proc/self/fd@ (Linux only; the
@@ -855,6 +892,60 @@ httpSpecs = do
         devices' <- readTVarIO devices
 
         devicesReceived `shouldBe` devices'
+
+  around initAndCleanup $ do
+    it "delivers subscribed-topic messages to websocket clients alongside the drain" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          subscriptions' = env ^. subscriptions
+          port = env ^. config . httpPort
+          httpName = HTTP port
+          Just topic = mkTopic "wsDrainTestTopic"
+
+        -- Regression test for the HTTP drain (drainBroadcastChan in
+        -- HTTP.hs): the drain concurrently consumes from the HTTP
+        -- automation's own broadcast channel copy to prevent message
+        -- history retention, while each WebSocket connection reads
+        -- from its own independently dup'ed copy (broadcastChanCopy
+        -- in ws). This test proves the drain cannot steal messages
+        -- from the per-connection copies: subscribe the HTTP
+        -- automation to a topic (as a UI client would), connect a
+        -- WebSocket client, dispatch a routed message, and require
+        -- the client to receive it.
+
+        atomically $ writeTChan daemonBroadcast' $
+          Daemon.Subscribe httpName (Just topic)
+
+        -- wait for the subscription to be registered
+        waitUntilEqSTM True $ do
+          subs <- readTVar subscriptions'
+          pure $ M.member topic subs
+
+        -- connect a websocket client; the handler sends device and
+        -- group data on connect (two messages to consume before the
+        -- routed one)
+        received <- retry $ WS.runClient "127.0.0.1" (fromIntegral port) "" $ \conn -> do
+          _devicesData <- WS.receiveData conn
+          _groupsData <- WS.receiveData conn
+
+          -- dispatch a message through the subscription action; this
+          -- writes to the automation broadcast channel, which both
+          -- the drain and the connection's copy read from — the
+          -- drain from its own position, the connection from its own
+          dispatchActions <- readTVarIO subscriptions'
+          for_ (fromJust (M.lookup topic dispatchActions)) $ \action ->
+            action topic "{\"drainTest\": \"delivered\"}"
+
+          -- the routed message must arrive on the WebSocket despite
+          -- the drain concurrently consuming from the same
+          -- underlying channel data
+          msg <- WS.receiveData conn
+          WS.sendClose conn ("close" :: Text)
+          pure msg
+
+        (decode received :: Maybe Value) `shouldBe`
+          Just (Aeson.object [("drainTest", Aeson.String "delivered")])
 
   around initAndCleanup $ do
     it "allows a websocket client to publish an MQTT message" $
