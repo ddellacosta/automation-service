@@ -8,6 +8,9 @@ where
 
 import Prelude hiding (pred)
 
+import Foreign.C.String (CString, peekCString)
+import Foreign.C.Types (CInt)
+import Foreign.Marshal.Alloc (allocaBytes)
 import Control.Exception (IOException, SomeException, handle, try)
 import Control.Lens (_1, _2, _3, _Just, _head, folded, ix, preview, (<&>), (^.), (^..), (^?))
 import Control.Monad (filterM, guard, void, when)
@@ -40,7 +43,7 @@ import Service.Env (RestartConditions (..), automationServiceTopic, config, daem
                     mqttClient, mqttConfig, subscriptions, restartConditions, scheduledJobs)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
-import System.Directory (doesFileExist, listDirectory)
+import System.Directory (canonicalizePath, doesFileExist, listDirectory)
 import System.Environment (setEnv)
 import System.Info (os)
 import System.IO.Temp (withSystemTempDirectory)
@@ -521,19 +524,69 @@ threadMapSpecs = do
           preview (ix httpName . _1 . name) <$> readTVar threadMapTV
 
 
--- | Count open file descriptors pointing at the given path, by
--- reading the symlink targets in @/proc/self/fd@ (Linux only; the
+-- | Count open file descriptors pointing at the given path. Linux
+-- reads symlink targets in /proc/self/fd; macOS uses
+-- fcntl(fd, F_GETPATH). Returns -1 on unsupported platforms (the
 -- caller guards on the OS).
 countDbHandles :: FilePath -> IO Int
-countDbHandles dbPath' = do
+countDbHandles dbPath' = case os of
+  "linux"  -> countViaProc dbPath'
+  "darwin" -> countViaMacOS dbPath'
+  _        -> pure (-1)
+
+-- Linux: read symlink targets in /proc/self/fd
+countViaProc :: FilePath -> IO Int
+countViaProc dbPath' = do
   fds <- listDirectory "/proc/self/fd"
   length <$> filterM (pointsAt dbPath') fds
   where
-    pointsAt dbPath'' fd = do
+    pointsAt path' fd = do
       result <- try (readSymbolicLink ("/proc/self/fd/" ++ fd))
       pure $ case (result :: Either IOException FilePath) of
-        Right target -> target == dbPath''
+        Right target -> target == path'
         Left _ -> False
+
+-- macOS: iterate fds and use fcntl(fd, F_GETPATH) to get each one’s
+-- path. F_GETPATH is defined in <fcntl.h> on macOS (value 50); it
+-- writes the path of the file associated with the fd into a caller-
+-- supplied buffer. Returns -1 on non-open or non-file fds (sockets,
+-- pipes, etc.), which we skip.
+--
+-- macOS resolves symlinks in filesystem paths (/var → /private/var),
+-- and F_GETPATH returns the resolved path — so we canonicalize the
+-- input path before comparing.
+--
+-- foreign import ccall "fcntl": fcntl is variadic in C, but the GHC
+-- FFI can call it with the specific argument types we use (fd: CInt,
+-- cmd: CInt, buf: Ptr CChar). GHC2021 includes
+-- ForeignFunctionInterface, so no additional pragma is needed.
+
+countViaMacOS :: FilePath -> IO Int
+countViaMacOS dbPath' = do
+  canonicalPath <- canonicalizePath dbPath'
+  results <- mapM (checkFd canonicalPath) [0 .. 1023]
+  pure . length . catMaybes $ results
+  where
+    checkFd path' fdNum = do
+      mPath <- getFdPathMac fdNum
+      pure $ case mPath of
+        Just p | p == path' -> Just ()
+        _ -> Nothing
+
+    getFdPathMac :: CInt -> IO (Maybe FilePath)
+    getFdPathMac fdNum =
+      allocaBytes 4096 $ \buf -> do
+        r <- c_fcntl_path fdNum f_GETPATH buf
+        if r == -1
+          then pure Nothing
+          else Just <$> peekCString buf
+
+-- F_GETPATH from <fcntl.h> on macOS
+f_GETPATH :: CInt
+f_GETPATH = 50
+
+foreign import ccall "fcntl"
+  c_fcntl_path :: CInt -> CInt -> CString -> IO CInt
 
 
 stateStoreSpecs :: Spec
@@ -630,8 +683,9 @@ stateStoreSpecs = do
 
         -- let the boot sequence's persistence writes settle first
         threadDelay 200000
+        let isSupportedPlatform = os == "linux" || os == "darwin"
         mBefore <-
-          if os == "linux"
+          if isSupportedPlatform
             then Just <$> countDbHandles dbPath'
             else pure Nothing
 
