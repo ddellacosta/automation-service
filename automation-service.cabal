@@ -132,6 +132,7 @@ test-suite automation-service-tests
   -- necessary?
   other-modules:
       Test.Helpers
+    , Test.Helpers.FdCounting
     , Test.Integration.Service.Daemon
     , Test.Integration.Service.DaemonTestHelpers
     , Test.Unit.Service.Device
