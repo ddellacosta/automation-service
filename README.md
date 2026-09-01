@@ -210,4 +210,4 @@ There is more manual documentation about how allure report works with each test 
 
 ## License/Copyright
 
-GNU AGPLv3 License. Copyright © 2022-2023 Dave Della Costa, all rights otherwise reserved
+GNU AGPLv3 License. Copyright © 2022-2026 Dave Della Costa, all rights otherwise reserved
