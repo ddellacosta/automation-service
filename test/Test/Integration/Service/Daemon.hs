@@ -223,35 +223,35 @@ luaScriptSpecs = do
         dispatchActions <- M.lookup topic <$> readTVarIO subscriptions'
         for_ (fromJust dispatchActions) (\action -> action topic "{\"msg\": \"hey\"}")
 
-        waitUntilEq True $ do
-          subscriptions'' <- readTVarIO subscriptions'
+        waitUntilEqSTM True $ do
+          subscriptions'' <- readTVar subscriptions'
           pure . M.member topic $ subscriptions''
 
         -- Probably the slowest part of the entire test suite. Would
         -- be good to find another way to test this. Also the lookup
         -- is kinda ugly.
-        waitUntilEq expectedLogEntry $ do
-          logs <- readTVarIO qLogger
+        waitUntilEqSTM expectedLogEntry $ do
+          logs <- readTVar qLogger
           pure . fromMaybe "" . headMay . filter (== expectedLogEntry) $ logs
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "testSubscribe")
 
         -- the topic should be removed since there are no other
         -- subscribers once we stop the Automation
-        waitUntilEq False $ do
-          subscriptions'' <- readTVarIO subscriptions'
+        waitUntilEqSTM False $ do
+          subscriptions'' <- readTVar subscriptions'
           pure $ M.member topic subscriptions''
 
         -- I introduced a bug with cleanAutomations where it was
         -- unsubscribing from too many topics, so adding a check to
         -- confirm our subscribe/unsubscribe calls via the MQTT client
         -- mock:
-        waitUntilEq [ "subscribe testTopic"
-                    , "unsubscribe testTopic"
-                    ] $ do
+        waitUntilEqSTM [ "subscribe testTopic"
+                      , "unsubscribe testTopic"
+                      ] $ do
           let
             (TestMQTTClient testMCTV) = env ^. mqttClient
-          (mqttHistory, _mqttClient') <- readTVarIO testMCTV
+          (mqttHistory, _mqttClient') <- readTVar testMCTV
           pure mqttHistory
 
   around initAndCleanup $ do
