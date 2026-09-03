@@ -1,0 +1,4 @@
+# run artifacts
+results-*.csv
+data/
+logs/

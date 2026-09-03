@@ -1,0 +1,30 @@
+name: automation-service-perf-ab
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: perf-ab-mosquitto
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    # Host port mappings are for debugging from your machine only; the
+    # load generator runs inside the compose network. Ports chosen to
+    # avoid collisions with a real deployment on the same host.
+    ports:
+      - "18883:1883"
+
+  automation-service:
+    # Pick the image per run: automation-service:baseline or
+    # automation-service:fixed (see README.md).
+    image: ${AUTOMATION_IMAGE:?Set AUTOMATION_IMAGE, e.g. AUTOMATION_IMAGE=automation-service:baseline}
+    container_name: perf-ab-automation-service
+    depends_on:
+      - mosquitto
+    # We want to SEE crashes, not paper over them with a restart loop.
+    restart: "no"
+    volumes:
+      - ./config:/app/config
+      - ./lua-automations:/app/lua-automations
+      - ./logs:/app/logs
+      - ./data:/app/data
+    ports:
+      - "18080:8080"

@@ -1,0 +1,25 @@
+# Optional compose override for the GC diagnostic run — adds per-GC RTS
+# statistics output (see README.md, "GC diagnostic run").
+#
+# Run with compose's multi-file support, e.g.:
+#
+#   COMPOSE_FILE=compose.yaml:compose.gc.yaml \
+#     AUTO_NAME=Gold CYCLES=100 \
+#     AUTOMATION_IMAGE=automation-service:fixed LABEL=fixed-gc \
+#     ./scripts/run-test.sh
+#
+# -Slogs/gc.log writes one statistics line per GC into the mounted
+# ./logs directory; runtime +RTS options merge with the image's baked-in
+# -with-rtsopts=-N -T. If the service fails to start with this flag,
+# see the README note about switching to plain "-S" (stderr) capture.
+services:
+  automation-service:
+    command: ["/bin/automation-service", "+RTS", "-Slogs/gc.log", "-RTS"]
+    # The RTS flushes buffered statistics on clean exit only; compose's
+    # default SIGTERM teardown kills it without flushing (the gc.log
+    # tail is lost). SIGINT raises UserInterrupt in the main thread,
+    # which unwinds through the daemon's cleanup and lets the RTS exit
+    # cleanly. If shutdown ever takes the full grace period, that is
+    # the §5 cleanup-hang behavior showing itself — report it.
+    stop_signal: SIGINT
+    stop_grace_period: 30s
