@@ -7,9 +7,8 @@ local sentinel = setmetatable({}, { __gc = function ()
 end })
 
 function setup ()
-   chan = subscribe("testCloseTopic")
+   logDebugMsg("testCloseFinalizer setup")
 end
 
-function loop ()
-   local msg = chan()
-end
+-- intentionally no loop function: the automation completes on its own
+-- (see the Haskell test's comment block for why that matters)
