@@ -14,7 +14,6 @@ import Control.Lens (view, (.~), (&), (^.))
 import Data.ByteString.Lazy (ByteString)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as M
-import Data.Maybe (isJust)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Network.MQTT.Client (Topic)
@@ -30,8 +29,6 @@ import qualified Service.Group as Group
 import Service.MQTT.Class (MQTTClient (..))
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import System.Directory (getTemporaryDirectory, removeDirectoryRecursive)
-import System.Environment (lookupEnv)
-import System.IO (hPutStrLn, stderr)
 import System.IO.Temp (createTempDirectory)
 import qualified Test.Helpers as Helpers
 import Test.Helpers (loadTestDevices, loadTestGroups)
@@ -98,10 +95,8 @@ initAndCleanup runTests = bracket
         writeTVar groupsJsonTV groupsJSON
 
       -- A unique temporary directory for this invocation's db avoids
-      -- path collisions across parallel test runs (previously handled
-      -- by suffixing dbPath with a UUID, which left a new db file
-      -- behind on every test run). Deleted in the release below
-      -- unless AUTOMATION_TEST_KEEP_DB is set.
+      -- path collisions across parallel test runs. Deleted in the
+      -- release below.
       tmpDir <- getTemporaryDirectory >>= \tmpParent ->
         createTempDirectory tmpParent "automation-service-test"
 
@@ -109,11 +104,7 @@ initAndCleanup runTests = bracket
   )
   (\(env, tmpDir) -> do
       view appCleanup env
-      keepDb <- isJust <$> lookupEnv "AUTOMATION_TEST_KEEP_DB"
-      if keepDb
-        then hPutStrLn stderr $
-               "AUTOMATION_TEST_KEEP_DB set; keeping test db directory: " ++ tmpDir
-        else removeDirectoryRecursive tmpDir)
+      removeDirectoryRecursive tmpDir)
   (\(env, _tmpDir) -> runTests env)
 
   where
