@@ -263,25 +263,31 @@ luaScriptSpecs = do
         -- Regression test for the Lua interpreter state leak fixed in
         -- dda3243 (merged as 95012f8): both Lua states an automation
         -- uses — its run state and its cleanup state — must be closed
-        -- when the automation completes. Lua only runs a __gc finalizer
-        -- when its object is collected or when its state is closed
-        -- (lua_close runs all pending finalizers). The fixture script
-        -- registers a finalizer that appends to a sentinel file via
-        -- Lua’s io library (pure C, not hslua’s function machinery,
-        -- which is unreliable during close due to finalizer ordering).
+        -- when the automation completes. Lua only runs a __gc
+        -- finalizer when its object is collected or when its state is
+        -- closed (lua_close runs all pending finalizers). The fixture
+        -- script registers a finalizer that appends to a sentinel
+        -- file via Lua's io library, and this test waits for the full
+        -- stop sequence to complete, then verifies both closes wrote
+        -- their entries. On the pre-fix code, Lua.close never ran,
+        -- the finalizers never fired, and no file was written.
         --
-        -- The fixture has NO loop function, so the automation
-        -- completes naturally — no async cancellation. This avoids the
-        -- flaky path where AsyncCancelled propagates through
-        -- unsafeRunWith (which hslua documents as leaving the Lua
-        -- stack in an inconsistent state), sometimes preventing
-        -- Lua.close from running finalizers on the corrupted state.
-        -- The natural-completion path exercises the same brackets:
-        -- mkRunAutomation closes the run state via its inner bracket,
-        -- then mkCleanupAutomation (the outer bracket release)
-        -- creates and closes the cleanup state via its own bracket,
-        -- then sends DeadAutoCleanup — which is the deterministic
-        -- barrier this test waits for.
+        -- Exercises the natural-completion path (the fixture has no
+        -- loop function, so the automation finishes on its own).
+        -- Does not exercise the cancellation path (Stop →
+        -- AsyncCancelled), which goes through the same brackets but
+        -- leaves the Lua stack in an inconsistent state after
+        -- propagating through unsafeRunWith; Lua.close may or may not
+        -- fire __gc finalizers on the corrupted state in that path.
+        -- The cancellation path is covered by the perf harness.
+        --
+        -- DeadAutoCleanup is significant: it is only ever sent by
+        -- Lua-script cleanups (mkCleanupAutomation), after the
+        -- cleanup state's Lua.close runs. Observing it proves the
+        -- cleanup state's bracket completed, and since the run
+        -- state's close happens before mkRunAutomation returns (and
+        -- mkCleanupAutomation can only start after that), it also
+        -- proves the run state was closed.
 
         withSystemTempDirectory "lua-close-sentinel" $ \tmpDir -> do
           let sentinelPath = tmpDir ++ "/sentinel"
