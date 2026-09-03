@@ -50,8 +50,8 @@ import Service.MQTT.Messages.Daemon (AutomationSchedule)
 import Service.MQTT.Status (encodeAutomationStatus)
 import qualified Service.StateStore as StateStore
 import System.Cron (addJob, execSchedule)
-import UnliftIO.Async (Async, async, asyncThreadId, cancel)
-import UnliftIO.Concurrent (killThread)
+import UnliftIO.Async (Async, async, asyncThreadId, cancel, race, waitCatch)
+import UnliftIO.Concurrent (killThread, threadDelay)
 import UnliftIO.Exception (bracket, finally)
 import UnliftIO.STM (STM, TVar, atomically, dupTChan, modifyTVar', newTVarIO, readTChan, readTVar,
                      readTVarIO, stateTVar, writeTChan, writeTVar)
@@ -62,6 +62,19 @@ run
 run = do
   threadMapTV <- newTVarIO M.empty
   run' threadMapTV
+
+-- | How long 'cleanupAutomations' waits for automations to finish
+-- shutting down before proceeding. Automations whose shutdown is
+-- unblocked wind down in ~1-5ms (verified via eventlog); the bound
+-- exists so that a genuinely stuck automation cannot stall shutdown
+-- indefinitely, not because a full shutdown is expected to take this
+-- long. Keep it small: a large grace multiplies across every test's
+-- teardown when a cancellation straggles (measured: a 5s grace made
+-- each integration test ~5s slower). A straggler that misses the
+-- grace is abandoned mid-shutdown; its pending AsyncCancelled still
+-- lands when its blocker clears, or at process exit.
+automationShutdownGraceMicros :: Int
+automationShutdownGraceMicros = 250 * 1000
 
 --
 -- Splitting this from the above is a bit of a hack to enable easily
@@ -223,9 +236,34 @@ run' threadMapTV = do
       -> m ()
     cleanupAutomations appCleanup' threadMapTV' = do
       threadMap <- atomically . readTVar $ threadMapTV'
-      for_ (M.toList threadMap) $ \(automationName, (_, async')) -> do
+
+      -- Cancel every automation without ever blocking this thread on
+      -- one of them. A Lua automation blocked in a subscribe() channel
+      -- read is running inside Lua.unsafeRunWith, i.e. inside a foreign
+      -- call, and AsyncCancelled cannot be delivered to a thread while
+      -- it is in a foreign call: the read has to return first. A
+      -- synchronous cancel here could therefore hang this shutdown
+      -- forever -- this is what froze the test suite, with everything
+      -- blocked while a leftover Lua automation ground on in the
+      -- background. Two measures:
+      --
+      --   1. sendClientMsg Shutdown first, to unblock any listener
+      --      blocked on a channel read; this is the same dance
+      --      stopAutomation performs for the same reason, and
+      --
+      --   2. run each cancel in its own thread, then wait for all of
+      --      them only up to automationShutdownGraceMicros.
+      --
+      -- waitCatch rather than wait: wait would rethrow the cancelled
+      -- automation's AsyncCancelled into this thread.
+      cancelers <- for (M.toList threadMap) $ \(automationName, (_, async')) -> do
         info $ "Shutting down Automation " <> serializeAutomationName automationName
-        cancel async'
+        sendClientMsg automationName Automation.Shutdown
+        async (cancel async')
+
+      _ <- race (threadDelay automationShutdownGraceMicros) $
+        for_ cancelers waitCatch
+
       liftIO appCleanup'
 
     cleanDeadAutomations
