@@ -77,18 +77,17 @@ mkRunAutomation port broadcastChan = do
   daemonBroadcast' <- view daemonBroadcast
 
   let
-    -- The daemon hands every automation its own read position ("dup")
-    -- into the shared broadcast message stream, and the GC may only
-    -- reclaim a broadcast message once every read position has moved
-    -- past it. This automation never reads its position (per-
-    -- WebSocket-connection positions are dup'd separately in ws,
-    -- below) and runs for the life of the process — so without this
-    -- drain its position would never advance, and every message ever
-    -- broadcast would be retained in memory forever (verified: the
-    -- entire message history was retained until this was added).
-    -- Draining — reading and discarding — keeps this automation's own
-    -- position current; it cannot affect WebSocket delivery, since
-    -- every connection reads its own independently dup'd position.
+    --
+    -- This ensures that the HTTP automation doesn't suck up memory at
+    -- an inordinate rate, as it is an indefinitely-lived
+    -- automation. The broadcastChan, if not read from, ends up
+    -- accumulating messages in memory and increases
+    -- automation-service's footprint meaningfully. The call below
+    -- ensures that this automation runs without accumulating unused
+    -- messages. broadcastChan in this automation is only ever used to
+    -- duplicate into a new broadcastChan copy for a new web
+    -- connection (`ws` function below).
+    --
     drainBroadcastChan = forever $ atomically $ readTChan broadcastChan
 
     settings = Warp.setPort (fromIntegral port) Warp.defaultSettings
