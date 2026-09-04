@@ -5,17 +5,17 @@ module Test.Integration.Service.DaemonTestHelpers
   , testWithAsyncDaemon
   , waitUntilEq
   , waitUntilEqSTM
+  , waitUntilEqWithTimeout
+  , waitUntilEqSTMWithTimeout
   )
   where
 
-import Control.Lens (view, (%~), (&), (^.))
+import Control.Lens (view, (.~), (&), (^.))
 import Data.ByteString.Lazy (ByteString)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as M
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.UUID as UUID
-import qualified Data.UUID.V4 as UUID
 import Network.MQTT.Client (Topic)
 import Network.MQTT.Topic (unTopic)
 import qualified Service.App as App
@@ -28,12 +28,15 @@ import Service.Env (Env, LogLevel, appCleanup, config, daemonBroadcast, dbPath, 
 import qualified Service.Group as Group
 import Service.MQTT.Class (MQTTClient (..))
 import qualified Service.MQTT.Messages.Daemon as Daemon
+import System.Directory (getTemporaryDirectory, removeDirectoryRecursive)
+import System.IO.Temp (createTempDirectory)
 import qualified Test.Helpers as Helpers
 import Test.Helpers (loadTestDevices, loadTestGroups)
-import Test.Hspec (Expectation, shouldBe)
-import UnliftIO.Async (withAsync)
+import Test.Hspec (Expectation, expectationFailure, shouldBe)
+import UnliftIO.Async (race, withAsync)
+import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.Exception (bracket)
-import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, modifyTVar', newTVarIO, writeTVar)
+import UnliftIO.STM (STM, TChan, TVar, atomically, checkSTM, dupTChan, modifyTVar', newTVarIO, writeTVar)
 
 newtype TestMQTTClient = TestMQTTClient (TVar ([Text], HashMap Topic ByteString))
 
@@ -91,13 +94,18 @@ initAndCleanup runTests = bracket
         writeTVar devicesJsonTV devicesJSON
         writeTVar groupsJsonTV groupsJSON
 
-      uuid <- UUID.nextRandom
+      -- A unique temporary directory for this invocation's db avoids
+      -- path collisions across parallel test runs. Deleted in the
+      -- release below.
+      tmpDir <- getTemporaryDirectory >>= \tmpParent ->
+        createTempDirectory tmpParent "automation-service-test"
 
-      pure $
-        env & config . dbPath %~ \dp -> dp <> "-" <> UUID.toString uuid <> ".db"
+      pure (env & config . dbPath .~ tmpDir ++ "/automationState.db", tmpDir)
   )
-  (view appCleanup)
-  runTests
+  (\(env, tmpDir) -> do
+      view appCleanup env
+      removeDirectoryRecursive tmpDir)
+  (\(env, _tmpDir) -> runTests env)
 
   where
     mkLogger _config = do
@@ -161,13 +169,78 @@ testWithAsyncDaemon test env = do
 -- that this ends up looking like it's testing an assertion rather
 -- than waiting for something to somehow be equal after executing some
 -- incomprehensible STM code.
---
-waitUntilEq :: (Eq a, Show a) => a -> IO a -> Expectation
-waitUntilEq expected action = do
-  actual <- action
-  if actual == expected
-    then actual `shouldBe` expected
-    else waitUntilEq expected action
 
+
+-- | Poll interval for the IO-based wait helper (10ms between
+-- attempts; keeps CPU usage negligible while still responding to
+-- state changes within milliseconds).
+waitPollIntervalMicros :: Int
+waitPollIntervalMicros = 10000
+
+-- | Default timeout value for the waitUntilEq function
+defaultWaitUntilEqTimeout :: Int
+defaultWaitUntilEqTimeout = (5 * 1000000)
+
+-- | Default timeout value for the waitUntilEqSTM function
+defaultWaitUntilEqSTMTimeout :: Int
+defaultWaitUntilEqSTMTimeout = (5 * 1000000)
+
+-- | Repeatedly runs the IO action until it yields the expected value,
+-- with a default 5-second timeout. Polls at 10ms intervals (the IO
+-- action may not read from TVars, so STM blocking is not
+-- available). Fails with an informative timeout message if the
+-- condition is not met in time.
+waitUntilEq :: (Eq a, Show a) => a -> IO a -> Expectation
+waitUntilEq expected action =
+  waitUntilEqWithTimeout defaultWaitUntilEqTimeout expected action
+
+-- | Repeatedly runs the IO action until it yields the expected value,
+-- with the timeout (in microseconds). Polls at 10ms intervals (the
+-- IO action may not read from TVars, so STM blocking is not
+-- available). Fails with an informative timeout message if the
+-- condition is not met in time.
+waitUntilEqWithTimeout :: (Eq a, Show a) => Int -> a -> IO a -> Expectation
+waitUntilEqWithTimeout waitTimeoutMicros expected action = do
+  result <- race (threadDelay waitTimeoutMicros) (waitLoop action)
+  case result of
+    Left () -> expectationFailure $
+      "waitUntilEq: timed out after " <> secondsStr waitTimeoutMicros <> " waiting for: " <> show expected
+    Right actual -> actual `shouldBe` expected
+  where
+    waitLoop act = do
+      actual <- act
+      if actual == expected
+        then pure actual
+        else threadDelay waitPollIntervalMicros >> waitLoop act
+
+-- | Repeatedly runs the STM action until it yields the expected
+-- value, with a default 5-second timeout. Uses STM's
+-- 'checkSTM'/'retry' for zero-CPU blocking: the thread sleeps until
+-- any TVar read during the transaction is modified, then the
+-- transaction re-executes and the condition is re-checked. Fails
+-- with an informative timeout message if the condition is not met
+-- in time.
 waitUntilEqSTM :: (Eq a, Show a) => a -> STM a -> Expectation
-waitUntilEqSTM e = waitUntilEq e . atomically
+waitUntilEqSTM expected stmAction =
+  waitUntilEqSTMWithTimeout defaultWaitUntilEqSTMTimeout expected stmAction
+
+-- | Repeatedly runs the STM action until it yields the expected
+-- value, with the timeout (in microseconds). Uses STM's
+-- 'checkSTM'/'retry' for zero-CPU blocking: the thread sleeps until
+-- any TVar read during the transaction is modified, then the
+-- transaction re-executes and the condition is re-checked. Fails
+-- with an informative timeout message if the condition is not met
+-- in time.
+waitUntilEqSTMWithTimeout :: (Eq a, Show a) => Int -> a -> STM a -> Expectation
+waitUntilEqSTMWithTimeout waitTimeoutMicros expected stmAction = do
+  result <- race (threadDelay waitTimeoutMicros) (atomically $ do
+    actual <- stmAction
+    checkSTM (actual == expected)
+    pure actual)
+  case result of
+    Left () -> expectationFailure $
+      "waitUntilEqSTM: timed out after " <> secondsStr waitTimeoutMicros <> " waiting for: " <> show expected
+    Right actual -> actual `shouldBe` expected
+
+secondsStr :: Int -> String
+secondsStr waitTimeoutMicros = show $ waitTimeoutMicros `div` 1000000

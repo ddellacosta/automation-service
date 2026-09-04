@@ -132,6 +132,7 @@ test-suite automation-service-tests
   -- necessary?
   other-modules:
       Test.Helpers
+    , Test.Helpers.FdCounting
     , Test.Integration.Service.Daemon
     , Test.Integration.Service.DaemonTestHelpers
     , Test.Unit.Service.Device
@@ -141,10 +142,13 @@ test-suite automation-service-tests
     , Test.Unit.Service.TimeHelpers
   build-depends:
       automation-service
+    , directory
     , hspec ^>= 2.11.8
     , tasty ^>= 1.4.3
     , tasty-hspec ^>= 1.2.0.4
     , tasty-test-reporter
+    , temporary ^>= 1.3
+    , unix ^>= 2.8
   ghc-options:
     --
     -- Turns out the integration tests flake out really badly when I

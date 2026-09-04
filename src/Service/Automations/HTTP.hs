@@ -77,13 +77,27 @@ mkRunAutomation port broadcastChan = do
   daemonBroadcast' <- view daemonBroadcast
 
   let
+    --
+    -- This ensures that the HTTP automation doesn't suck up memory at
+    -- an inordinate rate, as it is an indefinitely-lived
+    -- automation. The broadcastChan, if not read from, ends up
+    -- accumulating messages in memory and increases
+    -- automation-service's footprint meaningfully. The call below
+    -- ensures that this automation runs without accumulating unused
+    -- messages. broadcastChan in this automation is only ever used to
+    -- duplicate into a new broadcastChan copy for a new web
+    -- connection (`ws` function below).
+    --
+    drainBroadcastChan = forever $ atomically $ readTChan broadcastChan
+
     settings = Warp.setPort (fromIntegral port) Warp.defaultSettings
 
-  liftIO $
-    Warp.runSettings settings $
-      WaiWs.websocketsOr WS.defaultConnectionOptions
-        (ws logger' devicesRaw groupsRaw devices' groups' daemonBroadcast')
-        web'
+  concurrently_ drainBroadcastChan $
+    liftIO $
+      Warp.runSettings settings $
+        WaiWs.websocketsOr WS.defaultConnectionOptions
+          (ws logger' devicesRaw groupsRaw devices' groups' daemonBroadcast')
+          web'
 
   where
     web :: TVar ByteString -> TVar ByteString -> FilePath -> IO Wai.Application

@@ -8,9 +8,9 @@ where
 
 import Prelude hiding (pred)
 
-import Control.Exception (SomeException, handle)
+import Control.Exception (IOException, SomeException, handle, try)
 import Control.Lens (_1, _2, _3, _Just, _head, folded, ix, preview, (<&>), (^.), (^..), (^?))
-import Control.Monad (guard, void)
+import Control.Monad (guard, void, when)
 import Data.Aeson (Value, decode, encode)
 import qualified Data.Aeson as Aeson
 import Data.Aeson.Lens (_Array, _Object, key)
@@ -19,7 +19,7 @@ import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Foldable (for_)
 import qualified Data.HashMap.Strict as M
-import Data.List (null)
+import Data.List (null, sort)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Text (Text)
@@ -40,8 +40,12 @@ import Service.Env (RestartConditions (..), automationServiceTopic, config, daem
                     mqttClient, mqttConfig, subscriptions, restartConditions, scheduledJobs)
 import qualified Service.MQTT.Messages.Daemon as Daemon
 import qualified Service.StateStore as StateStore
+import System.Directory (doesFileExist)
 import System.Environment (setEnv)
+import System.Info (os)
+import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec (Expectation, Spec, around, expectationFailure, it, shouldBe, xit)
+import Test.Helpers.FdCounting (countDbHandles)
 import Test.Integration.Service.DaemonTestHelpers (TestLogger (..), TestMQTTClient (..),
                                                    initAndCleanup, testWithAsyncDaemon, waitUntilEq,
                                                    waitUntilEqSTM)
@@ -219,36 +223,103 @@ luaScriptSpecs = do
         dispatchActions <- M.lookup topic <$> readTVarIO subscriptions'
         for_ (fromJust dispatchActions) (\action -> action topic "{\"msg\": \"hey\"}")
 
-        waitUntilEq True $ do
-          subscriptions'' <- readTVarIO subscriptions'
+        waitUntilEqSTM True $ do
+          subscriptions'' <- readTVar subscriptions'
           pure . M.member topic $ subscriptions''
 
         -- Probably the slowest part of the entire test suite. Would
         -- be good to find another way to test this. Also the lookup
         -- is kinda ugly.
-        waitUntilEq expectedLogEntry $ do
-          logs <- readTVarIO qLogger
+        waitUntilEqSTM expectedLogEntry $ do
+          logs <- readTVar qLogger
           pure . fromMaybe "" . headMay . filter (== expectedLogEntry) $ logs
 
         atomically $ writeTChan daemonBroadcast' $ Daemon.Stop (LuaScript "testSubscribe")
 
         -- the topic should be removed since there are no other
         -- subscribers once we stop the Automation
-        waitUntilEq False $ do
-          subscriptions'' <- readTVarIO subscriptions'
+        waitUntilEqSTM False $ do
+          subscriptions'' <- readTVar subscriptions'
           pure $ M.member topic subscriptions''
 
         -- I introduced a bug with cleanAutomations where it was
         -- unsubscribing from too many topics, so adding a check to
         -- confirm our subscribe/unsubscribe calls via the MQTT client
         -- mock:
-        waitUntilEq [ "subscribe testTopic"
-                    , "unsubscribe testTopic"
-                    ] $ do
+        waitUntilEqSTM [ "subscribe testTopic"
+                      , "unsubscribe testTopic"
+                      ] $ do
           let
             (TestMQTTClient testMCTV) = env ^. mqttClient
-          (mqttHistory, _mqttClient') <- readTVarIO testMCTV
+          (mqttHistory, _mqttClient') <- readTVar testMCTV
           pure mqttHistory
+
+  around initAndCleanup $ do
+    it "closes Lua interpreter states when a LuaScript automation completes" $
+      testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+
+        -- Regression test for the Lua interpreter state leak fixed in
+        -- dda3243 (merged as 95012f8): both Lua states an automation
+        -- uses — its run state and its cleanup state — must be closed
+        -- when the automation completes. Lua only runs a __gc
+        -- finalizer when its object is collected or when its state is
+        -- closed (lua_close runs all pending finalizers). The fixture
+        -- script registers a finalizer that appends to a sentinel
+        -- file via Lua's io library, and this test waits for the full
+        -- stop sequence to complete, then verifies both closes wrote
+        -- their entries. On the pre-fix code, Lua.close never ran,
+        -- the finalizers never fired, and no file was written.
+        --
+        -- Exercises the natural-completion path (the fixture has no
+        -- loop function, so the automation finishes on its own).
+        -- Does not exercise the cancellation path (Stop →
+        -- AsyncCancelled), which goes through the same brackets but
+        -- leaves the Lua stack in an inconsistent state after
+        -- propagating through unsafeRunWith; Lua.close may or may not
+        -- fire __gc finalizers on the corrupted state in that path.
+        -- The cancellation path is covered by the perf harness.
+        --
+        -- DeadAutoCleanup is significant: it is only ever sent by
+        -- Lua-script cleanups (mkCleanupAutomation), after the
+        -- cleanup state's Lua.close runs. Observing it proves the
+        -- cleanup state's bracket completed, and since the run
+        -- state's close happens before mkRunAutomation returns (and
+        -- mkCleanupAutomation can only start after that), it also
+        -- proves the run state was closed.
+
+        withSystemTempDirectory "lua-close-sentinel" $ \tmpDir -> do
+          let sentinelPath = tmpDir ++ "/sentinel"
+
+          -- the Lua script reads this in its __gc finalizer; the
+          -- env var is process-wide, but the suite is sequential
+          -- (TASTY_NUM_THREADS=1) and the path is deleted on exit
+          setEnv "LUA_CLOSE_SENTINEL_PATH" sentinelPath
+
+          atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "testCloseFinalizer")
+
+          -- Wait for DeadAutoCleanup on the snooper: this is sent by
+          -- mkCleanupAutomation after the cleanup state’s bracket
+          -- completes, so it proves both Lua.close calls ran (the
+          -- run state closes before mkRunAutomation returns; the
+          -- cleanup state closes before DeadAutoCleanup is sent).
+          let
+            readUntilDeadAutoCleanup = do
+              msg <- atomically $ readTChan daemonSnooper
+              case msg of
+                Daemon.DeadAutoCleanup -> pure ()
+                _ -> readUntilDeadAutoCleanup
+          readUntilDeadAutoCleanup
+
+          -- the sentinel file must exist: on pre-fix code, Lua.close
+          -- never ran, the __gc finalizer never fired, no file written
+          doesFileExist sentinelPath >>= (`shouldBe` True)
+
+          -- both Lua states (run + cleanup) were closed; each close
+          -- fired the __gc finalizer once, appending one line
+          contents <- readFile sentinelPath
+          length (lines contents) `shouldBe` 2
 
 -- -- is this the culprit? Or is this just a function of the order I'm uncommenting these in, and at a certain point it can't handle...something?
 --   around initAndCleanup $ do
@@ -418,6 +489,43 @@ threadMapSpecs = do
           `shouldBe`
           Nothing
 
+  around initAndCleanup $ do
+    it "sweeps completed automations from the ThreadMap" $
+      testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          httpName = HTTP (env ^. config . httpPort)
+
+        -- Regression test for the ThreadMap retention half of the
+        -- broadcast-channel fix (35fd714): completed one-shot
+        -- automations (HTTPDefault) stayed in the ThreadMap forever
+        -- because nothing removed them — the sweep
+        -- (cleanDeadAutomations) only ran when a Lua cleanup
+        -- happened to send DeadAutoCleanup. With the sweep running
+        -- at the top of every daemon message, sending any message
+        -- removes them. Fails on pre-fix code where the entry
+        -- persists forever.
+
+        -- let the boot sequence complete: StateManager (long-running),
+        -- HTTPDefault (one-shot, already finished), HTTP (long-running)
+        threadDelay 200000
+
+        -- any daemon message triggers the sweep at the top of the
+        -- message loop; Status is side-effect-free apart from
+        -- publishing the running set
+        atomically $ writeTChan daemonBroadcast' Daemon.Status
+
+        -- the sweep must have removed HTTPDefault (completed) while
+        -- leaving the running automations alone
+        waitUntilEqSTM Nothing $
+          preview (ix HTTPDefault . _1 . name) <$> readTVar threadMapTV
+
+        waitUntilEqSTM (Just StateManager) $
+          preview (ix StateManager . _1 . name) <$> readTVar threadMapTV
+
+        waitUntilEqSTM (Just httpName) $
+          preview (ix httpName . _1 . name) <$> readTVar threadMapTV
+
 
 stateStoreSpecs :: Spec
 stateStoreSpecs = do
@@ -436,8 +544,14 @@ stateStoreSpecs = do
 
         res <- StateStore.allRunning $ env ^. config . dbPath
 
-        -- HTTPDefault, HTTP <$config.httpPort>, StateManager, LuaScript "test"
-        length res `shouldBe` 4
+        -- HTTP <$config.httpPort>, StateManager, LuaScript "test".
+        -- HTTPDefault is a one-shot bootstrap automation: its run
+        -- completes immediately, and completed automations are swept
+        -- from the running set (cleanDeadAutomations in
+        -- Service.Daemon), so it is not stored as running.
+        length res `shouldBe` 3
+
+        findMatchingSerialized "HTTPDefault" res `shouldBe` []
 
         parseAutomationName . T.unpack <$> (findMatchingSerialized "test" res)
           `shouldBe` [Just (LuaScript "test")]
@@ -464,14 +578,83 @@ stateStoreSpecs = do
 
         res <- StateStore.allRunning dbPath'
 
-        -- HTTPDefault, HTTP <$config.httpPort>, StateManager, LuaScript "test"
-        length res `shouldBe` 4
+        -- HTTP <$config.httpPort>, StateManager, LuaScript "test".
+        -- HTTPDefault is a one-shot bootstrap automation: its run
+        -- completes immediately, and completed automations are swept
+        -- from the running set (cleanDeadAutomations in
+        -- Service.Daemon), so it is not stored as running.
+        length res `shouldBe` 3
+
+        findMatchingSerialized "HTTPDefault" res `shouldBe` []
 
         parseAutomationName . T.unpack <$> (findMatchingSerialized "test" res)
           `shouldBe` [Just (LuaScript "test")]
         -- started up by Daemon independently if it is not running, so
         -- should always be present.
         findMatchingSerialized "StateManager" res `shouldBe` ["StateManager"]
+
+  around initAndCleanup $ do
+    it "does not leak database connections as the running set is persisted" $
+      testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          dbPath' = env ^. config . dbPath
+          httpName = HTTP (env ^. config . httpPort)
+          cycles = 15 :: Int
+
+        -- Regression test for the StateStore connection leak fixed in
+        -- 9399625: every persisted running-set update used to leak an
+        -- open SQLite connection, exposed through real system use (fd
+        -- exhaustion in the daemon's deployment). Drive real Start/Stop
+        -- cycles through the daemon so StateManager performs real
+        -- updateRunning writes, then count handles pointing at the db
+        -- file before vs. after. On the pre-fix code every cycle leaks
+        -- two connections (one per Start, one per Stop), so this fails
+        -- with a large margin; on fixed code both counts are a stable
+        -- zero (connections close synchronously in DB.close).
+        --
+        -- Counting handles pointing at this exact db path (via
+        -- /proc/self/fd symlink targets) keeps the test immune to
+        -- unrelated fd activity. /proc is Linux-only, so the count
+        -- assertions are skipped on other platforms (the cycles still
+        -- run, and the sentinel wait must still converge).
+
+        -- let the boot sequence's persistence writes settle first
+        threadDelay 200000
+        let isSupportedPlatform = os == "linux" || os == "darwin"
+        mBefore <-
+          if isSupportedPlatform
+            then Just <$> countDbHandles dbPath'
+            else pure Nothing
+
+        for_ [1 .. cycles] $ \_ -> do
+          atomically $ writeTChan daemonBroadcast' $ Daemon.Start Gold
+          waitUntilEqSTM (Just Gold) $
+            preview (ix Gold . _1 . name) <$> readTVar threadMapTV
+          atomically $ writeTChan daemonBroadcast' $ Daemon.Stop Gold
+          waitUntilEqSTM Nothing $
+            preview (ix Gold . _1 . name) <$> readTVar threadMapTV
+
+        -- Writes from the cycles (the final Stop's in particular) may
+        -- still be in flight inside StateManager. Start a sentinel
+        -- automation and wait for the persisted running set to include
+        -- it: that state is only reachable once every prior write has
+        -- committed, because StateManager processes its channel
+        -- sequentially.
+        atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test")
+        waitUntilEq (sort [ serializeAutomationName (LuaScript "test")
+                          , serializeAutomationName StateManager
+                          , serializeAutomationName httpName
+                          ]) $
+          sort . map snd <$> StateStore.allRunning dbPath'
+
+        -- commit visibility can precede the connection close by
+        -- microseconds; give the final write's bracket a moment
+        threadDelay 100000
+
+        for_ mBefore $ \before -> do
+          after <- countDbHandles dbPath'
+          after `shouldBe` before
 
   around initAndCleanup $ do
     it "starts any automations stored in the running table upon load" $ \preEnv -> do
@@ -681,6 +864,11 @@ statusMessageSpecs = do
           automationServiceTopic' = env ^. config . mqttConfig . automationServiceTopic
           (TestMQTTClient testMCTV) = env ^. mqttClient
 
+        -- Give the boot sequence time to settle so HTTPDefault (a
+        -- one-shot) has completed and been swept from the running set
+        -- before we request a status message.
+        threadDelay 200000
+
         atomically $ writeTChan daemonBroadcast' Daemon.Status
 
         threadDelay 50000
@@ -692,9 +880,12 @@ statusMessageSpecs = do
             decoded :: Maybe Value <- decode =<< M.lookup automationServiceTopic' topicMap
             Just $ decoded ^.. _Just . key "runningAutomations" . _Array . folded . key "name"
 
+        -- HTTPDefault completes immediately and is swept from the
+        -- running set (cleanDeadAutomations in Service.Daemon), so it
+        -- must not be reported as running.
         (null . filter (== Aeson.String "HTTPDefault")) <$> autoServiceTopic
           `shouldBe`
-          Just False
+          Just True
 
         (null . filter (== Aeson.String "StateManager")) <$> autoServiceTopic
           `shouldBe`
@@ -723,6 +914,60 @@ httpSpecs = do
         devices' <- readTVarIO devices
 
         devicesReceived `shouldBe` devices'
+
+  around initAndCleanup $ do
+    it "delivers subscribed-topic messages to websocket clients alongside the drain" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          daemonBroadcast' = env ^. daemonBroadcast
+          subscriptions' = env ^. subscriptions
+          port = env ^. config . httpPort
+          httpName = HTTP port
+          Just topic = mkTopic "wsDrainTestTopic"
+
+        -- Regression test for the HTTP drain (drainBroadcastChan in
+        -- HTTP.hs): the drain concurrently consumes from the HTTP
+        -- automation's own broadcast channel copy to prevent message
+        -- history retention, while each WebSocket connection reads
+        -- from its own independently dup'ed copy (broadcastChanCopy
+        -- in ws). This test proves the drain cannot steal messages
+        -- from the per-connection copies: subscribe the HTTP
+        -- automation to a topic (as a UI client would), connect a
+        -- WebSocket client, dispatch a routed message, and require
+        -- the client to receive it.
+
+        atomically $ writeTChan daemonBroadcast' $
+          Daemon.Subscribe httpName (Just topic)
+
+        -- wait for the subscription to be registered
+        waitUntilEqSTM True $ do
+          subs <- readTVar subscriptions'
+          pure $ M.member topic subs
+
+        -- connect a websocket client; the handler sends device and
+        -- group data on connect (two messages to consume before the
+        -- routed one)
+        received <- retry $ WS.runClient "127.0.0.1" (fromIntegral port) "" $ \conn -> do
+          _devicesData :: ByteString <- WS.receiveData conn
+          _groupsData :: ByteString <- WS.receiveData conn
+
+          -- dispatch a message through the subscription action; this
+          -- writes to the automation broadcast channel, which both
+          -- the drain and the connection's copy read from — the
+          -- drain from its own position, the connection from its own
+          dispatchActions <- readTVarIO subscriptions'
+          for_ (fromJust (M.lookup topic dispatchActions)) $ \action ->
+            action topic "{\"drainTest\": \"delivered\"}"
+
+          -- the routed message must arrive on the WebSocket despite
+          -- the drain concurrently consuming from the same
+          -- underlying channel data
+          msg <- WS.receiveData conn
+          WS.sendClose conn ("close" :: Text)
+          pure msg
+
+        (decode received :: Maybe Value) `shouldBe`
+          Just (Aeson.object [("drainTest", Aeson.String "delivered")])
 
   around initAndCleanup $ do
     it "allows a websocket client to publish an MQTT message" $
