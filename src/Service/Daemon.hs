@@ -63,19 +63,6 @@ run = do
   threadMapTV <- newTVarIO M.empty
   run' threadMapTV
 
--- | How long 'cleanupAutomations' waits for automations to finish
--- shutting down before proceeding. Automations whose shutdown is
--- unblocked wind down in ~1-5ms (verified via eventlog); the bound
--- exists so that a genuinely stuck automation cannot stall shutdown
--- indefinitely, not because a full shutdown is expected to take this
--- long. Keep it small: a large grace multiplies across every test's
--- teardown when a cancellation straggles (measured: a 5s grace made
--- each integration test ~5s slower). A straggler that misses the
--- grace is abandoned mid-shutdown; its pending AsyncCancelled still
--- lands when its blocker clears, or at process exit.
-automationShutdownGraceMicros :: Int
-automationShutdownGraceMicros = 250 * 1000
-
 --
 -- Splitting this from the above is a bit of a hack to enable easily
 -- testing threadMapTV without needing to include it in Env, which
@@ -117,14 +104,14 @@ run' threadMapTV = do
 
   where
     go = do
-      -- Sweep completed/dead automations from the ThreadMap so their
-      -- dead asyncs become garbage. A completed Async retained in the
-      -- ThreadMap keeps its dead thread's stack alive (ThreadId ->
-      -- TSO -> stack), and any TChan read pointers captured in that
-      -- stack anchor the channel's history indefinitely: every
-      -- message written to automationBroadcast after such an
-      -- automation's dup would otherwise be retained for the life of
-      -- the process.
+      --
+      -- If any references to dead automations remain here those will
+      -- continue to take up space in memory, especially as any duped
+      -- automationBroadcast TChans that an automation may be sitting
+      -- on continue to accumulate messages as long as the threads
+      -- holding references to them are not cleaned up. This ensures
+      -- we clear these out at the beginning of every message loop.
+      --
       cleanDeadAutomations threadMapTV
 
       tryRestoreRunningAutomations
@@ -236,32 +223,33 @@ run' threadMapTV = do
       -> m ()
     cleanupAutomations appCleanup' threadMapTV' = do
       threadMap <- atomically . readTVar $ threadMapTV'
-
-      -- Cancel every automation without ever blocking this thread on
-      -- one of them. A Lua automation blocked in a subscribe() channel
-      -- read is running inside Lua.unsafeRunWith, i.e. inside a foreign
-      -- call, and AsyncCancelled cannot be delivered to a thread while
-      -- it is in a foreign call: the read has to return first. A
-      -- synchronous cancel here could therefore hang this shutdown
-      -- forever -- this is what froze the test suite, with everything
-      -- blocked while a leftover Lua automation ground on in the
-      -- background. Two measures:
       --
-      --   1. sendClientMsg Shutdown first, to unblock any listener
-      --      blocked on a channel read; this is the same dance
-      --      stopAutomation performs for the same reason, and
+      -- Sends Shutdown message first so it will pick that up, allowing
+      -- the AsyncCancelled exception to be delivered (stopAutomation
+      -- does this as well), then the `async (cancel async')` ensures
+      -- that we are shutting things down without blocking this
+      -- thread.
       --
-      --   2. run each cancel in its own thread, then wait for all of
-      --      them only up to automationShutdownGraceMicros.
+      -- This approach is critical with Lua automations where
+      -- something may be blocking on a channel read, as Lua
+      -- automations run in a bound thread and can't be interrupted
+      -- until that read returns, so they can block this forever.
       --
-      -- waitCatch rather than wait: wait would rethrow the cancelled
-      -- automation's AsyncCancelled into this thread.
       cancelers <- for (M.toList threadMap) $ \(automationName, (_, async')) -> do
         info $ "Shutting down Automation " <> serializeAutomationName automationName
         sendClientMsg automationName Automation.Shutdown
         async (cancel async')
 
-      _ <- race (threadDelay automationShutdownGraceMicros) $
+      let
+        automationShutdownTimeoutMicros = 250 * 1000
+
+      --
+      -- Waiting on the cancelers (rather than just sleeping every
+      -- time) means we proceed as soon as the AsyncCancelled
+      -- exception is delivered, and only ever pay the full timeout
+      -- when something hangs.
+      --
+      _ <- race (threadDelay automationShutdownTimeoutMicros) $
         for_ cancelers waitCatch
 
       liftIO appCleanup'
@@ -315,6 +303,10 @@ run' threadMapTV = do
         -- > uninterruptible masking for its cleanup handler.
         --
         -- https://hackage.haskell.org/package/unliftio-0.2.24.0/docs/UnliftIO-Exception.html#v:bracket
+        --
+        --
+        -- TODO MAKE THIS NOT IMPLICIT AND OBVIATE THE NEED FOR THIS
+        -- COMMENT (MOSTLY):
         --
         -- Contract: every automation receives its own read position
         -- ("dup") into the shared automationBroadcast stream, and the
