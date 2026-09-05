@@ -26,10 +26,11 @@ import Effect.Class (liftEffect)
 import Effect.Now (now)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
-import Elmish (Dispatch, ReactElement, Transition, forks, forkVoid, (<|))
+import Elmish (Dispatch, ReactElement, Transition, forks, forkVoid)
 import Elmish.HTML.Boot (defaultMain)
 import Elmish.Component (Command)
 import Elmish.HTML (_data)
+import Elmish.Dispatch (handle)
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
 import Prelude (Unit, ($), (#), (<>), (<<<), (<$>), (<#>), bind, discard, not, pure, show, when)
@@ -172,11 +173,11 @@ publishMQTT s dispatch =
     [ H.input_ "form-control publish-mqtt"
       { type: "text"
       , _data: _data { "test-id": "publish-mqtt-input" }
-      , onChange: dispatch <| PublishMsgChanged <<< E.inputText
+      , onChange: handle $ dispatch <<< PublishMsgChanged <<< E.inputText
       }
     , H.button_ "btn btn-outline-secondary"
       { _data: _data { "test-id": "publish-mqtt-btn" }
-      , onClick: dispatch <| Publish
+      , onClick: handle $ \_ -> dispatch Publish
       }
       "Publish"
     ]
@@ -215,7 +216,7 @@ view state@{ currentPage } dispatch =
     link pg = H.li_ (pageNameClass pg <> " navlink list-group-item")
       { _data: _data { "test-id": "nav-" <> pageNameClass pg }
       } $
-      H.a_ "" { href: "#", onClick: dispatch <| SetPage pg } $ pageName pg
+      H.a_ "" { href: "#", onClick: handle $ \_ -> dispatch (SetPage pg) } $ pageName pg
 
     page :: WebSocket ws => Page -> State ws -> ReactElement
     page pg s = case pg of

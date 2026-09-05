@@ -14,7 +14,7 @@ import Data.FunctorWithIndex (mapWithIndex)
 import Data.Int (round, toNumber) as Int
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
-import Data.Time.Duration (Milliseconds)
+import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (sequence)
 import Data.Tuple.Nested ((/\))
 import Effect (Effect)
