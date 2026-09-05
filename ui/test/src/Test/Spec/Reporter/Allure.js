@@ -16,3 +16,9 @@ export const prepareResultsDir = (dir) => () => {
 // a pure function rather than wrapped in Effect.
 export const md5Hash = (s) =>
   crypto.createHash('md5').update(s).digest('hex');
+
+// Keep only filesystem-safe characters (GitHub artifact upload rejects
+// filenames containing e.g. '>', which shows up in test names like
+// "Main app > Can navigate to different pages").
+export const safeFilename_ = (s) =>
+  s.replace(/[^\w.-]+/g, '_').slice(0, 120);

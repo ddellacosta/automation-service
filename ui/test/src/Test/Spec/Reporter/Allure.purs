@@ -7,15 +7,13 @@ import Data.Foldable (intercalate)
 import Data.Int (round, toNumber) as Int
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
-import Data.String (Pattern(..), Replacement(..), replaceAll)
-import Data.String as String
 import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
 import Effect.Class (liftEffect)
 import Effect.Exception as Error
 import Effect.Now (now)
 import Pipes (await, yield)
-import Prelude (($), (>>>), (<>), (+), Unit, bind, discard, show)
+import Prelude (($), (<>), (+), Unit, bind, discard, show)
 import Test.Spec.Result (Result(..))
 import Test.Spec.Runner (Reporter)
 import Test.Spec.Runner.Event as Event
@@ -32,6 +30,10 @@ foreign import prepareResultsDir :: String -> Effect Unit
 -- FFI: pure md5 hash, used for historyId so that Allure can match test
 -- results across runs (history/trends won't work without it)
 foreign import md5Hash :: String -> String
+
+-- FFI: sanitize a test name for use as a filename (String.replaceAll in PS
+-- is NOT regex-based, so this has to happen in JS)
+foreign import safeFilename_ :: String -> String
 
 -- | A purescript-spec Reporter that writes one Allure result JSON file
 -- | per test into the given output directory.
@@ -169,10 +171,4 @@ mkAllureJson startMs durationMs r =
 
 -- | Turn a test name into something safe for a filename
 safeFilename :: String -> Int -> String
-safeFilename s idx = replaceUnsafe s <> "-" <> show idx
-  where
-  replaceUnsafe = replaceAll (Pattern "[^\\w.-]+") (Replacement "_") >>> String.take 120
-
--- -- Actually, String.replaceAll isn't regex-based in PS. Simpler approach
--- -- via FFI:
--- foreign import safeFilename_ :: String -> String
+safeFilename s idx = safeFilename_ s <> "-" <> show idx
