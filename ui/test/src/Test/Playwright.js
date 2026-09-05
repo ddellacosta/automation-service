@@ -10,9 +10,21 @@ export const launch_ = (opts) => () => {
     process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ||
     execSync('which chromium').toString().trim();
 
+  // These flags were required by the previous mocha-headless-chrome
+  // harness when running under the nix build sandbox / CI runners
+  // (see the old nix/frontend-test.nix); without them chromium's
+  // renderer silently fails to execute JS in that environment.
+  const args = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+  ];
+
   return chromium.launch({
     ...opts,
     executablePath,
+    args,
   });
 };
 
