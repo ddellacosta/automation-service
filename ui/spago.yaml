@@ -57,10 +57,10 @@ package:
 workspace:
   extraPackages:
     # elmish 0.15.x pairs with elmish-html v0.14.0, which holds the
-    # react-dom-facing pieces (Elmish.HTML.Boot etc.); it is not yet in
-    # the registry package set, so pin it from git as upstream elmish does
+    # react-dom-facing pieces (Elmish.HTML.Boot etc.) and requires
+    # elmish >= 0.15.0; pin from git as upstream elmish does
     elmish-html:
       git: https://github.com/collegevine/purescript-elmish-html.git
       ref: v0.14.0
   packageSet:
-    registry: 72.0.0
+    registry: 73.1.0
