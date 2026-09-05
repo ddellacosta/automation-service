@@ -135,7 +135,7 @@
 
         automation-service-ui-test =
           import ./nix/frontend-test.nix {
-            inherit automation-service-ui-npm-deps node_version pkgs;
+            inherit automation-service-ui automation-service-ui-npm-deps node_version pkgs;
           };
 
         automation-service =

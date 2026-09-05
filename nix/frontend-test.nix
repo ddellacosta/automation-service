@@ -1,4 +1,5 @@
-{ automation-service-ui-npm-deps
+{ automation-service-ui
+, automation-service-ui-npm-deps
 , node_version
 , pkgs
 , spagoLock ? ../ui/spago.lock
@@ -13,6 +14,7 @@ let
     name = "automation-service frontend-test.nix";
 
     nativeBuildInputs = [
+      automation-service-ui
       automation-service-ui-npm-deps
       node_version
       pkgs.chromium
@@ -41,9 +43,16 @@ let
 
       # run-tests.mjs: starts http-server for the app, waits for it to
       # come up, runs the test bundle, tears the server down, and exits
-      # with the bundle's exit code
+      # with the bundle's exit code.
+      #
+      # The app is served from the automation-service-ui derivation
+      # output rather than this source tree: ui/index.js and the
+      # sass-compiled css are gitignored build artifacts, so they only
+      # exist in the built app (locally this happens to work because
+      # build artifacts are lying around, but not in a clean nix build)
       PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${pkgs.chromium}/bin/chromium \
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+      TEST_APP_ROOT=${automation-service-ui}/ui \
         node test/run-tests.mjs 2>&1 | tee .test-log.txt
 
       status=''${PIPESTATUS[0]}
