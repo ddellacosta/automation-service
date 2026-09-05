@@ -68,6 +68,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Upload frontend test-log artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-log-frontend
+          path: frontend-out/share/test-log.txt
+          if-no-files-found: warn
+          retention-days: 7
+
   build-backend-tests:
     runs-on: ubuntu-latest
     steps:

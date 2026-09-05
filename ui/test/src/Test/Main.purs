@@ -1,12 +1,16 @@
 module Test.Main where
 
+import Control.Monad.Error.Class (throwError)
+import Data.Either (Either(..))
+import Data.Foldable (intercalate)
 import Data.Maybe (Maybe(..))
 import Effect.Console as Console
-import Effect.Aff (Aff)
+import Effect.Aff (Aff, attempt)
 import Effect.Class (liftEffect)
+import Effect.Exception (error, message)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
-import Prelude (($), (<>), (=<<), Unit, bind, discard, flip, pure)
+import Prelude (($), (<>), (=<<), Unit, bind, discard, flip, pure, unit)
 import Test.Fixtures as Fixtures
 import Test.Playwright as PW
 import Test.Playwright.RouteWebSocket as WSRoute
@@ -19,90 +23,100 @@ type TestContext =
   , page :: PW.Page
   , wsRoute :: Ref (Maybe WSRoute.WebSocketRoute)
   , sentMessages :: Ref (Array String)
+  , pageLogs :: Ref (Array String)
   }
 
 spec :: Spec Unit
 spec = before setup $ after teardown $
   describe "Main app" $
     it "Can navigate to different pages" $ \ctx@{ page } -> do
+      outcome <- attempt $ do
+          -- (fixture data is fed to the app as the "server" from inside the
+          -- WS route handler in setup, to avoid racing the app's connection)
 
-      -- (fixture data is fed to the app as the "server" from inside the
-      -- WS route handler in setup, to avoid racing the app's connection)
+          -- Devices
 
-      -- Devices
+        PW.waitForSelector page "h2[data-test-id='main-title']"
+        title <- PW.textContent =<< PW.locator page "h2[data-test-id='main-title']"
+        title `shouldEqual` Just "Devices"
 
-      PW.waitForSelector page "h2[data-test-id='main-title']"
-      title <- PW.textContent =<< PW.locator page "h2[data-test-id='main-title']"
-      title `shouldEqual` Just "Devices"
+        PW.click =<< PW.locator page "li[data-test-id='nav-devices'] a"
+        devTitle <- PW.textContent =<< PW.locator page "h2[data-test-id='main-title']"
+        devTitle `shouldEqual` Just "Devices"
 
-      PW.click =<< PW.locator page "li[data-test-id='nav-devices'] a"
-      devTitle <- PW.textContent =<< PW.locator page "h2[data-test-id='main-title']"
-      devTitle `shouldEqual` Just "Devices"
+        device1Name <- PW.textContent =<< flip PW.nth 0 =<<
+          PW.locator page "div.all-devices div.device .card-body .card-header"
+        device1Name `shouldEqual` Just "Basement Black Signe"
 
-      device1Name <- PW.textContent =<< flip PW.nth 0 =<<
-        PW.locator page "div.all-devices div.device .card-body .card-header"
-      device1Name `shouldEqual` Just "Basement Black Signe"
+        device2Name <- PW.textContent =<< flip PW.nth 1 =<<
+          PW.locator page "div.all-devices div.device .card-body .card-header"
+        device2Name `shouldEqual` Just "Basement Standing Lamp Bottom"
 
-      device2Name <- PW.textContent =<< flip PW.nth 1 =<<
-        PW.locator page "div.all-devices div.device .card-body .card-header"
-      device2Name `shouldEqual` Just "Basement Standing Lamp Bottom"
-
-      device3Name <- PW.textContent =<< flip PW.nth 2 =<<
-        PW.locator page "div.all-devices div.device .card-body .card-header"
-      device3Name `shouldEqual` Just "Basement Standing Lamp Top"
-
-
-      -- Groups
-
-      -- this will fail if default_binding_group is present
-      groupName <- PW.textContent =<<
-        PW.locator page "div.all-devices div.group .card-body .card-header"
-      groupName `shouldEqual` Just "Basement Standing Lamp"
+        device3Name <- PW.textContent =<< flip PW.nth 2 =<<
+          PW.locator page "div.all-devices div.device .card-body .card-header"
+        device3Name `shouldEqual` Just "Basement Standing Lamp Top"
 
 
-      -- Publish MQTT
+        -- Groups
 
-      PW.click =<< PW.locator page "li[data-test-id='nav-publish-mqtt'] a"
+        -- this will fail if default_binding_group is present
+        groupName <- PW.textContent =<<
+          PW.locator page "div.all-devices div.group .card-body .card-header"
+        groupName `shouldEqual` Just "Basement Standing Lamp"
 
-      let mqttMsg = "{\"start\": \"test\"}"
-      mqttInput <- PW.locator page "input[data-test-id='publish-mqtt-input']"
 
-      PW.fill mqttInput mqttMsg
-      PW.click =<< PW.locator page "button[data-test-id='publish-mqtt-btn']"
+        -- Publish MQTT
 
-      lastSent <- PW.textContent =<< PW.locator page "div[data-test-id='last-sent-msg']"
-      lastSent `shouldEqual` Just ("Last sent:" <> mqttMsg)
+        PW.click =<< PW.locator page "li[data-test-id='nav-publish-mqtt'] a"
 
-      -- Also verify what the page sent via the WS (the publish msg)
-      sent <- liftEffect $ Ref.read ctx.sentMessages
+        let mqttMsg = "{\"start\": \"test\"}"
+        mqttInput <- PW.locator page "input[data-test-id='publish-mqtt-input']"
 
-      -- The app's startup protocol, in order:
-      --
-      --   1. when the groups fixture arrives (before any devices are
-      --      known), it subscribes + pings each group
-      --   2. when the devices fixture arrives, it subscribes + pings each
-      --      device (iteration order is Data.Map order, i.e. by device id)
-      --   3. groups are then re-loaded (ReLoadGroups) so group members can
-      --      merge in the newly-arrived device info, and loadGroups
-      --      re-subscribes + re-pings as part of that (redundant but
-      --      harmless — MQTT subscribe is idempotent)
-      --
-      -- followed by the message published by the Publish MQTT page test.
-      sent `shouldEqual`
-        [ subscribeMsg "zigbee2mqtt/Basement Standing Lamp"
-        , pingMsg "zigbee2mqtt/Basement Standing Lamp"
-        , subscribeMsg "zigbee2mqtt/Basement Standing Lamp Bottom"
-        , pingMsg "zigbee2mqtt/Basement Standing Lamp Bottom"
-        , subscribeMsg "zigbee2mqtt/Basement Black Signe"
-        , pingMsg "zigbee2mqtt/Basement Black Signe"
-        , subscribeMsg "zigbee2mqtt/Basement Standing Lamp Top"
-        , pingMsg "zigbee2mqtt/Basement Standing Lamp Top"
-        , subscribeMsg "zigbee2mqtt/Basement Standing Lamp"
-        , pingMsg "zigbee2mqtt/Basement Standing Lamp"
-        , "{\"start\": \"test\"}"
-        ]
+        PW.fill mqttInput mqttMsg
+        PW.click =<< PW.locator page "button[data-test-id='publish-mqtt-btn']"
 
-      teardown ctx
+        lastSent <- PW.textContent =<< PW.locator page "div[data-test-id='last-sent-msg']"
+        lastSent `shouldEqual` Just ("Last sent:" <> mqttMsg)
+
+        -- Also verify what the page sent via the WS (the publish msg)
+        sent <- liftEffect $ Ref.read ctx.sentMessages
+
+        -- The app's startup protocol, in order:
+        --
+        --   1. when the groups fixture arrives (before any devices are
+        --      known), it subscribes + pings each group
+        --   2. when the devices fixture arrives, it subscribes + pings each
+        --      device (iteration order is Data.Map order, i.e. by device id)
+        --   3. groups are then re-loaded (ReLoadGroups) so group members can
+        --      merge in the newly-arrived device info, and loadGroups
+        --      re-subscribes + re-pings as part of that (redundant but
+        --      harmless — MQTT subscribe is idempotent)
+        --
+        -- followed by the message published by the Publish MQTT page test.
+        sent `shouldEqual`
+          [ subscribeMsg "zigbee2mqtt/Basement Standing Lamp"
+          , pingMsg "zigbee2mqtt/Basement Standing Lamp"
+          , subscribeMsg "zigbee2mqtt/Basement Standing Lamp Bottom"
+          , pingMsg "zigbee2mqtt/Basement Standing Lamp Bottom"
+          , subscribeMsg "zigbee2mqtt/Basement Black Signe"
+          , pingMsg "zigbee2mqtt/Basement Black Signe"
+          , subscribeMsg "zigbee2mqtt/Basement Standing Lamp Top"
+          , pingMsg "zigbee2mqtt/Basement Standing Lamp Top"
+          , subscribeMsg "zigbee2mqtt/Basement Standing Lamp"
+          , pingMsg "zigbee2mqtt/Basement Standing Lamp"
+          , "{\"start\": \"test\"}"
+          ]
+
+        teardown ctx
+
+      case outcome of
+        Right _ -> pure unit
+        Left err -> do
+          logs <- liftEffect $ Ref.read ctx.pageLogs
+          throwError $ error $
+            message err
+              <> "\n\n--- page console output (most recent last) ---\n"
+              <> intercalate "\n" logs
 
   where
     setup :: Aff TestContext
@@ -110,10 +124,18 @@ spec = before setup $ after teardown $
       browser <- PW.launch { headless: true }
       page <- PW.newPage browser
 
+      pageLogsRef <- liftEffect $ Ref.new []
+
       -- Surface page-side console output and JS errors in the test log,
-      -- so CI shows what the app was doing (or how it crashed)
-      PW.onConsole page \line -> Console.log ("[page] " <> line)
-      PW.onPageError page \e -> Console.log ("[page] " <> e)
+      -- so CI shows what the app was doing (or how it crashed); they are
+      -- also collected so test failures can include them (see the
+      -- attempt/case in the test body)
+      PW.onConsole page \line -> do
+        Console.log ("[page] " <> line)
+        Ref.modify_ (_ <> [line]) pageLogsRef
+      PW.onPageError page \e -> do
+        Console.log ("[page] " <> e)
+        Ref.modify_ (_ <> ["pageerror: " <> e]) pageLogsRef
 
       -- Refs to capture the route and outgoing messages
       wsRouteRef <- liftEffect $ Ref.new Nothing
@@ -145,7 +167,7 @@ spec = before setup $ after teardown $
       -- Navigate to the app, make this configurable
       PW.goto page "http://localhost:8850"
 
-      pure { browser, page, wsRoute: wsRouteRef, sentMessages: sentRef }
+      pure { browser, page, wsRoute: wsRouteRef, sentMessages: sentRef, pageLogs: pageLogsRef }
 
     teardown :: TestContext -> Aff Unit
     teardown ctx = PW.close ctx.browser
