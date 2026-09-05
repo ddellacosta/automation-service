@@ -80,6 +80,14 @@ let
 
       runHook postInstall
     '';
+
+    # The build sandbox has no system fonts or fontconfig; without them
+    # chromium renders text with zero-size bounding boxes, so elements are
+    # laid out but Playwright's visible-state waits (waitForSelector) time
+    # out with "locator resolved to hidden"
+    FONTCONFIG_FILE = pkgs.makeFontsConf {
+      fontDirectories = [ pkgs.dejavu_fonts ];
+    };
   };
 in
   drv
