@@ -3,7 +3,7 @@ module Test.Runner where
 import Data.Maybe (Maybe(..))
 import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
-import Prelude (Unit, bind, discard)
+import Prelude (Unit, discard)
 import Test.AutomationService.Device as Test.AutomationService.Device
 import Test.AutomationService.Capabilities as Test.AutomationService.Capabilities
 import Test.AutomationService.Group as Test.AutomationService.Group

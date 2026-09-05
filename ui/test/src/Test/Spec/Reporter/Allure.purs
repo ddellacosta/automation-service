@@ -16,7 +16,6 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (sequence)
-import Data.Tuple (Tuple)
 import Effect (Effect)
 import Effect.Class (liftEffect)
 import Effect.Exception as Error
@@ -24,7 +23,7 @@ import Effect.Now (now)
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import Pipes (await, yield)
-import Prelude (($), (<>), (+), Unit, bind, discard, show)
+import Prelude (($), (<>), (+), Unit, bind, discard, pure, show)
 import Test.Spec.Result (Result(..))
 import Test.Spec.Runner (Reporter)
 import Test.Spec.Runner.Event as Event
@@ -50,7 +49,7 @@ type Attachment =
 -- are consumed by the next result the reporter writes. A module-level
 -- Ref is safe here: tests run serially in a single node process.
 pendingAttachments :: Ref.Ref (Array Attachment)
-pendingAttachments = unsafePerformEffect (Ref.Ref.new [])
+pendingAttachments = unsafePerformEffect (Ref.new [])
 
 -- | Register an attachment to be embedded in the next test result.
 addPendingAttachment :: Attachment -> Effect Unit
@@ -72,13 +71,12 @@ foreign import md5Hash :: String -> String
 -- is NOT regex-based, so this has to happen in JS)
 foreign import safeFilename_ :: String -> String
 
+-- | Turn a test name into something safe for a filename
+safeFilename :: String -> Int -> String
+safeFilename s idx = safeFilename_ s <> "-" <> show idx
+
 -- FFI: write a base64-encoded blob to a file, creating parent dirs as needed
 foreign import writeBase64Sync_ :: String -> String -> Effect Unit
-
--- Build one association pair for an Allure JSON object; (:=) is
--- non-associative, so wrapping keeps the (~>) chains unambiguous
-field :: forall a. EncodeJson a => String -> a -> Tuple String Json
-field k v = k := v
 
 -- | A purescript-spec Reporter that writes one Allure result JSON file
 -- | per test into the given output directory.
@@ -122,14 +120,14 @@ allureReporter outputDir = go 0
   attachOne idx full i att = do
     let
       source =
-        safeFilename_ (full <> "-" <> att.name) idx <> "-attachment-" <> show i
+        safeFilename (full <> "-" <> att.name) idx <> "-attachment-" <> show i
           <> att.fileExtension
     writeBase64Sync_ (outputDir <> "/" <> source) att.base64Contents
     pure $
-      jsonEmptyObject
-        ~> field "name" att.name
-        ~> field "source" source
-        ~> field "type" att.contentType
+         "name"   := att.name
+      ~> "source" := source
+      ~> "type"   := att.contentType
+      ~> jsonEmptyObject
 
   writeResult :: Int -> Path -> String -> Result -> Effect Unit
   writeResult idx path name result = do
@@ -212,7 +210,7 @@ mkAllureJson startMs durationMs attachments r =
   let
     labelJson :: String -> String -> Json
     labelJson n v =
-      field "name" n ~> field "value" v ~> jsonEmptyObject
+      "name" := n ~> "value" := v ~> jsonEmptyObject
 
     labels =
       [ labelJson "framework" "purescript-spec"
@@ -227,24 +225,20 @@ mkAllureJson startMs durationMs attachments r =
     statusDetails = case r.message of
       Nothing -> jsonNull
       Just msg ->
-        field "message" msg ~> field "trace" (trace :: String) ~> jsonEmptyObject
+        "message" := msg ~> "trace" := (trace :: String) ~> jsonEmptyObject
 
   in
-    jsonEmptyObject
-      ~> field "name" r.name
-      ~> field "fullName" r.fullName
-      ~> field "status" r.status
-      ~> field "stage" "finished"
-      ~> field "start" startMs
-      ~> field "stop" (startMs + Int.toNumber durationMs)
-      ~> field "historyId" (md5Hash r.fullName)
-      ~> field "labels" labels
-      ~> field "statusDetails" statusDetails
-      ~> field "links" ([] :: Array String)
-      ~> field "steps" ([] :: Array String)
-      ~> field "parameters" ([] :: Array String)
-      ~> field "attachments" attachments
-
--- | Turn a test name into something safe for a filename
-safeFilename :: String -> Int -> String
-safeFilename s idx = safeFilename_ s <> "-" <> show idx
+         "name"          := r.name
+      ~> "fullName"      := r.fullName
+      ~> "status"        := r.status
+      ~> "stage"         := "finished"
+      ~> "start"         := startMs
+      ~> "stop"          := (startMs + Int.toNumber durationMs)
+      ~> "historyId"     := (md5Hash r.fullName)
+      ~> "labels"        := labels
+      ~> "statusDetails" := statusDetails
+      ~> "links"         := ([] :: Array String)
+      ~> "steps"         := ([] :: Array String)
+      ~> "parameters"    := ([] :: Array String)
+      ~> "attachments"   := attachments
+      ~> jsonEmptyObject

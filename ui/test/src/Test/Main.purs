@@ -11,7 +11,7 @@ import Effect.Class (liftEffect)
 import Effect.Exception (error, message)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
-import Prelude (($), (<>), (=<<), Unit, bind, discard, flip, pure, unit)
+import Prelude (($), (<$>), (<>), (=<<), Unit, bind, discard, flip, pure, unit)
 import Test.Fixtures as Fixtures
 import Test.Playwright as PW
 import Test.Playwright.RouteWebSocket as WSRoute
@@ -117,7 +117,7 @@ spec = before setup $ after teardown $
           -- capture visual evidence and register it for the Allure result
           -- (guarded: a failed screenshot must not mask the real failure)
           screenshotB64 <-
-            Control.Monad.Error.Class.catchError (Just <$> PW.screenshot page)
+            catchError (Just <$> PW.screenshot page)
               (\_ -> pure Nothing)
           case screenshotB64 of
             Just b64 -> liftEffect $ Allure.addPendingAttachment
