@@ -1,10 +1,8 @@
 module Test.Main where
 
-import Control.Monad.Error.Class (throwError)
 import Data.Maybe (Maybe(..))
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
-import Effect.Exception (error)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
 import Prelude (($), (<>), (=<<), Unit, bind, discard, flip, pure)
@@ -27,21 +25,8 @@ spec = before setup $ after teardown $
   describe "Main app" $
     it "Can navigate to different pages" $ \ctx@{ page } -> do
 
-      -- Wait for the app's WebSocket connection to be intercepted,
-      -- then send it device data as the server
-      wsRef <- liftEffect $ Ref.read ctx.wsRoute
-      case wsRef of
-        Nothing -> throwError (error "WS route not captured")
-        Just ws -> liftEffect $ do
-          WSRoute.sendToPage ws Fixtures.groupsWithBasementStandingLampFixture
-
-          WSRoute.sendToPage ws $
-            "[" <> Fixtures.coordinator <>
-            "," <> Fixtures.signeFixture <>
-            "," <> Fixtures.basementStandingLampBottomFixture <>
-            "," <> Fixtures.basementStandingLampTopFixture <>
-            "]"
-
+      -- (fixture data is fed to the app as the "server" from inside the
+      -- WS route handler in setup, to avoid racing the app's connection)
 
       -- Devices
 
@@ -128,13 +113,28 @@ spec = before setup $ after teardown $
       wsRouteRef <- liftEffect $ Ref.new Nothing
       sentRef <- liftEffect $ Ref.new []
 
-      -- Intercept ALL WebSocket connections the page makes.
+      -- Intercept ALL WebSocket connections the page makes. As the
+      -- "server" side of the intercepted connection, feed the app its
+      -- fixture data right away. This avoids racing the app's connect:
+      -- the route handler fires when the app attempts the connection,
+      -- and the app attaches its message handler synchronously in the
+      -- same tick it creates the socket, so it is guaranteed to receive
+      -- whatever we send from here.
       WSRoute.routeWebSocket page "**" \ws -> do
         Ref.write (Just ws) wsRouteRef
 
         -- Capture messages the app sends to the server
         WSRoute.onMessage ws \msg ->
           Ref.modify_ (_ <> [msg]) sentRef
+
+        -- Send device/group data as the server
+        WSRoute.sendToPage ws Fixtures.groupsWithBasementStandingLampFixture
+        WSRoute.sendToPage ws $
+          "[" <> Fixtures.coordinator <>
+          "," <> Fixtures.signeFixture <>
+          "," <> Fixtures.basementStandingLampBottomFixture <>
+          "," <> Fixtures.basementStandingLampTopFixture <>
+          "]"
 
       -- Navigate to the app, make this configurable
       PW.goto page "http://localhost:8850"
