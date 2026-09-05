@@ -73,7 +73,9 @@
           pkgs.buildNpmPackage {
             name = "automation-service-ui-npm-deps";
             # prefetch-npm-deps package-lock.json
-            npmDepsHash = "sha256-vcwrHSvVL0nLmCVG017Cf/8jsWYCeAoKLHBhNagst7o=";
+            # old as of 2026-09-04
+            #npmDepsHash = "sha256-vcwrHSvVL0nLmCVG017Cf/8jsWYCeAoKLHBhNagst7o=";
+            npmDepsHash = "sha256-P318324P/1QoXiOm/8uxyJZ6V7KdLuYrY/RNkpRUQmo=";
             src = ./ui;
             nodejs = node_version;
             # need this for spago and logging

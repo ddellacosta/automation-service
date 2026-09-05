@@ -3,13 +3,14 @@ module Test.Runner where
 import Data.Maybe (Maybe(..))
 import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
-import Prelude (Unit, discard)
+import Prelude (Unit, bind, discard)
 import Test.AutomationService.Device as Test.AutomationService.Device
 import Test.AutomationService.Capabilities as Test.AutomationService.Capabilities
 import Test.AutomationService.Group as Test.AutomationService.Group
 import Test.AutomationService.WebSocket as Test.AutomationService.WebSocket
 import Test.Main as Test.Main
 import Test.Spec (Spec)
+import Test.Spec.Reporter.Allure (allureReporter, prepareResultsDir)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner.Node (runSpecAndExitProcess')
 import Test.Spec.Runner.Node.Config (defaultConfig)
@@ -23,14 +24,17 @@ spec = do
   Test.Main.spec
 
 defaultTimeout :: Maybe Milliseconds
-defaultTimeout = Just (Milliseconds 50000.0)
+-- defaultTimeout = Just (Milliseconds 50000.0)
 -- no timeout
--- defaultTimeout = Nothing
+defaultTimeout = Nothing
 
 main :: Effect Unit
-main = runSpecAndExitProcess'
-  { defaultConfig: (defaultConfig { timeout = defaultTimeout })
-  , parseCLIOptions: false
-  }
-  [ consoleReporter ]
-  spec
+main = do
+  -- wipe/create the results dir so each run starts clean
+  prepareResultsDir "allure-results"
+  runSpecAndExitProcess'
+    { defaultConfig: (defaultConfig { timeout = defaultTimeout })
+    , parseCLIOptions: false
+    }
+    [ allureReporter "allure-results", consoleReporter ]
+    spec
