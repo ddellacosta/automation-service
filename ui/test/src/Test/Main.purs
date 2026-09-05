@@ -4,6 +4,7 @@ import Control.Monad.Error.Class (throwError)
 import Data.Either (Either(..))
 import Data.Foldable (intercalate)
 import Data.Maybe (Maybe(..))
+import Data.String as String
 import Effect.Console as Console
 import Effect.Aff (Aff, attempt)
 import Effect.Class (liftEffect)
@@ -113,10 +114,13 @@ spec = before setup $ after teardown $
         Right _ -> pure unit
         Left err -> do
           logs <- liftEffect $ Ref.read ctx.pageLogs
+          html <- PW.content page
           throwError $ error $
             message err
               <> "\n\n--- page console output (most recent last) ---\n"
               <> intercalate "\n" logs
+              <> "\n\n--- page HTML at failure (first 3000 chars) ---\n"
+              <> String.take 3000 html
 
   where
     setup :: Aff TestContext

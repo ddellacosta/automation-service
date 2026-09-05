@@ -8,6 +8,7 @@ module Test.Playwright
   , evaluate
   , fill
   , goto
+  , content
   , inputValue
   , launch
   , locator
@@ -69,9 +70,15 @@ onPageError page handler = liftEffect $ onPageError_ page handler
 
 -- Navigation
 foreign import goto_ :: Page -> String -> Effect (Promise Unit)
+foreign import content_ :: Page -> Effect (Promise String)
 
 goto :: Page -> String -> Aff Unit
 goto p url = toAffE (goto_ p url)
+
+-- | The page's current HTML (document.documentElement.outerHTML), useful
+-- for debugging what actually rendered
+content :: Page -> Aff String
+content p = toAffE (content_ p)
 
 -- Locators
 foreign import locator_ :: Page -> String -> Effect Locator
