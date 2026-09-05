@@ -9,6 +9,7 @@ module Test.Playwright
   , fill
   , goto
   , content
+  , screenshot
   , inputValue
   , launch
   , locator
@@ -83,6 +84,7 @@ onRequestFailed page handler = liftEffect $ onRequestFailed_ page handler
 -- Navigation
 foreign import goto_ :: Page -> String -> Effect (Promise Unit)
 foreign import content_ :: Page -> Effect (Promise String)
+foreign import screenshot_ :: Page -> Effect (Promise String)
 
 goto :: Page -> String -> Aff Unit
 goto p url = toAffE (goto_ p url)
@@ -91,6 +93,10 @@ goto p url = toAffE (goto_ p url)
 -- for debugging what actually rendered
 content :: Page -> Aff String
 content p = toAffE (content_ p)
+
+-- | Full-page PNG screenshot, base64-encoded (for e.g. Allure attachments)
+screenshot :: Page -> Aff String
+screenshot p = toAffE (screenshot_ p)
 
 -- Locators
 foreign import locator_ :: Page -> String -> Effect Locator

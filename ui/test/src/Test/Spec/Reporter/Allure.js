@@ -12,6 +12,11 @@ export const prepareResultsDir = (dir) => () => {
   fs.mkdirSync(dir, { recursive: true });
 };
 
+export const writeBase64Sync_ = (filePath) => (base64) => () => {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, Buffer.from(base64, 'base64'));
+};
+
 // Pure (deterministic, no side effects), hence exposed to PureScript as
 // a pure function rather than wrapped in Effect.
 export const md5Hash = (s) =>

@@ -35,6 +35,8 @@ export const evaluate_ = (page) => (js) => () => page.evaluate(new Function(js))
 export const fill_ = (locator) => (val) => () => locator.fill(val);
 export const goto_ = (page) => (url) => () => page.goto(url);
 export const content_ = (page) => () => page.content();
+export const screenshot_ = (page) => () =>
+  page.screenshot({ type: 'png', fullPage: true }).then((b) => b.toString('base64'));
 export const inputValue_ = (locator) => () => locator.inputValue();
 export const locator_ = (page) => (sel) => () => page.locator(sel);
 export const newPage_ = (browser) => () => browser.newPage();

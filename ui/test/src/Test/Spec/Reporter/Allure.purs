@@ -1,23 +1,60 @@
-module Test.Spec.Reporter.Allure (allureReporter, prepareResultsDir) where
+module Test.Spec.Reporter.Allure
+  ( Attachment
+  , addPendingAttachment
+  , allureReporter
+  , allureResultsDir
+  , prepareResultsDir
+  ) where
 
 import Data.Argonaut.Core (Json, jsonEmptyObject, jsonNull, stringify)
-import Data.Argonaut.Encode ((:=), (~>))
+import Data.Argonaut.Encode (class EncodeJson, (:=), (~>))
 import Data.DateTime.Instant (unInstant)
 import Data.Foldable (intercalate)
+import Data.FunctorWithIndex (mapWithIndex)
 import Data.Int (round, toNumber) as Int
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Data.Time.Duration (Milliseconds(..))
+import Data.Traversable (sequence)
+import Data.Tuple (Tuple)
 import Effect (Effect)
 import Effect.Class (liftEffect)
 import Effect.Exception as Error
 import Effect.Now (now)
+import Effect.Ref as Ref
+import Effect.Unsafe (unsafePerformEffect)
 import Pipes (await, yield)
 import Prelude (($), (<>), (+), Unit, bind, discard, show)
 import Test.Spec.Result (Result(..))
 import Test.Spec.Runner (Reporter)
 import Test.Spec.Runner.Event as Event
 import Test.Spec.Tree (Path, parentSuiteName)
+
+-- The results directory name; kept here as the single source of truth so
+-- the runner and any attachment producers agree on it.
+allureResultsDir :: String
+allureResultsDir = "allure-results"
+
+-- | An extra file to embed in a test result's Allure entry (e.g. a
+-- | screenshot). The contents arrive base64-encoded and are written into
+-- | the results directory when the test's result JSON is emitted.
+type Attachment =
+  { name :: String
+  , contentType :: String
+  , fileExtension :: String
+  , base64Contents :: String
+  }
+
+-- Module-level sink: attachments registered while a test runs (e.g. a
+-- failure screenshot, taken before the failure propagates to the runner)
+-- are consumed by the next result the reporter writes. A module-level
+-- Ref is safe here: tests run serially in a single node process.
+pendingAttachments :: Ref.Ref (Array Attachment)
+pendingAttachments = unsafePerformEffect (Ref.Ref.new [])
+
+-- | Register an attachment to be embedded in the next test result.
+addPendingAttachment :: Attachment -> Effect Unit
+addPendingAttachment att = Ref.modify_ (\atts -> atts <> [ att ]) pendingAttachments
 
 -- FFI: write a UTF-8 string to a file, creating parent dirs as needed
 foreign import writeFileSync_ :: String -> String -> Effect Unit
@@ -34,6 +71,14 @@ foreign import md5Hash :: String -> String
 -- FFI: sanitize a test name for use as a filename (String.replaceAll in PS
 -- is NOT regex-based, so this has to happen in JS)
 foreign import safeFilename_ :: String -> String
+
+-- FFI: write a base64-encoded blob to a file, creating parent dirs as needed
+foreign import writeBase64Sync_ :: String -> String -> Effect Unit
+
+-- Build one association pair for an Allure JSON object; (:=) is
+-- non-associative, so wrapping keeps the (~>) chains unambiguous
+field :: forall a. EncodeJson a => String -> a -> Tuple String Json
+field k v = k := v
 
 -- | A purescript-spec Reporter that writes one Allure result JSON file
 -- | per test into the given output directory.
@@ -64,6 +109,28 @@ allureReporter outputDir = go 0
   fullTestName :: Path -> String -> String
   fullTestName path name = suiteName path <> " > " <> name
 
+  -- Consume any attachments registered while the test ran: write their
+  -- contents into the results directory and return the Allure attachment
+  -- records for the result JSON.
+  takePendingAttachments :: Int -> String -> Effect (Array Json)
+  takePendingAttachments idx full = do
+    atts <- Ref.read pendingAttachments
+    _ <- Ref.write [] pendingAttachments
+    sequence $ mapWithIndex (attachOne idx full) atts
+
+  attachOne :: Int -> String -> Int -> Attachment -> Effect Json
+  attachOne idx full i att = do
+    let
+      source =
+        safeFilename_ (full <> "-" <> att.name) idx <> "-attachment-" <> show i
+          <> att.fileExtension
+    writeBase64Sync_ (outputDir <> "/" <> source) att.base64Contents
+    pure $
+      jsonEmptyObject
+        ~> field "name" att.name
+        ~> field "source" source
+        ~> field "type" att.contentType
+
   writeResult :: Int -> Path -> String -> Result -> Effect Unit
   writeResult idx path name result = do
     now' <- now
@@ -86,9 +153,16 @@ allureReporter outputDir = go 0
           , trace: Error.stack err
           }
 
+    attachmentJsons <-
+      case result of
+        Failure _ -> takePendingAttachments idx full
+        _ -> pure []
+
+    let
       json = mkAllureJson
         startMs
         durationMs
+        attachmentJsons
         { name, fullName: full, suite, status, message, trace }
 
     writeFileSync_
@@ -105,6 +179,7 @@ allureReporter outputDir = go 0
       json = mkAllureJson
         startMs
         0
+        []
         { name
         , fullName: full
         , suite
@@ -124,6 +199,7 @@ allureReporter outputDir = go 0
 mkAllureJson
   :: Number
   -> Int
+  -> Array Json
   -> { name :: String
      , fullName :: String
      , suite :: String
@@ -132,11 +208,11 @@ mkAllureJson
      , trace :: Maybe String
      }
   -> Json
-mkAllureJson startMs durationMs r =
+mkAllureJson startMs durationMs attachments r =
   let
     labelJson :: String -> String -> Json
     labelJson n v =
-      "name" := n ~> "value" := v ~> jsonEmptyObject
+      field "name" n ~> field "value" v ~> jsonEmptyObject
 
     labels =
       [ labelJson "framework" "purescript-spec"
@@ -151,23 +227,23 @@ mkAllureJson startMs durationMs r =
     statusDetails = case r.message of
       Nothing -> jsonNull
       Just msg ->
-        "message" := msg ~> "trace" := (trace :: String) ~> jsonEmptyObject
+        field "message" msg ~> field "trace" (trace :: String) ~> jsonEmptyObject
 
   in
-         "name"          := r.name
-      ~> "fullName"      := r.fullName
-      ~> "status"        := r.status
-      ~> "stage"         := "finished"
-      ~> "start"         := startMs
-      ~> "stop"          := (startMs + Int.toNumber durationMs)
-      ~> "historyId"     := (md5Hash r.fullName)
-      ~> "labels"        := labels
-      ~> "statusDetails" := statusDetails
-      ~> "links"         := ([] :: Array String)
-      ~> "steps"         := ([] :: Array String)
-      ~> "parameters"    := ([] :: Array String)
-      ~> "attachments"   := ([] :: Array String)
-      ~> jsonEmptyObject
+    jsonEmptyObject
+      ~> field "name" r.name
+      ~> field "fullName" r.fullName
+      ~> field "status" r.status
+      ~> field "stage" "finished"
+      ~> field "start" startMs
+      ~> field "stop" (startMs + Int.toNumber durationMs)
+      ~> field "historyId" (md5Hash r.fullName)
+      ~> field "labels" labels
+      ~> field "statusDetails" statusDetails
+      ~> field "links" ([] :: Array String)
+      ~> field "steps" ([] :: Array String)
+      ~> field "parameters" ([] :: Array String)
+      ~> field "attachments" attachments
 
 -- | Turn a test name into something safe for a filename
 safeFilename :: String -> Int -> String

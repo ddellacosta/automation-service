@@ -1,6 +1,6 @@
 module Test.Main where
 
-import Control.Monad.Error.Class (throwError)
+import Control.Monad.Error.Class (catchError, throwError)
 import Data.Either (Either(..))
 import Data.Foldable (intercalate)
 import Data.Maybe (Maybe(..))
@@ -17,6 +17,7 @@ import Test.Playwright as PW
 import Test.Playwright.RouteWebSocket as WSRoute
 import Test.Spec (Spec, after, before, describe, it)
 import Test.Spec.Assertions (shouldEqual)
+import Test.Spec.Reporter.Allure as Allure
 
 
 type TestContext =
@@ -113,6 +114,19 @@ spec = before setup $ after teardown $
       case outcome of
         Right _ -> pure unit
         Left err -> do
+          -- capture visual evidence and register it for the Allure result
+          -- (guarded: a failed screenshot must not mask the real failure)
+          screenshotB64 <-
+            Control.Monad.Error.Class.catchError (Just <$> PW.screenshot page)
+              (\_ -> pure Nothing)
+          case screenshotB64 of
+            Just b64 -> liftEffect $ Allure.addPendingAttachment
+              { name: "failure screenshot"
+              , contentType: "image/png"
+              , fileExtension: ".png"
+              , base64Contents: b64
+              }
+            Nothing -> pure unit
           logs <- liftEffect $ Ref.read ctx.pageLogs
           html <- PW.content page
           throwError $ error $

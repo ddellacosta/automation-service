@@ -75,7 +75,8 @@
             # prefetch-npm-deps package-lock.json
             # old as of 2026-09-04
             #npmDepsHash = "sha256-vcwrHSvVL0nLmCVG017Cf/8jsWYCeAoKLHBhNagst7o=";
-            npmDepsHash = "sha256-P318324P/1QoXiOm/8uxyJZ6V7KdLuYrY/RNkpRUQmo=";
+            # npmDepsHash = "sha256-P318324P/1QoXiOm/8uxyJZ6V7KdLuYrY/RNkpRUQmo=";
+            npmDepsHash = "sha256-Xg1Fs/CDyVVK/7tK36Oxhz9VjI6YJQgjQru4TPUmtGo=";
             src = ./ui;
             nodejs = node_version;
             # need this for spago and logging

@@ -10,7 +10,7 @@ import Test.AutomationService.Group as Test.AutomationService.Group
 import Test.AutomationService.WebSocket as Test.AutomationService.WebSocket
 import Test.Main as Test.Main
 import Test.Spec (Spec)
-import Test.Spec.Reporter.Allure (allureReporter, prepareResultsDir)
+import Test.Spec.Reporter.Allure (allureReporter, allureResultsDir, prepareResultsDir)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner.Node (runSpecAndExitProcess')
 import Test.Spec.Runner.Node.Config (defaultConfig)
@@ -31,10 +31,10 @@ defaultTimeout = Nothing
 main :: Effect Unit
 main = do
   -- wipe/create the results dir so each run starts clean
-  prepareResultsDir "allure-results"
+  prepareResultsDir allureResultsDir
   runSpecAndExitProcess'
     { defaultConfig: (defaultConfig { timeout = defaultTimeout })
     , parseCLIOptions: false
     }
-    [ allureReporter "allure-results", consoleReporter ]
+    [ allureReporter allureResultsDir, consoleReporter ]
     spec
