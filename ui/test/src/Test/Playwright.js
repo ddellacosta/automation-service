@@ -46,18 +46,20 @@ export const pause_ = (page) => () => page.pause();
 
 // Surface page-side console output and JS errors in the test process
 // output, so CI logs show what the app was doing (or how it crashed).
+// NOTE: the handlers are Effect functions (String -> Effect Unit), i.e.
+// they return a THUNK that must be invoked — hence the trailing "()".
 export const onConsole_ = (page) => (handler) => () =>
-  page.on('console', (msg) => handler(msg.type() + ': ' + msg.text()));
+  page.on('console', (msg) => handler(msg.type() + ': ' + msg.text())());
 
 export const onPageError_ = (page) => (handler) => () =>
-  page.on('pageerror', (err) => handler('pageerror: ' + err.message));
+  page.on('pageerror', (err) => handler('pageerror: ' + err.message)());
 
 // status + URL for every response the page receives (404s etc. show up
 // here), and network-level request failures
 export const onResponse_ = (page) => (handler) => () =>
-  page.on('response', (r) => handler('response ' + r.status() + ' ' + r.url()));
+  page.on('response', (r) => handler('response ' + r.status() + ' ' + r.url())());
 
 export const onRequestFailed_ = (page) => (handler) => () =>
   page.on('requestfailed', (r) =>
     handler('requestfailed ' + r.url() + ' ' +
-      ((r.failure() && r.failure().errorText) || '')));
+      ((r.failure() && r.failure().errorText) || ''))());
