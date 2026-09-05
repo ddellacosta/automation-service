@@ -164,6 +164,7 @@ signeFixture = """
         },
         {
           "access": 7,
+          "category": "config",
           "description": "Controls the behavior when the device is powered on after power loss",
           "label": "Power-on behavior",
           "name": "power_on_behavior",
@@ -299,6 +300,7 @@ signeFixture = """
         },
         {
           "access": 1,
+          "category": "diagnostic",
           "description": "Link quality (signal strength)",
           "label": "Linkquality",
           "name": "linkquality",
@@ -318,7 +320,8 @@ signeFixture = """
           "name": "transition",
           "property": "transition",
           "type": "numeric",
-          "value_min": 0
+          "value_min": 0,
+          "value_step": 0.1
         },
         {
           "access": 2,
@@ -341,6 +344,7 @@ signeFixture = """
           "value_on": true
         }
       ],
+      "source": "native",
       "supports_ota": true,
       "vendor": "Philips"
     },
@@ -368,7 +372,7 @@ signeFixture = """
             "touchlink",
             "manuSpecificPhilips2",
             "lightingColorCtrl",
-            "manuSpecificUbisysDimmerSetup"
+            "manuSpecificPhilips3"
           ],
           "output": [
             "genOta"
@@ -392,6 +396,7 @@ signeFixture = """
     "friendly_name": "Basement Black Signe",
     "ieee_address": "0x001788010c52373e",
     "interview_completed": true,
+    "interview_state": "SUCCESSFUL",
     "interviewing": false,
     "manufacturer": "Philips",
     "model_id": "915005987601",
@@ -1823,8 +1828,8 @@ unknownDeviceFixture = """
   }
 """
 
-livingRoomStandingLampGroupFixture :: String
-livingRoomStandingLampGroupFixture = """
+groupsWithlivingRoomStandingLampFixture :: String
+groupsWithlivingRoomStandingLampFixture = """
   [
      {
        "friendly_name": "Living Room Standing Lamp",
@@ -1854,8 +1859,8 @@ livingRoomStandingLampGroupFixture = """
    ]
 """
 
-livingRoomStandingLampBulbsFixture :: String
-livingRoomStandingLampBulbsFixture = """
+devicesWithLivingRoomStandingLampBulbsFixture :: String
+devicesWithLivingRoomStandingLampBulbsFixture = """
 [
   {
     "date_code": "20230116",
@@ -2722,4 +2727,679 @@ livingRoomStandingLampBulbsFixture = """
     "type": "Router"
   }
 ]
+"""
+
+groupsWithBasementStandingLampFixture :: String
+groupsWithBasementStandingLampFixture = """
+[
+  {
+    "friendly_name": "Basement Standing Lamp",
+    "id": 1,
+    "members": [
+      {
+        "endpoint": 11,
+        "ieee_address": "0x001788010c9d3dc7"
+      },
+      {
+        "endpoint": 11,
+        "ieee_address": "0x001788010c48279d"
+      }
+    ],
+    "scenes": [
+      {
+        "id": 0,
+        "name": "Chrimbus"
+      },
+      {
+        "id": 1,
+        "name": "Chilly"
+      }
+    ]
+  },
+  {
+    "friendly_name": "default_bind_group",
+    "id": 901,
+    "members": [],
+    "scenes": []
+  }
+]
+"""
+
+basementStandingLampTopFixture :: String
+basementStandingLampTopFixture = """
+  {
+    "date_code": "20230116",
+    "definition": {
+      "description": "Hue White and Color Ambiance E12 with bluetooth",
+      "exposes": [
+        {
+          "features": [
+            {
+              "access": 7,
+              "description": "On/off state of this light",
+              "label": "State",
+              "name": "state",
+              "property": "state",
+              "type": "binary",
+              "value_off": "OFF",
+              "value_on": "ON",
+              "value_toggle": "TOGGLE"
+            },
+            {
+              "access": 7,
+              "description": "Brightness of this light",
+              "label": "Brightness",
+              "name": "brightness",
+              "property": "brightness",
+              "type": "numeric",
+              "value_max": 254,
+              "value_min": 0
+            },
+            {
+              "access": 7,
+              "description": "Color temperature of this light",
+              "label": "Color temp",
+              "name": "color_temp",
+              "presets": [
+                {
+                  "description": "Coolest temperature supported",
+                  "name": "coolest",
+                  "value": 150
+                },
+                {
+                  "description": "Cool temperature (250 mireds / 4000 Kelvin)",
+                  "name": "cool",
+                  "value": 250
+                },
+                {
+                  "description": "Neutral temperature (370 mireds / 2700 Kelvin)",
+                  "name": "neutral",
+                  "value": 370
+                },
+                {
+                  "description": "Warm temperature (454 mireds / 2200 Kelvin)",
+                  "name": "warm",
+                  "value": 454
+                },
+                {
+                  "description": "Warmest temperature supported",
+                  "name": "warmest",
+                  "value": 500
+                }
+              ],
+              "property": "color_temp",
+              "type": "numeric",
+              "unit": "mired",
+              "value_max": 500,
+              "value_min": 150
+            },
+            {
+              "access": 7,
+              "description": "Color temperature after cold power on of this light",
+              "label": "Color temp startup",
+              "name": "color_temp_startup",
+              "presets": [
+                {
+                  "description": "Coolest temperature supported",
+                  "name": "coolest",
+                  "value": 150
+                },
+                {
+                  "description": "Cool temperature (250 mireds / 4000 Kelvin)",
+                  "name": "cool",
+                  "value": 250
+                },
+                {
+                  "description": "Neutral temperature (370 mireds / 2700 Kelvin)",
+                  "name": "neutral",
+                  "value": 370
+                },
+                {
+                  "description": "Warm temperature (454 mireds / 2200 Kelvin)",
+                  "name": "warm",
+                  "value": 454
+                },
+                {
+                  "description": "Warmest temperature supported",
+                  "name": "warmest",
+                  "value": 500
+                },
+                {
+                  "description": "Restore previous color_temp on cold power on",
+                  "name": "previous",
+                  "value": 65535
+                }
+              ],
+              "property": "color_temp_startup",
+              "type": "numeric",
+              "unit": "mired",
+              "value_max": 500,
+              "value_min": 150
+            },
+            {
+              "access": 7,
+              "description": "Color of this light in the CIE 1931 color space (x/y)",
+              "features": [
+                {
+                  "access": 7,
+                  "label": "X",
+                  "name": "x",
+                  "property": "x",
+                  "type": "numeric"
+                },
+                {
+                  "access": 7,
+                  "label": "Y",
+                  "name": "y",
+                  "property": "y",
+                  "type": "numeric"
+                }
+              ],
+              "label": "Color (X/Y)",
+              "name": "color_xy",
+              "property": "color",
+              "type": "composite"
+            },
+            {
+              "access": 7,
+              "description": "Color of this light expressed as hue/saturation",
+              "features": [
+                {
+                  "access": 7,
+                  "label": "Hue",
+                  "name": "hue",
+                  "property": "hue",
+                  "type": "numeric"
+                },
+                {
+                  "access": 7,
+                  "label": "Saturation",
+                  "name": "saturation",
+                  "property": "saturation",
+                  "type": "numeric"
+                }
+              ],
+              "label": "Color (HS)",
+              "name": "color_hs",
+              "property": "color",
+              "type": "composite"
+            }
+          ],
+          "type": "light"
+        },
+        {
+          "access": 7,
+          "category": "config",
+          "description": "Controls the behavior when the device is powered on after power loss",
+          "label": "Power-on behavior",
+          "name": "power_on_behavior",
+          "property": "power_on_behavior",
+          "type": "enum",
+          "values": [
+            "off",
+            "on",
+            "toggle",
+            "previous"
+          ]
+        },
+        {
+          "access": 2,
+          "label": "Effect",
+          "name": "effect",
+          "property": "effect",
+          "type": "enum",
+          "values": [
+            "blink",
+            "breathe",
+            "okay",
+            "channel_change",
+            "candle",
+            "fireplace",
+            "colorloop",
+            "finish_effect",
+            "stop_effect",
+            "stop_hue_effect"
+          ]
+        },
+        {
+          "access": 1,
+          "category": "diagnostic",
+          "description": "Link quality (signal strength)",
+          "label": "Linkquality",
+          "name": "linkquality",
+          "property": "linkquality",
+          "type": "numeric",
+          "unit": "lqi",
+          "value_max": 255,
+          "value_min": 0
+        }
+      ],
+      "model": "929002294101",
+      "options": [
+        {
+          "access": 2,
+          "description": "Controls the transition time (in seconds) of on/off, brightness, color temperature (if applicable) and color (if applicable) changes. Defaults to `0` (no transition).",
+          "label": "Transition",
+          "name": "transition",
+          "property": "transition",
+          "type": "numeric",
+          "value_min": 0,
+          "value_step": 0.1
+        },
+        {
+          "access": 2,
+          "description": "When enabled colors will be synced, e.g. if the light supports both color x/y and color temperature a conversion from color x/y to color temperature will be done when setting the x/y color (default true).",
+          "label": "Color sync",
+          "name": "color_sync",
+          "property": "color_sync",
+          "type": "binary",
+          "value_off": false,
+          "value_on": true
+        },
+        {
+          "access": 2,
+          "description": "State actions will also be published as 'action' when true (default false).",
+          "label": "State action",
+          "name": "state_action",
+          "property": "state_action",
+          "type": "binary",
+          "value_off": false,
+          "value_on": true
+        }
+      ],
+      "source": "native",
+      "supports_ota": true,
+      "vendor": "Philips"
+    },
+    "disabled": false,
+    "endpoints": {
+      "11": {
+        "bindings": [],
+        "clusters": {
+          "input": [
+            "genBasic",
+            "genIdentify",
+            "genGroups",
+            "genScenes",
+            "genOnOff",
+            "genLevelCtrl",
+            "touchlink",
+            "manuSpecificSamsungAccelerometer",
+            "lightingColorCtrl",
+            "manuSpecificPhilips3"
+          ],
+          "output": [
+            "genOta"
+          ]
+        },
+        "configured_reportings": [],
+        "scenes": []
+      },
+      "242": {
+        "bindings": [],
+        "clusters": {
+          "input": [],
+          "output": [
+            "greenPower"
+          ]
+        },
+        "configured_reportings": [],
+        "scenes": []
+      }
+    },
+    "friendly_name": "Basement Standing Lamp Top",
+    "ieee_address": "0x001788010c9d3dc7",
+    "interview_completed": true,
+    "interview_state": "SUCCESSFUL",
+    "interviewing": false,
+    "manufacturer": "Philips",
+    "model_id": "LCE001",
+    "network_address": 60801,
+    "power_source": "Mains (single phase)",
+    "software_build_id": "1.101.10",
+    "supported": true,
+    "type": "Router"
+  }
+"""
+
+basementStandingLampBottomFixture :: String
+basementStandingLampBottomFixture = """
+  {
+    "date_code": "20230116",
+    "definition": {
+      "description": "Hue White and Color Ambiance E12 with bluetooth",
+      "exposes": [
+        {
+          "features": [
+            {
+              "access": 7,
+              "description": "On/off state of this light",
+              "label": "State",
+              "name": "state",
+              "property": "state",
+              "type": "binary",
+              "value_off": "OFF",
+              "value_on": "ON",
+              "value_toggle": "TOGGLE"
+            },
+            {
+              "access": 7,
+              "description": "Brightness of this light",
+              "label": "Brightness",
+              "name": "brightness",
+              "property": "brightness",
+              "type": "numeric",
+              "value_max": 254,
+              "value_min": 0
+            },
+            {
+              "access": 7,
+              "description": "Color temperature of this light",
+              "label": "Color temp",
+              "name": "color_temp",
+              "presets": [
+                {
+                  "description": "Coolest temperature supported",
+                  "name": "coolest",
+                  "value": 150
+                },
+                {
+                  "description": "Cool temperature (250 mireds / 4000 Kelvin)",
+                  "name": "cool",
+                  "value": 250
+                },
+                {
+                  "description": "Neutral temperature (370 mireds / 2700 Kelvin)",
+                  "name": "neutral",
+                  "value": 370
+                },
+                {
+                  "description": "Warm temperature (454 mireds / 2200 Kelvin)",
+                  "name": "warm",
+                  "value": 454
+                },
+                {
+                  "description": "Warmest temperature supported",
+                  "name": "warmest",
+                  "value": 500
+                }
+              ],
+              "property": "color_temp",
+              "type": "numeric",
+              "unit": "mired",
+              "value_max": 500,
+              "value_min": 150
+            },
+            {
+              "access": 7,
+              "description": "Color temperature after cold power on of this light",
+              "label": "Color temp startup",
+              "name": "color_temp_startup",
+              "presets": [
+                {
+                  "description": "Coolest temperature supported",
+                  "name": "coolest",
+                  "value": 150
+                },
+                {
+                  "description": "Cool temperature (250 mireds / 4000 Kelvin)",
+                  "name": "cool",
+                  "value": 250
+                },
+                {
+                  "description": "Neutral temperature (370 mireds / 2700 Kelvin)",
+                  "name": "neutral",
+                  "value": 370
+                },
+                {
+                  "description": "Warm temperature (454 mireds / 2200 Kelvin)",
+                  "name": "warm",
+                  "value": 454
+                },
+                {
+                  "description": "Warmest temperature supported",
+                  "name": "warmest",
+                  "value": 500
+                },
+                {
+                  "description": "Restore previous color_temp on cold power on",
+                  "name": "previous",
+                  "value": 65535
+                }
+              ],
+              "property": "color_temp_startup",
+              "type": "numeric",
+              "unit": "mired",
+              "value_max": 500,
+              "value_min": 150
+            },
+            {
+              "access": 7,
+              "description": "Color of this light in the CIE 1931 color space (x/y)",
+              "features": [
+                {
+                  "access": 7,
+                  "label": "X",
+                  "name": "x",
+                  "property": "x",
+                  "type": "numeric"
+                },
+                {
+                  "access": 7,
+                  "label": "Y",
+                  "name": "y",
+                  "property": "y",
+                  "type": "numeric"
+                }
+              ],
+              "label": "Color (X/Y)",
+              "name": "color_xy",
+              "property": "color",
+              "type": "composite"
+            },
+            {
+              "access": 7,
+              "description": "Color of this light expressed as hue/saturation",
+              "features": [
+                {
+                  "access": 7,
+                  "label": "Hue",
+                  "name": "hue",
+                  "property": "hue",
+                  "type": "numeric"
+                },
+                {
+                  "access": 7,
+                  "label": "Saturation",
+                  "name": "saturation",
+                  "property": "saturation",
+                  "type": "numeric"
+                }
+              ],
+              "label": "Color (HS)",
+              "name": "color_hs",
+              "property": "color",
+              "type": "composite"
+            }
+          ],
+          "type": "light"
+        },
+        {
+          "access": 7,
+          "category": "config",
+          "description": "Controls the behavior when the device is powered on after power loss",
+          "label": "Power-on behavior",
+          "name": "power_on_behavior",
+          "property": "power_on_behavior",
+          "type": "enum",
+          "values": [
+            "off",
+            "on",
+            "toggle",
+            "previous"
+          ]
+        },
+        {
+          "access": 2,
+          "label": "Effect",
+          "name": "effect",
+          "property": "effect",
+          "type": "enum",
+          "values": [
+            "blink",
+            "breathe",
+            "okay",
+            "channel_change",
+            "candle",
+            "fireplace",
+            "colorloop",
+            "finish_effect",
+            "stop_effect",
+            "stop_hue_effect"
+          ]
+        },
+        {
+          "access": 1,
+          "category": "diagnostic",
+          "description": "Link quality (signal strength)",
+          "label": "Linkquality",
+          "name": "linkquality",
+          "property": "linkquality",
+          "type": "numeric",
+          "unit": "lqi",
+          "value_max": 255,
+          "value_min": 0
+        }
+      ],
+      "model": "929002294101",
+      "options": [
+        {
+          "access": 2,
+          "description": "Controls the transition time (in seconds) of on/off, brightness, color temperature (if applicable) and color (if applicable) changes. Defaults to `0` (no transition).",
+          "label": "Transition",
+          "name": "transition",
+          "property": "transition",
+          "type": "numeric",
+          "value_min": 0,
+          "value_step": 0.1
+        },
+        {
+          "access": 2,
+          "description": "When enabled colors will be synced, e.g. if the light supports both color x/y and color temperature a conversion from color x/y to color temperature will be done when setting the x/y color (default true).",
+          "label": "Color sync",
+          "name": "color_sync",
+          "property": "color_sync",
+          "type": "binary",
+          "value_off": false,
+          "value_on": true
+        },
+        {
+          "access": 2,
+          "description": "State actions will also be published as 'action' when true (default false).",
+          "label": "State action",
+          "name": "state_action",
+          "property": "state_action",
+          "type": "binary",
+          "value_off": false,
+          "value_on": true
+        }
+      ],
+      "source": "native",
+      "supports_ota": true,
+      "vendor": "Philips"
+    },
+    "disabled": false,
+    "endpoints": {
+      "11": {
+        "bindings": [],
+        "clusters": {
+          "input": [
+            "genBasic",
+            "genIdentify",
+            "genGroups",
+            "genScenes",
+            "genOnOff",
+            "genLevelCtrl",
+            "touchlink",
+            "manuSpecificSamsungAccelerometer",
+            "lightingColorCtrl",
+            "manuSpecificPhilips3"
+          ],
+          "output": [
+            "genOta"
+          ]
+        },
+        "configured_reportings": [],
+        "scenes": []
+      },
+      "242": {
+        "bindings": [],
+        "clusters": {
+          "input": [],
+          "output": [
+            "greenPower"
+          ]
+        },
+        "configured_reportings": [],
+        "scenes": []
+      }
+    },
+    "friendly_name": "Basement Standing Lamp Bottom",
+    "ieee_address": "0x001788010c48279d",
+    "interview_completed": true,
+    "interview_state": "SUCCESSFUL",
+    "interviewing": false,
+    "manufacturer": "Philips",
+    "model_id": "LCE001",
+    "network_address": 38409,
+    "power_source": "Mains (single phase)",
+    "software_build_id": "1.101.10",
+    "supported": true,
+    "type": "Router"
+  }
+"""
+
+coordinator :: String
+coordinator = """
+  {
+    "disabled": false,
+    "endpoints": {
+      "1": {
+        "bindings": [],
+        "clusters": {
+          "input": [
+            "genBasic",
+            "genTime",
+            "genOta"
+          ],
+          "output": [
+            "genPowerCfg",
+            "genPollCtrl",
+            "ssIasZone"
+          ]
+        },
+        "configured_reportings": [],
+        "scenes": []
+      },
+      "242": {
+        "bindings": [],
+        "clusters": {
+          "input": [],
+          "output": [
+            "greenPower"
+          ]
+        },
+        "configured_reportings": [],
+        "scenes": []
+      }
+    },
+    "friendly_name": "Coordinator",
+    "ieee_address": "0x00212effff07fc2e",
+    "interview_completed": true,
+    "interview_state": "SUCCESSFUL",
+    "interviewing": false,
+    "network_address": 0,
+    "supported": true,
+    "type": "Coordinator"
+  }
 """
