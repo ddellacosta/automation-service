@@ -152,6 +152,8 @@ You can now take this and drop it in the `compose.yaml` in this directory.
 
 ## Frontend
 
+> NOTE: the UI is currently pinned to React 17.0.2, as that is what Elmish uses.
+
 ```shell
 > cd ui
 > npm install
