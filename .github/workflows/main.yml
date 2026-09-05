@@ -53,7 +53,7 @@ jobs:
           cp -a "$FE_TEST_EXIT_CODE" test-exit-code-frontend
 
       - name: Upload frontend allure-results artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: allure-results-frontend
           path: allure-results-frontend
@@ -61,7 +61,7 @@ jobs:
           retention-days: 7
 
       - name: Upload frontend test-exit-code artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-exit-code-frontend
           path: test-exit-code-frontend
@@ -106,7 +106,7 @@ jobs:
           cp -a "$BE_TEST_EXIT_CODE" test-exit-code-backend
 
       - name: Upload backend results artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: allure-results-backend
           path: allure-results-backend
@@ -114,7 +114,7 @@ jobs:
           retention-days: 7
 
       - name: Upload backend test-exit-code artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-exit-code-backend
           path: test-exit-code-backend
@@ -150,13 +150,13 @@ jobs:
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
       - name: Download frontend results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: allure-results-frontend
           path: allure-results-frontend
 
       - name: Download backend results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: allure-results-backend
           path: allure-results-backend
@@ -197,7 +197,7 @@ jobs:
           path: ghp
 
       - name: Allure Report Action - Frontend Tests
-        uses: mgrybyk-org/allure-report-branch-js-action@v1
+        uses: mgrybyk-org/allure-report-branch-js-action@v2
         if: always()
         continue-on-error: true
         id: allure-frontend # used in comment to PR
@@ -207,7 +207,7 @@ jobs:
           report_dir: 'allure-results-frontend'
 
       - name: Allure Report Action - Backend Tests
-        uses: mgrybyk-org/allure-report-branch-js-action@v1
+        uses: mgrybyk-org/allure-report-branch-js-action@v2
         if: always()
         continue-on-error: true
         id: allure-backend # used in comment to PR
@@ -224,7 +224,7 @@ jobs:
           result/bin/generate-allure-site /automation-service/
 
       - name: Git Commit and Push Action
-        uses: mgrybyk-org/git-commit-pull-push-action@v1
+        uses: mgrybyk-org/git-commit-pull-push-action@v2
         if: always()
         with:
           repository: ghp
@@ -237,13 +237,13 @@ jobs:
   
     steps:
       - name: Download frontend test-exit-status artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: test-exit-code-frontend
           path: test-exit-code-frontend
   
       - name: Download backend test-exit-status artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: test-exit-code-backend
           path: test-exit-code-backend
