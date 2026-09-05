@@ -73,8 +73,6 @@ spec = before setup $ after teardown $
         PW.locator page "div.all-devices div.group .card-body .card-header"
       groupName `shouldEqual` Just "Basement Standing Lamp"
 
-      PW.pause page
-
 
       -- Publish MQTT
 
@@ -92,19 +90,38 @@ spec = before setup $ after teardown $
       -- Also verify what the page sent via the WS (the publish msg)
       sent <- liftEffect $ Ref.read ctx.sentMessages
 
-      -- sent will contain the JSON the app sent via sendString/sendJson
-      sent `shouldEqual` [
-        "{\"topic\":\"zigbee2mqtt/Basement Black Signe\",\"subscribe\":\"HTTP 8850\"}","{\"topic\":\"zigbee2mqtt/Basement Black Signe/get\",\"publish\":{\"state\":\"\"}}","{\"start\": \"test\"}"
+      -- The app's startup protocol, in order:
+      --
+      --   1. when the groups fixture arrives (before any devices are
+      --      known), it subscribes + pings each group
+      --   2. when the devices fixture arrives, it subscribes + pings each
+      --      device (iteration order is Data.Map order, i.e. by device id)
+      --   3. groups are then re-loaded (ReLoadGroups) so group members can
+      --      merge in the newly-arrived device info, and loadGroups
+      --      re-subscribes + re-pings as part of that (redundant but
+      --      harmless — MQTT subscribe is idempotent)
+      --
+      -- followed by the message published by the Publish MQTT page test.
+      sent `shouldEqual`
+        [ subscribeMsg "zigbee2mqtt/Basement Standing Lamp"
+        , pingMsg "zigbee2mqtt/Basement Standing Lamp"
+        , subscribeMsg "zigbee2mqtt/Basement Standing Lamp Bottom"
+        , pingMsg "zigbee2mqtt/Basement Standing Lamp Bottom"
+        , subscribeMsg "zigbee2mqtt/Basement Black Signe"
+        , pingMsg "zigbee2mqtt/Basement Black Signe"
+        , subscribeMsg "zigbee2mqtt/Basement Standing Lamp Top"
+        , pingMsg "zigbee2mqtt/Basement Standing Lamp Top"
+        , subscribeMsg "zigbee2mqtt/Basement Standing Lamp"
+        , pingMsg "zigbee2mqtt/Basement Standing Lamp"
+        , "{\"start\": \"test\"}"
         ]
-
-      -- PW.pause page
 
       teardown ctx
 
   where
     setup :: Aff TestContext
     setup = do
-      browser <- PW.launch { headless: false }
+      browser <- PW.launch { headless: true }
       page <- PW.newPage browser
 
       -- Refs to capture the route and outgoing messages
@@ -126,3 +143,13 @@ spec = before setup $ after teardown $
 
     teardown :: TestContext -> Aff Unit
     teardown ctx = PW.close ctx.browser
+
+    -- message shapes emitted by the app (see DeviceView.purs): the
+    -- subscription name is derived from the port of the app's WS URL
+    subscribeMsg :: String -> String
+    subscribeMsg topic =
+      "{\"topic\":\"" <> topic <> "\",\"subscribe\":\"HTTP 8850\"}"
+
+    pingMsg :: String -> String
+    pingMsg topic =
+      "{\"topic\":\"" <> topic <> "/get\",\"publish\":{\"state\":\"\"}}"
