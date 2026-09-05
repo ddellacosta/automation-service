@@ -184,7 +184,15 @@ Running main application test suite:
 Frontend tests:
 
 ```shell
-watchexec -w src -w test/src -- "spago bundle -p automation-service-test; npx mocha-headless-chrome -t 60000 -e (which chromium) -a 'allow-file-access-from-files' -f test/browser/index.html"
+> cd ui
+# bundles the test suite into test/test.mjs, then run-tests.mjs starts a
+# local web server to serve the app and runs the suite against it in a
+# browser via Playwright; exits with the status of the test suite
+> spago bundle -p automation-service-test
+> node test/run-tests.mjs
+
+# or with watchexec:
+> watchexec -w src -w test/src -- "spago bundle -p automation-service-test && node test/run-tests.mjs"
 ```
 
 #### Test Run Reporting - Allure Report

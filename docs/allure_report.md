@@ -6,17 +6,21 @@ This uses Allure Report (https://allurereport.org) for test reporting. Along wit
 
 ```shell
 > cd ui
-> spago bundle -p automation-service-test; npx mocha-headless-chrome -t 60000 -e (which chromium) -a 'allow-file-access-from-files' -f test/browser/index.html -r json -o test-output.json
-> rm -rf allure-results
-> node test/convert-mocha-to-allure.mjs test-output.json
-Wrote 4 Allure test results to allure-results
+> spago bundle -p automation-service-test
+> node test/run-tests.mjs
+# ...tests run in Chromium via Playwright against a local web server;
+# Allure results are written to allure-results/ by the test suite itself,
+# including a screenshot of the app for failing tests
 > cd ..
-> cp -r allure-report/history ui/allure-results
 > allure generate --clean ui/allure-results
 Report successfully generated to allure-report
 > npx static -p 8080 allure-report
 serving "allure-report" at http://127.0.0.1:8080
 ```
+
+Note that in CI, history/trends are managed automatically by the
+publish-reports job; the manual history copying from earlier versions of
+this flow is no longer needed.
 
 (Backend)
 
