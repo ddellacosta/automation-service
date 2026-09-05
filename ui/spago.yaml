@@ -56,6 +56,9 @@ package:
 
 workspace:
   extraPackages:
+    elmish:
+      git: https://github.com/collegevine/purescript-elmish.git
+      ref: v0.15.2
     elmish-html:
       git: https://github.com/collegevine/purescript-elmish-html.git
       ref: v0.14.0
