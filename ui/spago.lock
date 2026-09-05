@@ -39,7 +39,6 @@
             "record",
             "refs",
             "spec",
-            "spec-mocha",
             "strings",
             "tuples",
             "typelevel-prelude",
@@ -119,7 +118,6 @@
             "refs",
             "safe-coerce",
             "spec",
-            "spec-mocha",
             "st",
             "strings",
             "tailrec",
@@ -308,7 +306,6 @@
             "refs",
             "safe-coerce",
             "spec",
-            "spec-mocha",
             "spec-node",
             "st",
             "strings",
@@ -1958,20 +1955,6 @@
         "tailrec",
         "transformers",
         "tuples"
-      ]
-    },
-    "spec-mocha": {
-      "type": "registry",
-      "version": "5.1.1",
-      "integrity": "sha256-3dBP2b9qcunOVdXG9JEoABWxmiizD4BJiieHMVBDZDo=",
-      "dependencies": [
-        "aff",
-        "effect",
-        "either",
-        "foldable-traversable",
-        "maybe",
-        "prelude",
-        "spec"
       ]
     },
     "spec-node": {

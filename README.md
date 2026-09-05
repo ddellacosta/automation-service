@@ -154,7 +154,6 @@ You can now take this and drop it in the `compose.yaml` in this directory.
 
 ```shell
 > cd ui
-# this also copies mocha.js and mocha.css to ui/test/browser on postinstall
 > npm install
 
 # bundle spago into index.js

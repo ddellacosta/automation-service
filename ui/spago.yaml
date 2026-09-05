@@ -35,7 +35,6 @@ package:
     - record
     - refs
     - spec
-    - spec-mocha
     - strings
     - tuples
     - typelevel-prelude
