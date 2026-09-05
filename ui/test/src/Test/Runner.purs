@@ -1,7 +1,7 @@
 module Test.Runner where
 
 import Data.Maybe (Maybe(..))
-import Data.Time.Duration (Milliseconds(..))
+import Data.Time.Duration (Milliseconds)
 import Effect (Effect)
 import Prelude (Unit, discard)
 import Test.AutomationService.Device as Test.AutomationService.Device

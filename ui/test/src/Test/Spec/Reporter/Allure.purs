@@ -7,16 +7,15 @@ module Test.Spec.Reporter.Allure
   ) where
 
 import Data.Argonaut.Core (Json, jsonEmptyObject, jsonNull, stringify)
-import Data.Argonaut.Encode (class EncodeJson, (:=), (~>))
+import Data.Argonaut.Encode ((:=), (~>))
 import Data.DateTime.Instant (unInstant)
 import Data.Foldable (intercalate)
 import Data.FunctorWithIndex (mapWithIndex)
 import Data.Int (round, toNumber) as Int
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
-import Data.Time.Duration (Milliseconds(..))
+import Data.Time.Duration (Milliseconds)
 import Data.Traversable (sequence)
-import Data.Tuple (Tuple)
 import Data.Tuple.Nested ((/\))
 import Effect (Effect)
 import Effect.Class (liftEffect)
