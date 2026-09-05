@@ -1,0 +1,6 @@
+"DESCRIPTION","DURATION IN MS","NAME","PARENT SUITE","START TIME","STATUS","STOP TIME","SUB SUITE","SUITE","TEST CLASS","TEST METHOD"
+"","5","Decode all properties of a Device","","2026-09-05","passed","2026-09-05","","decoding a Device","",""
+"","3","Decode all properties of a Group","","2026-09-05","passed","2026-09-05","","decoding Groups","",""
+"","1","Constructs the WebSocket URL based on the HTTP URL","","2026-09-05","passed","2026-09-05","","WebSocket utilities","",""
+"","855","Can navigate to different pages","","2026-09-05","passed","2026-09-05","","Main app","",""
+"","2","Can parse a collection of exposes JSON","","2026-09-05","passed","2026-09-05","","decoding Capabilities","",""
