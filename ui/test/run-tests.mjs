@@ -81,7 +81,10 @@ if (!serverBin) {
 // -c-1 disables caching; the browser should always see the current files.
 const server = spawn(
   process.execPath,
-  [serverBin, '-p', String(PORT), '-c-1', '--silent', process.env.TEST_APP_ROOT ?? '.'],
+  // root first, then options — per http-server's documented usage
+  // (`http-server [path] [options]`); passing the path as a trailing
+  // positional was observed to be ignored in the nix build sandbox
+  [serverBin, process.env.TEST_APP_ROOT ?? '.', '-p', String(PORT), '-c-1', '--silent'],
   { stdio: 'inherit' }
 );
 

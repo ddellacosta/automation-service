@@ -41,21 +41,22 @@ let
       # harvest logs and save status as a file
       set +e
 
-      # Confirm what we're about to serve (see TEST_APP_ROOT below)
+      # Confirm the built app artifacts exist (see the cp below)
       ls -l "${automation-service-ui}/ui/index.js" || true
+
+      # Bring the built app artifacts into the served tree: index.js and
+      # the sass-compiled css are gitignored, so they exist only in the
+      # automation-service-ui build output, not in this source tree.
+      cp ${automation-service-ui}/ui/index.js .
+      cp ${automation-service-ui}/ui/css/*.css css/
+      cp ${automation-service-ui}/ui/css/*.css.map css/ || true
 
       # run-tests.mjs: starts http-server for the app, waits for it to
       # come up, runs the test bundle, tears the server down, and exits
-      # with the bundle's exit code.
-      #
-      # The app is served from the automation-service-ui derivation
-      # output rather than this source tree: ui/index.js and the
-      # sass-compiled css are gitignored build artifacts, so they only
-      # exist in the built app (locally this happens to work because
-      # build artifacts are lying around, but not in a clean nix build)
+      # with the bundle's exit code. It serves the CWD, which now
+      # contains both the tracked source files and the built artifacts.
       PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${pkgs.chromium}/bin/chromium \
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
-      TEST_APP_ROOT=${automation-service-ui}/ui \
         node test/run-tests.mjs 2>&1 | tee .test-log.txt
 
       status=''${PIPESTATUS[0]}
