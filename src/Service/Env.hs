@@ -34,6 +34,10 @@ module Service.Env
   )
 where
 
+-- import Service.STM.Stats
+
+import Control.Monad.IO.Unlift (liftIO)
+
 import Control.Lens (makeFieldsNoPrefix, (^.))
 import Control.Lens.Unsound (lensProduct)
 import Data.Aeson (decode)
@@ -59,7 +63,8 @@ import Service.MQTT.Topic (parseTopic)
 import qualified Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
 import UnliftIO.Async (Async)
 import UnliftIO.Concurrent (ThreadId)
-import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO, writeTChan)
+import UnliftIO.STM (STM, TChan, TVar, atomically, dupTChan, newBroadcastTChan, newBroadcastTChanIO,
+                     newTVar, newTVarIO, writeTChan)
 
 -- in here to avoid a circular reference between Service.Daemon and
 -- Service.MQTT.Status, otherwise I'd leave it in Service.Daemon
@@ -127,27 +132,36 @@ initialize configFilePath mkLogger mkMQTTClient = do
   -- need to handle a configuration error? Dhall provides a lot of error output
   config' <- inputFile configDecoder configFilePath
 
-  daemonBroadcast' <- newBroadcastTChanIO
+  let
+    trackNamedSTM :: String -> STM a -> IO a
+    trackNamedSTM = \_n v -> atomically v
+
+  daemonBroadcast' <- liftIO . liftIO . trackNamedSTM "daemonBroadcast" $ newBroadcastTChan
 
   (logger', loggerCleanup) <- mkLogger config'
 
-  subscriptions' <- newTVarIO $ defaultTopicActions config' daemonBroadcast'
+  subscriptions' <- liftIO . trackNamedSTM "subscriptions" $ newTVar $ defaultTopicActions config' daemonBroadcast'
   (mc, mcCleanup) <- mkMQTTClient config' logger' subscriptions'
 
-  automationBroadcast' <- newBroadcastTChanIO
+  automationBroadcast' <- liftIO . trackNamedSTM "automationBroadcast" $ newBroadcastTChan
+
+  -- 
+  --liftIO dumpSTMStats
+
+  -- make stm-stats configurable
 
   Env config' logger' mc subscriptions' daemonBroadcast' automationBroadcast'
-    <$> (atomically $ dupTChan daemonBroadcast') -- messageChan
-    <*> (newTVarIO M.empty)                      -- devices
-    <*> (newTVarIO M.empty)                      -- deviceRegistrations
-    <*> (newTVarIO M.empty)                      -- groups
-    <*> (newTVarIO M.empty)                      -- groupRegistrations
-    <*> (newTVarIO M.empty)                      -- scheduledJobs
-    <*> (newTVarIO $
-          RestartConditions False False True)    -- restartConditions
-    <*> (newTVarIO [])                           -- startupMessages
-    <*> (newTVarIO "")                           -- devicesRawJSON
-    <*> (newTVarIO "")                           -- groupsRawJSON
+    <$> (liftIO . trackNamedSTM "messageChan" $ dupTChan daemonBroadcast') -- messageChan
+    <*> (liftIO . trackNamedSTM "devices" $ newTVar M.empty)                      -- devices
+    <*> (liftIO . trackNamedSTM "deviceRegistrations" $ newTVar M.empty)                      -- deviceRegistrations
+    <*> (liftIO . trackNamedSTM "groups" $ newTVar M.empty)                      -- groups
+    <*> (liftIO . trackNamedSTM "groupRegistrations" $ newTVar M.empty)                      -- groupRegistrations
+    <*> (liftIO . trackNamedSTM "scheduledJobs" $ newTVar M.empty)                      -- scheduledJobs
+    <*> (liftIO . trackNamedSTM "restartConditions" $ newTVar $
+         RestartConditions False False True)    -- restartConditions
+    <*> (liftIO . trackNamedSTM "startupMessages" $ newTVar [])                           -- startupMessages
+    <*> (liftIO . trackNamedSTM "devicesRawJSON" $ newTVar "")                           -- devicesRawJSON
+    <*> (liftIO . trackNamedSTM "groupsRawJSON" $ newTVar "")                           -- groupsRawJSON
     <*> pure (loggerCleanup >> mcCleanup)        -- appCleanup
 
 defaultTopicActions :: Config -> TChan Daemon.Message -> Subscriptions

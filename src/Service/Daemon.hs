@@ -49,6 +49,7 @@ import qualified Service.MQTT.Messages.Daemon as Daemon
 import Service.MQTT.Messages.Daemon (AutomationSchedule)
 import Service.MQTT.Status (encodeAutomationStatus)
 import qualified Service.StateStore as StateStore
+-- import Service.STM.Stats (dumpSTMStats)
 import System.Cron (addJob, execSchedule)
 import UnliftIO.Async (Async, async, asyncThreadId, cancel)
 import UnliftIO.Concurrent (killThread)
@@ -216,6 +217,7 @@ run' threadMapTV = do
       for_ (M.toList threadMap) $ \(automationName, (_, async')) -> do
         info $ "Shutting down Automation " <> serializeAutomationName automationName
         cancel async'
+      -- liftIO dumpSTMStats
       liftIO appCleanup'
 
     cleanDeadAutomations
