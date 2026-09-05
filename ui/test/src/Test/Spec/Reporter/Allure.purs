@@ -16,6 +16,8 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (sequence)
+import Data.Tuple (Tuple)
+import Data.Tuple.Nested ((/\))
 import Effect (Effect)
 import Effect.Class (liftEffect)
 import Effect.Exception as Error
@@ -87,12 +89,12 @@ allureReporter outputDir = go 0
   go idx = do
     event <- await
     case event of
-      Event.TestEnd path name result -> do
+      Event.TestEnd (path /\ name) result -> do
         liftEffect $ writeResult idx path name result
         yield event
         go (idx + 1)
 
-      Event.Pending path name -> do
+      Event.Pending (path /\ name) -> do
         liftEffect $ writePending idx path name
         yield event
         go (idx + 1)
