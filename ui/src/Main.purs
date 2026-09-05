@@ -1,5 +1,7 @@
 module Main where
 
+import Debug (traceM)
+
 import AutomationService.Device (Decoded(..), DecodedStatus(..))
 import AutomationService.Device (decodeDevices, mkFailedParse) as Devices
 import AutomationService.DeviceMessage (Message(..)) as Devices
@@ -25,7 +27,7 @@ import Effect.Now (now)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
 import Elmish (Dispatch, ReactElement, Transition, forks, forkVoid, (<|))
-import Elmish.Boot (defaultMain)
+import Elmish.HTML.Boot (defaultMain)
 import Elmish.Component (Command)
 import Elmish.HTML (_data)
 import Elmish.HTML.Events as E
@@ -80,6 +82,7 @@ update s = case _ of
         messageHandler = \msgStr -> do
           now' <- liftEffect $ now
 
+          traceM msgStr
           let
             jsonParseResult = parseJson msgStr
             jsonBlob = case jsonParseResult of
