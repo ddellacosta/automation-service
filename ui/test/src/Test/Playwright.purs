@@ -13,6 +13,8 @@ module Test.Playwright
   , locator
   , newPage
   , nth
+  , onConsole
+  , onPageError
   , pause
   , textContent
   , waitForSelector
@@ -38,6 +40,8 @@ foreign import newPage_ :: Browser -> Effect (Promise Page)
 foreign import close_ :: Browser -> Effect (Promise Unit)
 foreign import closePage_ :: Page -> Effect (Promise Unit)
 foreign import pause_ :: Page -> Effect (Promise Unit)
+foreign import onConsole_ :: Page -> (String -> Effect Unit) -> Effect Unit
+foreign import onPageError_ :: Page -> (String -> Effect Unit) -> Effect Unit
 
 launch :: { headless :: Boolean } -> Aff Browser
 launch opts = toAffE (launch_ opts)
@@ -53,6 +57,15 @@ closePage = toAffE <<< closePage_
 
 pause :: Page -> Aff Unit
 pause = toAffE <<< pause_ 
+
+-- | Register a handler for page console messages; the handler receives
+-- "<type>: <text>" (e.g. "error: Uncaught ...")
+onConsole :: Page -> (String -> Effect Unit) -> Aff Unit
+onConsole page handler = liftEffect $ onConsole_ page handler
+
+-- | Register a handler for uncaught JS errors in the page
+onPageError :: Page -> (String -> Effect Unit) -> Aff Unit
+onPageError page handler = liftEffect $ onPageError_ page handler
 
 -- Navigation
 foreign import goto_ :: Page -> String -> Effect (Promise Unit)

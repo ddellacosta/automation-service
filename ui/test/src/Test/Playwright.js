@@ -30,3 +30,11 @@ export const textContent_ = (locator) => () => locator.textContent();
 export const title_ = (page) => () => page.title();
 export const waitForSelector_ = (page) => (sel) => () => page.waitForSelector(sel);
 export const pause_ = (page) => () => page.pause();
+
+// Surface page-side console output and JS errors in the test process
+// output, so CI logs show what the app was doing (or how it crashed).
+export const onConsole_ = (page) => (handler) => () =>
+  page.on('console', (msg) => handler(msg.type() + ': ' + msg.text()));
+
+export const onPageError_ = (page) => (handler) => () =>
+  page.on('pageerror', (err) => handler('pageerror: ' + err.message));

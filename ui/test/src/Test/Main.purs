@@ -1,6 +1,7 @@
 module Test.Main where
 
 import Data.Maybe (Maybe(..))
+import Effect.Console as Console
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
 import Effect.Ref (Ref)
@@ -108,6 +109,11 @@ spec = before setup $ after teardown $
     setup = do
       browser <- PW.launch { headless: true }
       page <- PW.newPage browser
+
+      -- Surface page-side console output and JS errors in the test log,
+      -- so CI shows what the app was doing (or how it crashed)
+      PW.onConsole page \line -> Console.log ("[page] " <> line)
+      PW.onPageError page \e -> Console.log ("[page] " <> e)
 
       -- Refs to capture the route and outgoing messages
       wsRouteRef <- liftEffect $ Ref.new Nothing
