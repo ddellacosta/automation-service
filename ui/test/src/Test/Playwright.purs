@@ -16,6 +16,8 @@ module Test.Playwright
   , nth
   , onConsole
   , onPageError
+  , onResponse
+  , onRequestFailed
   , pause
   , textContent
   , waitForSelector
@@ -43,6 +45,8 @@ foreign import closePage_ :: Page -> Effect (Promise Unit)
 foreign import pause_ :: Page -> Effect (Promise Unit)
 foreign import onConsole_ :: Page -> (String -> Effect Unit) -> Effect Unit
 foreign import onPageError_ :: Page -> (String -> Effect Unit) -> Effect Unit
+foreign import onResponse_ :: Page -> (String -> Effect Unit) -> Effect Unit
+foreign import onRequestFailed_ :: Page -> (String -> Effect Unit) -> Effect Unit
 
 launch :: { headless :: Boolean } -> Aff Browser
 launch opts = toAffE (launch_ opts)
@@ -67,6 +71,14 @@ onConsole page handler = liftEffect $ onConsole_ page handler
 -- | Register a handler for uncaught JS errors in the page
 onPageError :: Page -> (String -> Effect Unit) -> Aff Unit
 onPageError page handler = liftEffect $ onPageError_ page handler
+
+-- | Register a handler logging "<status> <url>" for every page response
+onResponse :: Page -> (String -> Effect Unit) -> Aff Unit
+onResponse page handler = liftEffect $ onResponse_ page handler
+
+-- | Register a handler for network-level request failures
+onRequestFailed :: Page -> (String -> Effect Unit) -> Aff Unit
+onRequestFailed page handler = liftEffect $ onRequestFailed_ page handler
 
 -- Navigation
 foreign import goto_ :: Page -> String -> Effect (Promise Unit)

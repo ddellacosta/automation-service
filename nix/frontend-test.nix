@@ -41,6 +41,9 @@ let
       # harvest logs and save status as a file
       set +e
 
+      # Confirm what we're about to serve (see TEST_APP_ROOT below)
+      ls -l "${automation-service-ui}/ui/index.js" || true
+
       # run-tests.mjs: starts http-server for the app, waits for it to
       # come up, runs the test bundle, tears the server down, and exits
       # with the bundle's exit code.

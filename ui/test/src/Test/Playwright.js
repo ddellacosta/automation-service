@@ -39,3 +39,13 @@ export const onConsole_ = (page) => (handler) => () =>
 
 export const onPageError_ = (page) => (handler) => () =>
   page.on('pageerror', (err) => handler('pageerror: ' + err.message));
+
+// status + URL for every response the page receives (404s etc. show up
+// here), and network-level request failures
+export const onResponse_ = (page) => (handler) => () =>
+  page.on('response', (r) => handler('response ' + r.status() + ' ' + r.url()));
+
+export const onRequestFailed_ = (page) => (handler) => () =>
+  page.on('requestfailed', (r) =>
+    handler('requestfailed ' + r.url() + ' ' +
+      ((r.failure() && r.failure().errorText) || '')));

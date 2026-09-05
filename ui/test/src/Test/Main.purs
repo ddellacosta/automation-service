@@ -130,16 +130,19 @@ spec = before setup $ after teardown $
 
       pageLogsRef <- liftEffect $ Ref.new []
 
-      -- Surface page-side console output and JS errors in the test log,
-      -- so CI shows what the app was doing (or how it crashed); they are
-      -- also collected so test failures can include them (see the
-      -- attempt/case in the test body)
-      PW.onConsole page \line -> do
-        Console.log ("[page] " <> line)
-        Ref.modify_ (_ <> [line]) pageLogsRef
-      PW.onPageError page \e -> do
-        Console.log ("[page] " <> e)
-        Ref.modify_ (_ <> ["pageerror: " <> e]) pageLogsRef
+      let
+        pageLog line = do
+          Console.log ("[page] " <> line)
+          Ref.modify_ (_ <> [line]) pageLogsRef
+
+      -- Surface page-side console output, JS errors, and network activity
+      -- in the test log, so CI shows what the app was doing (or how it
+      -- crashed); they are also collected so test failures can include
+      -- them (see the attempt/case in the test body)
+      PW.onConsole page pageLog
+      PW.onPageError page pageLog
+      PW.onResponse page pageLog
+      PW.onRequestFailed page pageLog
 
       -- Refs to capture the route and outgoing messages
       wsRouteRef <- liftEffect $ Ref.new Nothing
