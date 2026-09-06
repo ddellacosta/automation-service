@@ -6,6 +6,7 @@
         "core": {
           "dependencies": [
             "aff",
+            "aff-promise",
             "argonaut",
             "argonaut-codecs",
             "arrays",
@@ -38,7 +39,6 @@
             "record",
             "refs",
             "spec",
-            "spec-mocha",
             "strings",
             "tuples",
             "typelevel-prelude",
@@ -51,6 +51,7 @@
           ],
           "build_plan": [
             "aff",
+            "aff-promise",
             "ansi",
             "argonaut",
             "argonaut-codecs",
@@ -117,7 +118,6 @@
             "refs",
             "safe-coerce",
             "spec",
-            "spec-mocha",
             "st",
             "strings",
             "tailrec",
@@ -141,7 +141,6 @@
         },
         "test": {
           "dependencies": [
-            "elmish-testing-library",
             "spec-node"
           ],
           "build_plan": [
@@ -151,7 +150,6 @@
             "argonaut-core",
             "arraybuffer-types",
             "arrays",
-            "assert",
             "avar",
             "bifunctors",
             "catenable-lists",
@@ -160,12 +158,9 @@
             "contravariant",
             "control",
             "datetime",
-            "debug",
             "distributive",
             "effect",
             "either",
-            "elmish",
-            "elmish-testing-library",
             "enums",
             "exceptions",
             "exists",
@@ -185,7 +180,6 @@
             "lazy",
             "lists",
             "maybe",
-            "media-types",
             "mmorph",
             "newtype",
             "node-buffer",
@@ -208,7 +202,6 @@
             "posix-types",
             "prelude",
             "profunctor",
-            "random",
             "record",
             "refs",
             "safe-coerce",
@@ -221,14 +214,8 @@
             "tuples",
             "type-equality",
             "typelevel-prelude",
-            "undefined-is-not-a-problem",
             "unfoldable",
-            "unsafe-coerce",
-            "web-dom",
-            "web-events",
-            "web-file",
-            "web-html",
-            "web-storage"
+            "unsafe-coerce"
           ]
         }
       },
@@ -237,11 +224,11 @@
         "core": {
           "dependencies": [
             "automation-service",
-            "elmish-testing-library",
             "spec-node"
           ],
           "build_plan": [
             "aff",
+            "aff-promise",
             "ansi",
             "argonaut",
             "argonaut-codecs",
@@ -266,7 +253,6 @@
             "either",
             "elmish",
             "elmish-html",
-            "elmish-testing-library",
             "enums",
             "exceptions",
             "exists",
@@ -320,7 +306,6 @@
             "refs",
             "safe-coerce",
             "spec",
-            "spec-mocha",
             "spec-node",
             "st",
             "strings",
@@ -891,6 +876,21 @@
         "unsafe-coerce"
       ]
     },
+    "aff-promise": {
+      "type": "registry",
+      "version": "4.0.0",
+      "integrity": "sha256-Jgp3y+NWuuAmwz2V3LlWoX+AvxqfVglY77N5zTw8xnI=",
+      "dependencies": [
+        "aff",
+        "control",
+        "effect",
+        "either",
+        "exceptions",
+        "foreign",
+        "prelude",
+        "transformers"
+      ]
+    },
     "ansi": {
       "type": "registry",
       "version": "7.0.0",
@@ -1198,26 +1198,6 @@
         "unsafe-coerce",
         "web-dom",
         "web-events",
-        "web-html"
-      ]
-    },
-    "elmish-testing-library": {
-      "type": "registry",
-      "version": "0.3.2",
-      "integrity": "sha256-Ow475CoL+CbFdUkmrxOf+G5hk0hjbFnlO0x6LLkiBFw=",
-      "dependencies": [
-        "aff",
-        "arrays",
-        "datetime",
-        "effect",
-        "elmish",
-        "exceptions",
-        "foldable-traversable",
-        "maybe",
-        "nullable",
-        "prelude",
-        "transformers",
-        "web-dom",
         "web-html"
       ]
     },
@@ -1975,20 +1955,6 @@
         "tailrec",
         "transformers",
         "tuples"
-      ]
-    },
-    "spec-mocha": {
-      "type": "registry",
-      "version": "5.1.1",
-      "integrity": "sha256-3dBP2b9qcunOVdXG9JEoABWxmiizD4BJiieHMVBDZDo=",
-      "dependencies": [
-        "aff",
-        "effect",
-        "either",
-        "foldable-traversable",
-        "maybe",
-        "prelude",
-        "spec"
       ]
     },
     "spec-node": {

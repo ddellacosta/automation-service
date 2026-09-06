@@ -52,7 +52,12 @@ decodeGroup devices groupJson = do
   id <- obj .: "id"
   members <- decodeGroupResource (decodeMember devices) =<< obj .: "members"
   scenes <- decodeGroupResource decodeScene =<< obj .: "scenes"
-  pure { name, id, members, scenes }
+  if name == "default_bind_group" then
+    -- Not exactly what I want here but this felt like the best place
+    -- to do this?
+    Left (TypeMismatch "default_binding_group")
+  else
+    Right { name, id, members, scenes }
 
   where
     decodeGroupResource

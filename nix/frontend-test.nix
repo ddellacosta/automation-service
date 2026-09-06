@@ -1,4 +1,5 @@
-{ automation-service-ui-npm-deps
+{ automation-service-ui
+, automation-service-ui-npm-deps
 , node_version
 , pkgs
 , spagoLock ? ../ui/spago.lock
@@ -13,6 +14,7 @@ let
     name = "automation-service frontend-test.nix";
 
     nativeBuildInputs = [
+      automation-service-ui
       automation-service-ui-npm-deps
       node_version
       pkgs.chromium
@@ -25,7 +27,6 @@ let
       runHook preBuild
 
       ln -sf ${automation-service-ui-npm-deps}/lib/node_modules ./node_modules
-      cp node_modules/mocha/mocha.js node_modules/mocha/mocha.css test/browser/
       spago bundle -p automation-service-test
 
       runHook postBuild
@@ -40,35 +41,27 @@ let
       # harvest logs and save status as a file
       set +e
 
-      #
-      # kinda weird to do this in the installPhase but ¯\_(ツ)_/¯
-      #
-      # added these three when I kept getting failures when tests
-      # failed, also bumped timeout from 60000 to 120000
-      #
-      #  -a disable-dev-shm-usage \
-      #  -a no-zygote \
-      #  -a single-process \
-      #
-      ./node_modules/.bin/mocha-headless-chrome \
-        -t 120000 \
-        -e ${pkgs.chromium}/bin/chromium \
-        -a no-sandbox \
-        -a disable-setuid-sandbox \
-        -a disable-dev-shm-usage \
-        -a no-zygote \
-        -a single-process \
-        -a allow-file-access-from-files \
-        -r json \
-        -o test-output.json \
-        -f test/browser/index.html \
-        2>&1 | tee .test-log.txt
+      # Confirm the built app artifacts exist (see the cp below)
+      ls -l "${automation-service-ui}/ui/index.js" || true
+
+      # Bring the built app artifacts into the served tree: index.js and
+      # the sass-compiled css are gitignored, so they exist only in the
+      # automation-service-ui build output, not in this source tree.
+      cp ${automation-service-ui}/ui/index.js .
+      cp ${automation-service-ui}/ui/css/*.css css/
+      cp ${automation-service-ui}/ui/css/*.css.map css/ || true
+
+      # run-tests.mjs: starts http-server for the app, waits for it to
+      # come up, runs the test bundle, tears the server down, and exits
+      # with the bundle's exit code. It serves the CWD, which now
+      # contains both the tracked source files and the built artifacts.
+      PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${pkgs.chromium}/bin/chromium \
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+        node test/run-tests.mjs 2>&1 | tee .test-log.txt
 
       status=''${PIPESTATUS[0]}
-      set -e
 
-      ls -al
-      ls -al test/browser
+      set -e
 
       # Normalize to 0/1 and save for later jobs
       if [ "$status" -eq 0 ]; then
@@ -81,13 +74,20 @@ let
       cp -v .test-exit-code $out/share/test-exit-code || echo 1 > $out/share/test-exit-code
       [ -f .test-log.txt ] && cp -v .test-log.txt $out/share/test-log.txt || true
 
-      node test/convert-mocha-to-allure.mjs test-output.json
-
-      cp test-output.json $out/share/
+      # Allure results are written by the test bundle itself
+      # (Test.Spec.Reporter.Allure); the publish-reports job consumes these
       cp -r allure-results $out/share/
 
       runHook postInstall
     '';
+
+    # The build sandbox has no system fonts or fontconfig; without them
+    # chromium renders text with zero-size bounding boxes, so elements are
+    # laid out but Playwright's visible-state waits (waitForSelector) time
+    # out with "locator resolved to hidden"
+    FONTCONFIG_FILE = pkgs.makeFontsConf {
+      fontDirectories = [ pkgs.dejavu_fonts ];
+    };
   };
 in
   drv

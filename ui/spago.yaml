@@ -2,6 +2,7 @@ package:
   name: automation-service
   dependencies:
     - aff
+    - aff-promise
     - argonaut
     - argonaut-codecs
     - arrays
@@ -34,7 +35,6 @@ package:
     - record
     - refs
     - spec
-    - spec-mocha
     - strings
     - tuples
     - typelevel-prelude
@@ -52,7 +52,6 @@ package:
   test:
     main: Test.Main
     dependencies:
-      - elmish-testing-library
       - spec-node
 
 workspace:

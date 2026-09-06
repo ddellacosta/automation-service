@@ -10,10 +10,9 @@ import Data.Lens.Index (ix)
 import Data.Maybe (Maybe(..), fromJust)
 import Partial.Unsafe (unsafePartial)
 import Prelude (Unit, ($), (<<<), (<$>), (=<<), bind, discard)
-import Test.AutomationService.Spec (Spec)
 import Test.AutomationService.Helpers (shouldHaveCapabilities)
 import Test.Fixtures (signeFixture)
-import Test.Spec (describe, it)
+import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual)
 
 spec :: Spec Unit

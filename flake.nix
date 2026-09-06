@@ -73,7 +73,7 @@
           pkgs.buildNpmPackage {
             name = "automation-service-ui-npm-deps";
             # prefetch-npm-deps package-lock.json
-            npmDepsHash = "sha256-4sWlMyeFAu/4FkWVqANyJiyQbub5WZWB6bok3ZFav00=";
+            npmDepsHash = "sha256-hQEzd4esoR9X/jPbpXpEw5qRs7f022EbWlhMnpfXhck=";
             src = ./ui;
             nodejs = node_version;
             # need this for spago and logging
@@ -133,7 +133,7 @@
 
         automation-service-ui-test =
           import ./nix/frontend-test.nix {
-            inherit automation-service-ui-npm-deps node_version pkgs;
+            inherit automation-service-ui automation-service-ui-npm-deps node_version pkgs;
           };
 
         automation-service =
@@ -290,6 +290,8 @@
           pkgs.zlib
           stylish-haskell
           threadscope
+          # threadscope # marked as broken :-(
+          pkgs.python3
         ]);
 
       });
