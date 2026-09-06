@@ -926,6 +926,10 @@
       }
     },
     "extra_packages": {
+      "elmish": {
+        "git": "https://github.com/collegevine/purescript-elmish.git",
+        "ref": "v0.15.2"
+      },
       "elmish-html": {
         "git": "https://github.com/collegevine/purescript-elmish-html.git",
         "ref": "v0.14.0"
@@ -1231,15 +1235,14 @@
       ]
     },
     "elmish": {
-      "type": "registry",
-      "version": "0.13.0",
-      "integrity": "sha256-ikyo9n9XJXU3AY0kiuQD7paVXsMJQXYjiwwPjrsAMNs=",
+      "type": "git",
+      "url": "https://github.com/collegevine/purescript-elmish.git",
+      "rev": "85e28f93d27e15366fc413d33589f640589b7649",
       "dependencies": [
         "aff",
         "argonaut-core",
         "arrays",
         "bifunctors",
-        "console",
         "debug",
         "effect",
         "either",
@@ -1254,13 +1257,9 @@
         "partial",
         "prelude",
         "refs",
-        "safe-coerce",
-        "type-equality",
         "typelevel-prelude",
         "undefined-is-not-a-problem",
-        "unsafe-coerce",
-        "web-dom",
-        "web-html"
+        "unsafe-coerce"
       ]
     },
     "elmish-html": {
