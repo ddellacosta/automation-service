@@ -56,7 +56,10 @@ const server = spawn(
 
 let child = null;
 
+let serverExited = false;
+
 server.on('exit', (code) => {
+  serverExited = true;
   // if the test child hasn't started yet, the server dying is fatal
   if (!child) die(`static file server exited prematurely (code ${code})`);
 });
