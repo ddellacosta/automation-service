@@ -50,8 +50,8 @@ import Service.MQTT.Messages.Daemon (AutomationSchedule)
 import Service.MQTT.Status (encodeAutomationStatus)
 import qualified Service.StateStore as StateStore
 import System.Cron (addJob, execSchedule)
-import UnliftIO.Async (Async, async, asyncThreadId, cancel)
-import UnliftIO.Concurrent (killThread)
+import UnliftIO.Async (Async, async, asyncThreadId, cancel, race, waitCatch)
+import UnliftIO.Concurrent (killThread, threadDelay)
 import UnliftIO.Exception (bracket, finally)
 import UnliftIO.STM (STM, TVar, atomically, dupTChan, modifyTVar', newTVarIO, readTChan, readTVar,
                      readTVarIO, stateTVar, writeTChan, writeTVar)
@@ -104,6 +104,16 @@ run' threadMapTV = do
 
   where
     go = do
+      --
+      -- If any references to dead automations remain here those will
+      -- continue to take up space in memory, especially as any duped
+      -- automationBroadcast TChans that an automation may be sitting
+      -- on continue to accumulate messages as long as the threads
+      -- holding references to them are not cleaned up. This ensures
+      -- we clear these out at the beginning of every message loop.
+      --
+      cleanDeadAutomations threadMapTV
+
       tryRestoreRunningAutomations
 
       messageChan' <- view messageChan
@@ -213,9 +223,35 @@ run' threadMapTV = do
       -> m ()
     cleanupAutomations appCleanup' threadMapTV' = do
       threadMap <- atomically . readTVar $ threadMapTV'
-      for_ (M.toList threadMap) $ \(automationName, (_, async')) -> do
+      --
+      -- Sends Shutdown message first so it will pick that up, allowing
+      -- the AsyncCancelled exception to be delivered (stopAutomation
+      -- does this as well), then the `async (cancel async')` ensures
+      -- that we are shutting things down without blocking this
+      -- thread.
+      --
+      -- This approach is critical with Lua automations where
+      -- something may be blocking on a channel read, as Lua
+      -- automations run in a bound thread and can't be interrupted
+      -- until that read returns, so they can block this forever.
+      --
+      cancelers <- for (M.toList threadMap) $ \(automationName, (_, async')) -> do
         info $ "Shutting down Automation " <> serializeAutomationName automationName
-        cancel async'
+        sendClientMsg automationName Automation.Shutdown
+        async (cancel async')
+
+      let
+        automationShutdownTimeoutMicros = 250 * 1000
+
+      --
+      -- Waiting on the cancelers (rather than just sleeping every
+      -- time) means we proceed as soon as the AsyncCancelled
+      -- exception is delivered, and only ever pay the full timeout
+      -- when something hangs.
+      --
+      _ <- race (threadDelay automationShutdownTimeoutMicros) $
+        for_ cancelers waitCatch
+
       liftIO appCleanup'
 
     cleanDeadAutomations
@@ -268,6 +304,21 @@ run' threadMapTV = do
         --
         -- https://hackage.haskell.org/package/unliftio-0.2.24.0/docs/UnliftIO-Exception.html#v:bracket
         --
+        --
+        -- TODO MAKE THIS NOT IMPLICIT AND OBVIATE THE NEED FOR THIS
+        -- COMMENT (MOSTLY):
+        --
+        -- Contract: every automation receives its own read position
+        -- ("dup") into the shared automationBroadcast stream, and the
+        -- GC may only reclaim a broadcast message once every read
+        -- position has moved past it. Automations that block on
+        -- reading (Lua subscribe() listeners, StateManager) keep
+        -- theirs current; short-lived automations that never read are
+        -- reclaimed once cleanDeadAutomations drops their entry; but
+        -- long-lived automations that never read MUST drain their
+        -- copy, or they will pin every message ever broadcast for
+        -- the life of the process (see HTTP.hs drainBroadcastChan,
+        -- and docs/lua_api.md "Lifecycle and memory gotchas").
         clientAsync <- async $
           bracket
             (atomically $ dupTChan automationBroadcast')

@@ -113,6 +113,15 @@ jobs:
           fi
           cp -a "$BE_TEST_EXIT_CODE" test-exit-code-backend
 
+      - name: Upload backend test log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-log-backend
+          path: backend-out/share/test-log.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload backend results artifact
         uses: actions/upload-artifact@v7
         with:

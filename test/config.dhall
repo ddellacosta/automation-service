@@ -4,7 +4,7 @@ Comments other than here will be stripped out because of how the Dhall auto-form
 
 This config should not be checked into git with passwords and other sensitive values saved.
 
-Note that dbPath must be post-processed by the test scaffolding in order to avoid conflicting db paths when tests are run in parallel.
+dbPath here is unused by the integration tests: the scaffolding replaces it with a unique temporary-directory path per test invocation (see Test.Integration.Service.DaemonTestHelpers), which is deleted afterwards unless AUTOMATION_TEST_KEEP_DB is set.
 
 -}
 let LogLevel = ../config/lib/LogLevel.dhall

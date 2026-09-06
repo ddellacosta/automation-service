@@ -10,4 +10,6 @@ end
 function loop ()
    logDebugMsg("mirrorLight friendly name: " .. mirrorLight.name)
    logDebugMsg("basementStandingLamp friendly name: " .. basementStandingLamp.name)
+   -- Without a sleep here this burns CPU aggressively
+   sleep(1)
 end
