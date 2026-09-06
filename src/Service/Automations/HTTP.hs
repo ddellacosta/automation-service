@@ -104,7 +104,9 @@ mkRunAutomation port broadcastChan = do
     web devices' groups' httpRoot' = scottyApp $ do
       middleware $ staticPolicy $ addBase "ui"
 
-      get "/" $ file $ httpRoot' <> "index.html"
+      get "/" $ do
+        setHeader "Content-Type" "text/html; charset=utf-8"
+        file $ httpRoot' <> "index.html"
 
       get "/devices" $ do
         setHeader "Content-Type" "application/json; charset=utf-8"
