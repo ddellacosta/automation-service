@@ -1,7 +1,5 @@
 module Main where
 
-import Debug (traceM)
-
 import AutomationService.Device (Decoded(..), DecodedStatus(..))
 import AutomationService.Device (decodeDevices, mkFailedParse) as Devices
 import AutomationService.DeviceMessage (Message(..)) as Devices
@@ -83,7 +81,6 @@ update s = case _ of
         messageHandler = \msgStr -> do
           now' <- liftEffect $ now
 
-          traceM msgStr
           let
             jsonParseResult = parseJson msgStr
             jsonBlob = case jsonParseResult of
