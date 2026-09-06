@@ -21,8 +21,7 @@ module AutomationService.React.Bootstrap
   )
  where
 
-import Effect.Uncurried (EffectFn1, mkEffectFn1)
-import Elmish.Dispatch (EventHandler)
+import Elmish.Dispatch (EventHandler, handle)
 import Data.Undefined.NoProblem (Opt)
 import Elmish.React (ReactElement, createElement)
 import Elmish.React.Import (ImportedReactComponent,
@@ -69,7 +68,7 @@ foreign import accordionButton_ :: ImportedReactComponent
 foreign import accordionCollapse_ :: ImportedReactComponent
 
 foreign import useAccordionButton_
-  :: Int -> EffectFn1 SyntheticEvent Unit -> EffectFn1 SyntheticEvent Unit
+  :: Int -> EventHandler SyntheticEvent -> EventHandler SyntheticEvent
 
 type IconClass = String
 
@@ -83,7 +82,7 @@ iconToggle { eventKey } iconClass =
     -- when I use this, the app crashes with "Invalid React Hook,"
     -- and I have no idea why this is, so leave this here for now as
     -- a TODO
-    onClick: EventHandler $ useAccordionButton_ eventKey $ mkEffectFn1 \_e -> pure unit
+    onClick: useAccordionButton_ eventKey $ handle \_e -> pure unit
   } $
   H.i iconClass ""
 

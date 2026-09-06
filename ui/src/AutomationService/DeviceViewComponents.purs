@@ -18,7 +18,7 @@ import Elmish.Dispatch (handle)
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
 import Foreign.Object as O
-import Prelude ((<<<), ($), (<#>), (=<<), (>>=), (<>), bind, not, pure, show)
+import Prelude ((<<<), ($), (<#>), (=<<), (>>=), (<>), bind, not, pure, show, unit)
 
 onOffSwitch
   :: forall r. Dispatch Message
@@ -60,17 +60,20 @@ colorSelector dispatch message _mDeviceState _cap =
   H.div "m-1 p-2 border border-secondary-subtle"
   [ colorWheel
     { onChange: handle $ \color ->
-        --
-        -- yeah had problems reading rgb/rgba (NaN everywhere)
-        -- and hex/hexa (everything was 0.0) so parsing hs
-        -- from hsv and using color to generate hex string
-        --
-        hsv <- O.lookup "hsv" color
-        h <- O.lookup "h" hsv
-        s <- O.lookup "s" hsv
-        -- from what I understand 0.5 is appropriate as a default for lightness in HSL
-        case Color.hsl h s 0.5 of
-          color' -> dispatch (message color')
+        let
+          -- yeah had problems reading rgb/rgba (NaN everywhere)
+          -- and hex/hexa (everything was 0.0) so parsing hs
+          -- from hsv and using color to generate hex string
+          colorMsg = do
+            hsv <- O.lookup "hsv" color
+            h <- O.lookup "h" hsv
+            s <- O.lookup "s" hsv
+            -- from what I understand 0.5 is appropriate as a default for lightness in HSL
+            pure <<< message $ Color.hsl h s 0.5
+        in
+          case colorMsg of
+            Just m -> dispatch m
+            Nothing -> pure unit
     }
   ]
 
