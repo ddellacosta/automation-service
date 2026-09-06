@@ -3,13 +3,12 @@ module AutomationService.React.SketchColor
   )
 where
 
-import Effect.Uncurried (EffectFn1)
+import Elmish.Dispatch (EventHandler)
 import Elmish.React (createElement')
 import Elmish.React.Import (ImportedReactComponentConstructor, ImportedReactComponent)
 import Foreign.Object (Object)
-import Prelude (Unit)
 
-type Props = ( onChange :: EffectFn1 (Object String) Unit )
+type Props = ( onChange :: EventHandler (Object String) )
 
 sketchColor :: ImportedReactComponentConstructor Props
 sketchColor = createElement' sketchColor_

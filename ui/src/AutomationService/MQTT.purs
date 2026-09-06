@@ -10,7 +10,6 @@ module AutomationService.MQTT
 where
 
 import Data.Argonaut (class EncodeJson, encodeJson, stringify)
-import Data.Int (floor)
 import Prelude (($), (<<<), (<>))
 
 -- helpers for generating MQTT messages to send to devices

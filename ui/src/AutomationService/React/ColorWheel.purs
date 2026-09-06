@@ -3,13 +3,12 @@ module AutomationService.React.ColorWheel
   )
 where
 
-import Effect.Uncurried (EffectFn1)
+import Elmish.Dispatch (EventHandler)
 import Elmish.React (createElement')
 import Elmish.React.Import (ImportedReactComponentConstructor, ImportedReactComponent)
 import Foreign.Object (Object)
-import Prelude (Unit)
 
-type Props = ( onChange :: EffectFn1 (Object (Object Number)) Unit )
+type Props = ( onChange :: EventHandler (Object (Object Number)) )
 
 colorWheel :: ImportedReactComponentConstructor Props
 colorWheel = createElement' colorWheel_

@@ -13,11 +13,12 @@ import AutomationService.React.ColorWheel (colorWheel)
 import Color as Color
 import Color (Color)
 import Data.Maybe (Maybe(..), fromMaybe)
-import Elmish (Dispatch, ReactElement, (<|), (<?|))
+import Elmish (Dispatch, ReactElement)
+import Elmish.Dispatch (handle)
 import Elmish.HTML.Events as E
 import Elmish.HTML.Styled as H
 import Foreign.Object as O
-import Prelude ((<<<), ($), (<#>), (=<<), (>>=), (<>), bind, not, pure, show)
+import Prelude ((<<<), ($), (<#>), (=<<), (>>=), (<>), bind, not, pure, show, unit)
 
 onOffSwitch
   :: forall r. Dispatch Message
@@ -36,7 +37,7 @@ onOffSwitch dispatch msg mDeviceState cap =
       case mDeviceState >>= _.state of
         Just onOffValue -> isOn cap onOffValue
         _ -> false
-    , onChange: dispatch <| \_e -> msg
+    , onChange: handle $ \_e -> dispatch msg
     , disabled: not (canSet cap.access)
     }
 
@@ -58,22 +59,21 @@ colorSelector
 colorSelector dispatch message _mDeviceState _cap =
   H.div "m-1 p-2 border border-secondary-subtle"
   [ colorWheel
-    { onChange: dispatch <?| \color -> do
-        --
-        -- yeah had problems reading rgb/rgba (NaN everywhere)
-        -- and hex/hexa (everything was 0.0) so parsing hs
-        -- from hsv and using color to generate hex string
-        --
-        -- thinking I wrote the EffectFn1 sig wrong for
-        -- onChange in colorWheel, maybe should try Foreign,
-        -- or Json?
-        --
-        --
-        hsv <- O.lookup "hsv" color
-        h <- O.lookup "h" hsv
-        s <- O.lookup "s" hsv
-        -- from what I understand 0.5 is appropriate as a default for lightness in HSL
-        pure <<< message $ Color.hsl h s 0.5
+    { onChange: handle $ \color ->
+        let
+          -- yeah had problems reading rgb/rgba (NaN everywhere)
+          -- and hex/hexa (everything was 0.0) so parsing hs
+          -- from hsv and using color to generate hex string
+          colorMsg = do
+            hsv <- O.lookup "hsv" color
+            h <- O.lookup "h" hsv
+            s <- O.lookup "s" hsv
+            -- from what I understand 0.5 is appropriate as a default for lightness in HSL
+            pure <<< message $ Color.hsl h s 0.5
+        in
+          case colorMsg of
+            Just m -> dispatch m
+            Nothing -> pure unit
     }
   ]
 
@@ -113,7 +113,7 @@ enumSelector dispatch message _mDeviceState preset =
     "form-select"
     -- how with Elmish?
     -- aria-label="Default select example"
-    { onChange: dispatch <| message <<< E.selectSelectedValue
+    { onChange: handle $ dispatch <<< message <<< E.selectSelectedValue
     , disabled: not (canSet preset.access)
     }
     $ enumValues preset <#> \v -> H.option_ "" { value: v } v
@@ -163,7 +163,7 @@ numberSlider dispatch message propName mDeviceState deviceOrGroupId cap@{ subPro
          , step: showMaybe 1 numProps.valueStep
          , value: showMaybe 100 (getProp propName =<< mDeviceState)
          , id: idStr
-         , onChange: dispatch <?| Just <<< message <<< E.inputText
+         , onChange: handle $ dispatch <<< message <<< E.inputText
          }
        ]
 

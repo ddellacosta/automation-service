@@ -152,7 +152,8 @@ You can now take this and drop it in the `compose.yaml` in this directory.
 
 ## Frontend
 
-> NOTE: the UI is currently pinned to React 17.0.2, as that is what Elmish uses.
+> NOTE: the UI uses React 19.2.x — elmish 0.15+ bootstraps via
+> `react-dom/client` (createRoot), which requires React 18+.
 
 ```shell
 > cd ui

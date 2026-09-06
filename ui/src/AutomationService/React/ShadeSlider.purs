@@ -3,11 +3,10 @@ module AutomationService.React.ShadeSlider
   )
 where
 
-import Effect.Uncurried (EffectFn1)
+import Elmish.Dispatch (EventHandler)
 import Elmish.React (createElement')
 import Elmish.React.Import (ImportedReactComponentConstructor, ImportedReactComponent)
 import Foreign.Object (Object)
-import Prelude (Unit)
 
 type HSVA =
   { h :: Int
@@ -18,7 +17,7 @@ type HSVA =
 
 type Props =
   ( hsva :: HSVA
-  , onChange :: EffectFn1 (Object String) Unit
+  , onChange :: EventHandler (Object String)
   )
 
 shadeSlider :: ImportedReactComponentConstructor Props

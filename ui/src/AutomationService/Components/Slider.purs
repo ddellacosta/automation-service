@@ -6,8 +6,7 @@ where
 import AutomationService.Components.SVG (path_)
 import Data.Number (round)
 import Data.Number.Format (toString)
-import Data.Unit (Unit)
-import Effect.Uncurried (EffectFn1)
+import Elmish.Dispatch (EventHandler)
 import Elmish (ReactElement)
 import Elmish.HTML.Events (InputChangeEvent)
 import Elmish.HTML.Styled as H
@@ -18,7 +17,7 @@ slider
    . { value :: Number
      , min :: Number
      , max :: Number
-     , onChange :: EffectFn1 InputChangeEvent Unit
+     , onChange :: EventHandler InputChangeEvent
      | r
      }
   -> ReactElement
