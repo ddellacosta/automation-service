@@ -9,6 +9,3 @@ end })
 function setup ()
    logDebugMsg("testCloseFinalizer setup")
 end
-
--- intentionally no loop function: the automation completes on its own
--- (see the Haskell test's comment block for why that matters)

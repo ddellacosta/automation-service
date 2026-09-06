@@ -255,39 +255,31 @@ luaScriptSpecs = do
           pure mqttHistory
 
   around initAndCleanup $ do
+    --
+    -- Regression test for the Lua interpreter state leak fixed in
+    -- 95012f8d (Critical performance fixes (#47)): both Lua
+    -- states an automation uses — its run state and its cleanup
+    -- state — must be closed when the automation completes. Lua
+    -- only runs a __gc finalizer when its object is collected or
+    -- when its state is closed (lua_close runs all pending
+    -- finalizers). The fixture script registers a finalizer that
+    -- appends to a sentinel file via Lua's io library, and this
+    -- test waits for the full stop sequence to complete, then
+    -- verifies both closes wrote their entries.
+    --
+    -- Exercises the natural-completion path (the fixture has no
+    -- loop function, so the automation finishes on its own).
+    -- Does not exercise the cancellation path (Stop →
+    -- AsyncCancelled), which goes through the same brackets but
+    -- leaves the Lua stack in an inconsistent state after
+    -- propagating through unsafeRunWith; Lua.close may or may not
+    -- fire __gc finalizers on the corrupted state in that path.
+    -- The cancellation path is covered by the perf harness.
+    --
     it "closes Lua interpreter states when a LuaScript automation completes" $
       testWithAsyncDaemon $ \env _threadMapTV daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
-
-        -- Regression test for the Lua interpreter state leak fixed in
-        -- dda3243 (merged as 95012f8): both Lua states an automation
-        -- uses — its run state and its cleanup state — must be closed
-        -- when the automation completes. Lua only runs a __gc
-        -- finalizer when its object is collected or when its state is
-        -- closed (lua_close runs all pending finalizers). The fixture
-        -- script registers a finalizer that appends to a sentinel
-        -- file via Lua's io library, and this test waits for the full
-        -- stop sequence to complete, then verifies both closes wrote
-        -- their entries. On the pre-fix code, Lua.close never ran,
-        -- the finalizers never fired, and no file was written.
-        --
-        -- Exercises the natural-completion path (the fixture has no
-        -- loop function, so the automation finishes on its own).
-        -- Does not exercise the cancellation path (Stop →
-        -- AsyncCancelled), which goes through the same brackets but
-        -- leaves the Lua stack in an inconsistent state after
-        -- propagating through unsafeRunWith; Lua.close may or may not
-        -- fire __gc finalizers on the corrupted state in that path.
-        -- The cancellation path is covered by the perf harness.
-        --
-        -- DeadAutoCleanup is significant: it is only ever sent by
-        -- Lua-script cleanups (mkCleanupAutomation), after the
-        -- cleanup state's Lua.close runs. Observing it proves the
-        -- cleanup state's bracket completed, and since the run
-        -- state's close happens before mkRunAutomation returns (and
-        -- mkCleanupAutomation can only start after that), it also
-        -- proves the run state was closed.
 
         withSystemTempDirectory "lua-close-sentinel" $ \tmpDir -> do
           let sentinelPath = tmpDir ++ "/sentinel"
@@ -490,24 +482,23 @@ threadMapSpecs = do
           Nothing
 
   around initAndCleanup $ do
+    --
+    -- Regression test for the ThreadMap retention half of the
+    -- broadcast-channel fix: completed automations (HTTPDefault)
+    -- stayed in the ThreadMap forever because nothing removed
+    -- them. cleanDeadAutomations only ran when a Lua cleanup happened
+    -- to send DeadAutoCleanup. With cleanDeadAutomations now running
+    -- at the top of every daemon message, sending any message removes
+    -- them.
+    --
     it "sweeps completed automations from the ThreadMap" $
       testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
         let
           daemonBroadcast' = env ^. daemonBroadcast
           httpName = HTTP (env ^. config . httpPort)
 
-        -- Regression test for the ThreadMap retention half of the
-        -- broadcast-channel fix (35fd714): completed one-shot
-        -- automations (HTTPDefault) stayed in the ThreadMap forever
-        -- because nothing removed them — the sweep
-        -- (cleanDeadAutomations) only ran when a Lua cleanup
-        -- happened to send DeadAutoCleanup. With the sweep running
-        -- at the top of every daemon message, sending any message
-        -- removes them. Fails on pre-fix code where the entry
-        -- persists forever.
-
         -- let the boot sequence complete: StateManager (long-running),
-        -- HTTPDefault (one-shot, already finished), HTTP (long-running)
+        -- HTTPDefault (completes immediately), HTTP (long-running)
         threadDelay 200000
 
         -- any daemon message triggers the sweep at the top of the
@@ -544,11 +535,11 @@ stateStoreSpecs = do
 
         res <- StateStore.allRunning $ env ^. config . dbPath
 
-        -- HTTP <$config.httpPort>, StateManager, LuaScript "test".
-        -- HTTPDefault is a one-shot bootstrap automation: its run
-        -- completes immediately, and completed automations are swept
-        -- from the running set (cleanDeadAutomations in
-        -- Service.Daemon), so it is not stored as running.
+        -- Counts HTTP <$config.httpPort>, StateManager, LuaScript
+        -- "test". HTTPDefault's run completes immediately, and
+        -- completed automations are swept from the running set
+        -- (cleanDeadAutomations in Service.Daemon), so it is not
+        -- stored as running.
         length res `shouldBe` 3
 
         findMatchingSerialized "HTTPDefault" res `shouldBe` []
@@ -578,11 +569,11 @@ stateStoreSpecs = do
 
         res <- StateStore.allRunning dbPath'
 
-        -- HTTP <$config.httpPort>, StateManager, LuaScript "test".
-        -- HTTPDefault is a one-shot bootstrap automation: its run
-        -- completes immediately, and completed automations are swept
-        -- from the running set (cleanDeadAutomations in
-        -- Service.Daemon), so it is not stored as running.
+        -- Counts HTTP <$config.httpPort>, StateManager, LuaScript
+        -- "test". HTTPDefault's run completes immediately, and
+        -- completed automations are swept from the running set
+        -- (cleanDeadAutomations in Service.Daemon), so it is not
+        -- stored as running.
         length res `shouldBe` 3
 
         findMatchingSerialized "HTTPDefault" res `shouldBe` []
@@ -594,6 +585,19 @@ stateStoreSpecs = do
         findMatchingSerialized "StateManager" res `shouldBe` ["StateManager"]
 
   around initAndCleanup $ do
+    --
+    -- Regression test for the StateStore connection leak fixed in
+    -- 95012f8d (Critical performance fixes (#47)): every persisted
+    -- running-set update used to leak an open SQLite connection. This
+    -- test exercises Start/Stop cycles through the daemon so
+    -- StateManager performs real updateRunning writes, then count
+    -- handles pointing at the db file before vs. after. On the
+    -- pre-fix code every cycle leaks two connections (one per Start,
+    -- one per Stop), so this fails with a large margin. On fixed code
+    -- both counts should be zero as connections close synchronously
+    -- in DB.close due to the bracket now wrapping all calls via
+    -- withDBConn.
+    --
     it "does not leak database connections as the running set is persisted" $
       testWithAsyncDaemon $ \env threadMapTV _daemonSnooper -> do
         let
@@ -602,26 +606,10 @@ stateStoreSpecs = do
           httpName = HTTP (env ^. config . httpPort)
           cycles = 15 :: Int
 
-        -- Regression test for the StateStore connection leak fixed in
-        -- 9399625: every persisted running-set update used to leak an
-        -- open SQLite connection, exposed through real system use (fd
-        -- exhaustion in the daemon's deployment). Drive real Start/Stop
-        -- cycles through the daemon so StateManager performs real
-        -- updateRunning writes, then count handles pointing at the db
-        -- file before vs. after. On the pre-fix code every cycle leaks
-        -- two connections (one per Start, one per Stop), so this fails
-        -- with a large margin; on fixed code both counts are a stable
-        -- zero (connections close synchronously in DB.close).
-        --
-        -- Counting handles pointing at this exact db path (via
-        -- /proc/self/fd symlink targets) keeps the test immune to
-        -- unrelated fd activity. /proc is Linux-only, so the count
-        -- assertions are skipped on other platforms (the cycles still
-        -- run, and the sentinel wait must still converge).
-
         -- let the boot sequence's persistence writes settle first
         threadDelay 200000
-        let isSupportedPlatform = os == "linux" || os == "darwin"
+
+        let isSupportedPlatform = os == "linux" -- todo: || os == "darwin"
         mBefore <-
           if isSupportedPlatform
             then Just <$> countDbHandles dbPath'
@@ -636,16 +624,21 @@ stateStoreSpecs = do
             preview (ix Gold . _1 . name) <$> readTVar threadMapTV
 
         -- Writes from the cycles (the final Stop's in particular) may
-        -- still be in flight inside StateManager. Start a sentinel
-        -- automation and wait for the persisted running set to include
-        -- it: that state is only reachable once every prior write has
-        -- committed, because StateManager processes its channel
-        -- sequentially.
+        -- still be in flight inside StateManager. This starts a
+        -- sentinel automation and waits for the persisted running set
+        -- to include it: that state is only reachable once every
+        -- prior write has committed, because StateManager processes
+        -- its channel sequentially.
         atomically $ writeTChan daemonBroadcast' $ Daemon.Start (LuaScript "test")
-        waitUntilEq (sort [ serializeAutomationName (LuaScript "test")
-                          , serializeAutomationName StateManager
-                          , serializeAutomationName httpName
-                          ]) $
+
+        waitUntilEq
+          -- expected stored running
+          (sort
+            [ serializeAutomationName (LuaScript "test")
+            , serializeAutomationName StateManager
+            , serializeAutomationName httpName
+            ]) $
+          -- actual stored running
           sort . map snd <$> StateStore.allRunning dbPath'
 
         -- commit visibility can precede the connection close by
@@ -864,9 +857,9 @@ statusMessageSpecs = do
           automationServiceTopic' = env ^. config . mqttConfig . automationServiceTopic
           (TestMQTTClient testMCTV) = env ^. mqttClient
 
-        -- Give the boot sequence time to settle so HTTPDefault (a
-        -- one-shot) has completed and been swept from the running set
-        -- before we request a status message.
+        -- Give the boot sequence time to settle so HTTPDefault has
+        -- completed and been swept from the running set before we
+        -- request a status message.
         threadDelay 200000
 
         atomically $ writeTChan daemonBroadcast' Daemon.Status
@@ -916,6 +909,18 @@ httpSpecs = do
         devicesReceived `shouldBe` devices'
 
   around initAndCleanup $ do
+    --
+    -- Regression test for the HTTP drain (drainBroadcastChan in
+    -- HTTP.hs): the drain concurrently consumes from the HTTP
+    -- automation's own broadcast channel copy to prevent message
+    -- history retention, while each WebSocket connection reads from
+    -- its own independently dup'ed copy (broadcastChanCopy in
+    -- ws). This test proves the drain cannot steal messages from the
+    -- per-connection copies by subscribing the HTTP automation to a
+    -- topic (as a UI client would), connecting a WebSocket client,
+    -- dispatching a routed message, and requiring the client to
+    -- receive it.
+    --
     it "delivers subscribed-topic messages to websocket clients alongside the drain" $
       testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
         let
@@ -924,17 +929,6 @@ httpSpecs = do
           port = env ^. config . httpPort
           httpName = HTTP port
           Just topic = mkTopic "wsDrainTestTopic"
-
-        -- Regression test for the HTTP drain (drainBroadcastChan in
-        -- HTTP.hs): the drain concurrently consumes from the HTTP
-        -- automation's own broadcast channel copy to prevent message
-        -- history retention, while each WebSocket connection reads
-        -- from its own independently dup'ed copy (broadcastChanCopy
-        -- in ws). This test proves the drain cannot steal messages
-        -- from the per-connection copies: subscribe the HTTP
-        -- automation to a topic (as a UI client would), connect a
-        -- WebSocket client, dispatch a routed message, and require
-        -- the client to receive it.
 
         atomically $ writeTChan daemonBroadcast' $
           Daemon.Subscribe httpName (Just topic)

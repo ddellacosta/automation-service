@@ -95,8 +95,8 @@ initAndCleanup runTests = bracket
         writeTVar groupsJsonTV groupsJSON
 
       -- A unique temporary directory for this invocation's db avoids
-      -- path collisions across parallel test runs. Deleted in the
-      -- release below.
+      -- path collisions across parallel test runs. Gets cleaned up in
+      -- the removeDirectoryRecursive call below.
       tmpDir <- getTemporaryDirectory >>= \tmpParent ->
         createTempDirectory tmpParent "automation-service-test"
 
@@ -158,46 +158,38 @@ testWithAsyncDaemon test env = do
   withAsync (App.runAutomationService env $ Daemon.run' threadMapTV) $
     \_async -> test env threadMapTV daemonSnooper
 
--- |
--- | Helper to repeatedly check a STM action that may take some time
--- to return the expected value. It is assumed that this is being
--- wrapped in a timeout so that it will fail if this expectation is
--- not met, because otherwise this will run forever.
 --
--- TODO: this ends up producing fairly unreadable code insofar as it
--- needs to look like a test assertion. Need to improve the syntax so
--- that this ends up looking like it's testing an assertion rather
+-- TODO for waitUntilEq/waitUntilEqSTM (and explicit timeout
+-- variants): this ends up producing fairly unreadable code insofar as
+-- it needs to look like a test assertion. Need to improve the syntax
+-- so that this ends up looking like it's testing an assertion rather
 -- than waiting for something to somehow be equal after executing some
 -- incomprehensible STM code.
+--
 
-
--- | Poll interval for the IO-based wait helper (10ms between
--- attempts; keeps CPU usage negligible while still responding to
--- state changes within milliseconds).
-waitPollIntervalMicros :: Int
-waitPollIntervalMicros = 10000
-
--- | Default timeout value for the waitUntilEq function
 defaultWaitUntilEqTimeout :: Int
 defaultWaitUntilEqTimeout = (5 * 1000000)
 
--- | Default timeout value for the waitUntilEqSTM function
 defaultWaitUntilEqSTMTimeout :: Int
 defaultWaitUntilEqSTMTimeout = (5 * 1000000)
 
+-- | Poll interval for waitUntilEq/waitUntilEqWithTimeout (10ms between
+-- attempts keeps CPU usage negligible while still responding to state
+-- changes within milliseconds).
+waitPollIntervalMicros :: Int
+waitPollIntervalMicros = 10000
+
 -- | Repeatedly runs the IO action until it yields the expected value,
--- with a default 5-second timeout. Polls at 10ms intervals (the IO
--- action may not read from TVars, so STM blocking is not
--- available). Fails with an informative timeout message if the
+-- with a default 5-second timeout. Polls at interval determined by
+-- waitPollIntervalMicros. Fails with a timeout message if the
 -- condition is not met in time.
 waitUntilEq :: (Eq a, Show a) => a -> IO a -> Expectation
 waitUntilEq expected action =
   waitUntilEqWithTimeout defaultWaitUntilEqTimeout expected action
 
 -- | Repeatedly runs the IO action until it yields the expected value,
--- with the timeout (in microseconds). Polls at 10ms intervals (the
--- IO action may not read from TVars, so STM blocking is not
--- available). Fails with an informative timeout message if the
+-- with a timeout (in microseconds). Polls at interval determined by
+-- waitPollIntervalMicros. Fails with a timeout message if the
 -- condition is not met in time.
 waitUntilEqWithTimeout :: (Eq a, Show a) => Int -> a -> IO a -> Expectation
 waitUntilEqWithTimeout waitTimeoutMicros expected action = do
@@ -213,24 +205,22 @@ waitUntilEqWithTimeout waitTimeoutMicros expected action = do
         then pure actual
         else threadDelay waitPollIntervalMicros >> waitLoop act
 
--- | Repeatedly runs the STM action until it yields the expected
--- value, with a default 5-second timeout. Uses STM's
--- 'checkSTM'/'retry' for zero-CPU blocking: the thread sleeps until
--- any TVar read during the transaction is modified, then the
--- transaction re-executes and the condition is re-checked. Fails
--- with an informative timeout message if the condition is not met
--- in time.
+-- | Repeatedly runs the STM action until it yields the expected value,
+-- with a default 5-second timeout. Uses STM's 'checkSTM'/'retry' for
+-- zero-CPU blocking: the thread sleeps until any TVar read during the
+-- transaction is modified, then the transaction re-executes and the
+-- condition is re-checked. Fails with a timeout message if the
+-- condition is not met in time.
 waitUntilEqSTM :: (Eq a, Show a) => a -> STM a -> Expectation
 waitUntilEqSTM expected stmAction =
   waitUntilEqSTMWithTimeout defaultWaitUntilEqSTMTimeout expected stmAction
 
--- | Repeatedly runs the STM action until it yields the expected
--- value, with the timeout (in microseconds). Uses STM's
--- 'checkSTM'/'retry' for zero-CPU blocking: the thread sleeps until
--- any TVar read during the transaction is modified, then the
--- transaction re-executes and the condition is re-checked. Fails
--- with an informative timeout message if the condition is not met
--- in time.
+-- | Repeatedly runs the STM action until it yields the expected value,
+-- with a timeout (in microseconds). Uses STM's 'checkSTM'/'retry' for
+-- zero-CPU blocking: the thread sleeps until any TVar read during the
+-- transaction is modified, then the transaction re-executes and the
+-- condition is re-checked. Fails with a timeout message if the
+-- condition is not met in time.
 waitUntilEqSTMWithTimeout :: (Eq a, Show a) => Int -> a -> STM a -> Expectation
 waitUntilEqSTMWithTimeout waitTimeoutMicros expected stmAction = do
   result <- race (threadDelay waitTimeoutMicros) (atomically $ do
