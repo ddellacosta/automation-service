@@ -27,8 +27,10 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.IO as T
 import Data.Traversable (for)
+import Network.HTTP.Types (hContentType, status200)
 import qualified Data.Vector as V
 import GHC.Conc (ThreadStatus (..), threadStatus)
+import qualified Network.HTTP.Client as Client
 import Network.MQTT.Topic (mkTopic)
 import qualified Network.WebSockets as WS
 import Safe (headMay)
@@ -1002,6 +1004,46 @@ httpSpecs = do
           (\_retryStatus -> pure $ M.lookup topic mqttMsgs)
 
         sentMMsg `shouldBe` Just "{\"state\":\"ON\"}"
+
+  around initAndCleanup $ do
+    --
+    -- Regression test for the missing Content-Type on the UI root.
+    -- scotty's `file` does not set a Content-Type header (see its
+    -- haddock), so prior to the fix in Service.Automations.HTTP the
+    -- response for GET / carried no Content-Type at all. Behind nginx
+    -- this is compounded by X-Content-Type-Options: nosniff, and any
+    -- client that requires a declared type chokes on it.
+    --
+    -- Note that GET / is *not* served by the wai-middleware-static
+    -- middleware: for "/" its policy resolves to the ui/ directory,
+    -- doesFileExist is False for a directory, and it falls through to
+    -- scotty. (Requests like /index.html and /css/... are served by
+    -- the middleware and do get a Content-Type, derived from the
+    -- resolved file path.)
+    --
+    it "serves the UI root with a text/html Content-Type header" $
+      testWithAsyncDaemon $ \env _threadMapTV _daemonSnooper -> do
+        let
+          port = env ^. config . httpPort
+
+        -- same approach as the websocket tests above: the HTTP
+        -- automation may not be listening yet when the test starts
+        manager <- Client.newManager Client.defaultManagerSettings
+        response <- retry $ do
+          request <- Client.parseRequest $
+            "http://127.0.0.1:" <> (show . fromIntegral $ port :: String) <> "/"
+          Client.httpLbs request manager
+
+        Client.responseStatus response `shouldBe` status200
+
+        -- sanity check that we are really getting the UI index, so
+        -- the Content-Type assertion below isn't vacuous
+        "automation service" `SBS.isInfixOf`
+          LBS.toStrict (Client.responseBody response)
+          `shouldBe` True
+
+        lookup hContentType (Client.responseHeaders response)
+          `shouldBe` Just "text/html; charset=utf-8"
 
   where
     --

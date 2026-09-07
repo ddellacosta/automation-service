@@ -144,6 +144,7 @@ test-suite automation-service-tests
       automation-service
     , directory
     , hspec ^>= 2.11.8
+    , http-types ^>= 0.12.4
     , tasty ^>= 1.4.3
     , tasty-hspec ^>= 1.2.0.4
     , tasty-test-reporter
