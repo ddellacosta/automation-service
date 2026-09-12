@@ -16,6 +16,8 @@ import Service.MQTT.Client (initMQTTClient, mqttClientCallback)
 import System.Log.FastLogger (TimedFastLogger, newTimedFastLogger)
 import UnliftIO.STM (TVar, readTVarIO)
 
+import qualified Service.Adapters.Zigbee2MQTT as ZigbeeAdapter
+
 configFilePath :: FilePath
 configFilePath = "config/config.dhall"
 
@@ -39,6 +41,8 @@ mkMQTTClient config logger subscriptions = do
     (mqttConfig', logLevelSet) = config ^. lensProduct mqttConfig logLevel
     mqttSubs = flip M.foldMapWithKey subscriptions' $ \topic _action ->
       [(toFilter topic, MQTT.subOptions)]
+
+  ZigbeeAdapter.initZigbee2MQTTAdapter mqttConfig'
 
   -- handle errors from not being able to connect, etc.?
   mc <- initMQTTClient (mqttClientCallback logLevelSet logger subscriptions) mqttConfig'
