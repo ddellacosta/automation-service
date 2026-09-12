@@ -36,7 +36,6 @@ common shared
     , dhall >= 1.41.1 && < 1.42.2
     , fast-logger ^>= 3.2.2
     , hashable ^>= 1.4.4.0
-    , hashable
     , hslua ^>= 2.3.1
     , hslua-aeson ^>= 2.3.1
     , hslua-marshalling ^>= 2.3.1
@@ -84,7 +83,8 @@ library
   import:           shared
   hs-source-dirs:   src
   exposed-modules:
-      Service.App
+      Service.Adapters.Zigbee2MQTT
+    , Service.App
     , Service.App.Logger
     , Service.Automation
     , Service.AutomationName
