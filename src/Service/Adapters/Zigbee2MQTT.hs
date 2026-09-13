@@ -8,36 +8,45 @@ module Service.Adapters.Zigbee2MQTT
 where
 
 import Control.Lens ((^.))
-import Service.Adapters.Device (Device(..),  DeviceId, Devices(..), ieeeAddress, name)
+import Control.Monad (when)
+import Service.Adapters.Device (Device(..), DeviceId, Devices(..), ieeeAddress, name)
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
-import Data.Aeson (decode)
+import Data.Aeson (Value(..), (.:), decode, withObject)
+import Data.Aeson.Key (toText)
+import Data.Aeson.KeyMap (foldMapWithKey)
+import Data.Aeson.Types (FromJSON(..))
 import Data.Either (Either(..), fromRight)
-import Data.Foldable (for_)
-import Data.ByteString.Lazy (ByteString)
+import Data.Foldable (foldl', for_)
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (Maybe(..), fromMaybe, maybe, fromJust)
 import Data.X509.CertificateStore (makeCertificateStore, readCertificateStore)
 import Network.Connection (TLSSettings (..))
 import qualified Network.MQTT.Client as MQTT
-import Network.MQTT.Topic (Topic, mkFilter, mkTopic)
+import Network.MQTT.Topic (mkFilter, mkTopic)
 import Network.TLS (ClientHooks (..), ClientParams (..), Credentials (..), Shared (..), Supported (..), Version (..), credentialLoadX509, defaultParamsClient)
 import Network.TLS.Extra.Cipher (ciphersuite_default)
 import Network.URI (URI, parseURI)
-import Prelude (Bool(..), Eq, IO, Show, String, ($), (<$>), (<>), (*), fst, putStrLn, pure, show, snd)
+import Prelude (Bool(..), Eq, IO, Show, String, (.), ($), (<$>), (<>), (*), (>), (==), (/=), (&&), fst, not, null, putStrLn, pure, show, snd)
 -- import Service.App (Logger)
 -- import qualified Service.App as App
 import Service.Env (LogLevel (..), MQTTConfig (..), Subscriptions)
 -- import Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
 import UnliftIO.Async (async)
 import UnliftIO.Concurrent (threadDelay)
-import UnliftIO.STM (TChan, TVar, atomically, newTChanIO, newTVarIO, readTChan, readTVarIO, writeTChan, writeTVar)
+import UnliftIO.STM (TChan, TVar, atomically, newTChanIO, newTVarIO, readTChan, readTVar, readTVarIO, writeTChan, writeTVar)
 
+import qualified Data.Text as T
+import Text.Pretty.Simple (pPrintLightBg)
+
+type DeviceState = M.HashMap PropertyAddress Value
 
 data DeviceStore = DeviceStore
   { devices :: M.HashMap DeviceId Device
+  , deviceState :: M.HashMap DeviceId DeviceState
   } deriving (Eq, Show)
 
+type DeltaBatch = (DeviceId, [(PropertyAddress, Value)])
 
 -- hacks while spiking
 
@@ -107,13 +116,29 @@ data DeviceMessage
   | Quiescent
 
 
+calculateDeltas
+  :: DeviceState -- M.HashMap PropertyAddress Value
+  -> [ (PropertyAddress, Value) ]
+  -> [ (PropertyAddress, Value) ]
+calculateDeltas currentState =
+  foldl'
+  (\deltas (prop, val) ->
+     case M.lookup prop currentState of
+       Just currentVal ->
+         if currentVal == val then deltas else deltas <> [(prop, val)]
+       Nothing ->
+         deltas <> [(prop, val)]
+  )
+  []
+
+
 -- | Returns a SimpleCallback which is an alias for type
 -- MQTTClient -> Topic -> ByteString -> [Property] -> IO ()
 --
 mqttClientCallback
   :: TVar DeviceStore
   -> TChan DeviceMessage
-  -> TChan (Topic, ByteString)
+  -> TChan DeltaBatch
   -> MQTT.MessageCallback
 --  :: (Logger logger)
 --  => LogLevel
@@ -135,26 +160,98 @@ mqttClientCallback deviceStore deviceUpdateChan stateUpdatesChan =
                 (\device -> (device ^. ieeeAddress, device)) <$> (loadDevices devices)
           in
             atomically $ do
-              writeTVar deviceStore $ DeviceStore deviceMap
+              deviceStore' <- readTVar deviceStore
+              -- should we do some cleanup of the deviceStore here
+              -- based on new state schema we pull? Remove
+              -- non-existent devices/capabilities/now-disabled
+              -- devices, etc.?
+              writeTVar deviceStore $ DeviceStore deviceMap (deviceState deviceStore')
               writeTChan deviceUpdateChan DevicesUpdated
 
       "zigbee2mqtt/bridge/groups" -> do
         putStrLn $ "groups topic:" <> show topic
         putStrLn $ "groups msg:" <> show msg
       _ -> do
-        atomically $
-          writeTChan stateUpdatesChan (topic, msg)
+        -- this needs to filter based on whether or not this is a
+        -- legit device state update message
+        atomically $ do
+          deviceStore' <- readTVar deviceStore
+          (deviceId', deltas) <- case (decode msg :: Maybe StateUpdate) of
+            Just stateUpdate -> do
+              let
+                deviceState' =
+                  fromMaybe M.empty $
+                    M.lookup (deviceId stateUpdate) (deviceState deviceStore')
+                deltas =
+                  calculateDeltas deviceState' (stateValues stateUpdate)
+
+              writeTVar
+                deviceStore
+                deviceStore' {
+                  deviceState =
+                    M.insert
+                     (deviceId stateUpdate)
+                     (M.fromList $ stateValues stateUpdate)
+                     (deviceState deviceStore')
+                  }
+
+              pure (deviceId stateUpdate, deltas)
+
+            Nothing ->
+              -- ugly
+              pure ("", [])
+
+          when (not . null $ deltas) $
+            writeTChan stateUpdatesChan (deviceId', deltas)
         -- putStrLn $ "Other topic: " <> show topic
         -- putStrLn $ "Other msg: " <> show msg
 
+-- check that the state has changed or not
+-- if entry exists
+--   diff against the state update
+--   check each property against existing property, this produces real deltas
+-- else add entry
 
--- needs to load up devices and groups from MQTT on start
-  -- parse into structures
--- then needs to go through each item in both collections and subscribe to updates for all
+type PropertyAddress = T.Text
+
+data StateUpdate = StateUpdate
+  { deviceId :: DeviceId
+  , stateValues :: [ (PropertyAddress, Value) ]
+  } deriving (Eq, Show)
+
+instance FromJSON StateUpdate where
+  parseJSON = withObject "StateUpdate" $ \su -> do
+    device <- su .: "device"
+    deviceId <- device .: "ieeeAddr"
+
+    let
+      prepend :: T.Text -> T.Text -> T.Text
+      prepend prefix key =
+        if T.length prefix > 0
+        then
+          prefix <> "." <> key
+        else
+          key
+
+      stateValues prefix = foldMapWithKey $ \k v ->
+        case v of
+          Object o ->
+            let
+              keyTxt = toText k
+            in
+              if keyTxt /= "device" && keyTxt /= "update" then
+                stateValues (prepend prefix $ toText k) o
+              else
+                []
+          _ ->
+            [(prepend prefix $ toText k, v)]
+
+    pure $ StateUpdate deviceId $ stateValues "" su
+
 
 initZigbee2MQTTAdapter :: MQTTConfig -> IO ()
 initZigbee2MQTTAdapter mqttConfig = do
-  deviceStore <- newTVarIO $ DeviceStore M.empty
+  deviceStore <- newTVarIO $ DeviceStore M.empty M.empty
 
   deviceUpdateChan <- newTChanIO
   stateUpdatesChan <- newTChanIO
@@ -185,8 +282,9 @@ initZigbee2MQTTAdapter mqttConfig = do
   void $ liftIO $ async $
     let
       go = do
-        msg <- atomically $ readTChan stateUpdatesChan
-        putStrLn $ show msg
+        (deviceId, stateUpdate) <- atomically $ readTChan stateUpdatesChan
+        pPrintLightBg deviceId
+        pPrintLightBg stateUpdate
         go
     in
       go
@@ -198,7 +296,5 @@ initZigbee2MQTTAdapter mqttConfig = do
       putStrLn $ "subscribing to topic " <> (show topicText)
       MQTT.subscribe mc2 [(topic, MQTT.subOptions)] []
 
-  -- TODO next: sub to individual device topics from what I've loaded
-  -- into schema, and then start handling device state including
-  -- generating deltas, then can finally test the last step of sending
-  -- commands back, mocking frontend devices
+  -- TODO next: test sending commands back, mocking frontend devices,
+  -- dig into adapter architecture a bit more
