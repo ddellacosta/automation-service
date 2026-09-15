@@ -7,17 +7,21 @@ module Service.Adapters.Zigbee2MQTT
  )
 where
 
-import Control.Lens ((^.))
+import Control.Applicative (Applicative)
+import Control.Lens (LensLike', (^.), (^?), filtered, folded, ix, view)
 import Control.Monad (when)
-import Service.Adapters.Device (Device(..), DeviceId, Devices(..), ieeeAddress, name)
+import Service.Adapters.Capability (Kind, kind, property, valueOff, valueOn)
+import Service.Adapters.Device (Device(..), DeviceId, Devices(..), capabilities, ieeeAddress, name)
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (Value(..), (.:), decode, withObject)
 import Data.Aeson.Key (toText)
 import Data.Aeson.KeyMap (foldMapWithKey)
-import Data.Aeson.Types (FromJSON(..))
+import Data.Aeson.Types (parseMaybe)
+import Data.ByteString.Lazy (ByteString)
 import Data.Either (Either(..), fromRight)
-import Data.Foldable (foldl', for_)
+import Data.Foldable (for_)
+import Data.Functor.Contravariant (Contravariant)
 import qualified Data.HashMap.Strict as M
 import Data.Maybe (Maybe(..), fromMaybe, maybe, fromJust)
 import Data.X509.CertificateStore (makeCertificateStore, readCertificateStore)
@@ -27,7 +31,7 @@ import Network.MQTT.Topic (mkFilter, mkTopic)
 import Network.TLS (ClientHooks (..), ClientParams (..), Credentials (..), Shared (..), Supported (..), Version (..), credentialLoadX509, defaultParamsClient)
 import Network.TLS.Extra.Cipher (ciphersuite_default)
 import Network.URI (URI, parseURI)
-import Prelude (Bool(..), Eq, IO, Show, String, (.), ($), (<$>), (<>), (*), (>), (==), (/=), (&&), fst, not, null, putStrLn, pure, show, snd)
+import Prelude (Bool(..), Eq, IO, Show, String, (.), ($), (<$>), (=<<), (<>), (*), (>), (==), (/=), (&&), filter, fst, not, null, otherwise, putStrLn, pure, show, snd)
 -- import Service.App (Logger)
 -- import qualified Service.App as App
 import Service.Env (LogLevel (..), MQTTConfig (..), Subscriptions)
@@ -121,15 +125,7 @@ calculateDeltas
   -> [ (PropertyAddress, Value) ]
   -> [ (PropertyAddress, Value) ]
 calculateDeltas currentState =
-  foldl'
-  (\deltas (prop, val) ->
-     case M.lookup prop currentState of
-       Just currentVal ->
-         if currentVal == val then deltas else deltas <> [(prop, val)]
-       Nothing ->
-         deltas <> [(prop, val)]
-  )
-  []
+  filter (\(prop, val) -> M.lookup prop currentState /= Just val)
 
 
 -- | Returns a SimpleCallback which is an alias for type
@@ -176,30 +172,31 @@ mqttClientCallback deviceStore deviceUpdateChan stateUpdatesChan =
         -- legit device state update message
         atomically $ do
           deviceStore' <- readTVar deviceStore
-          (deviceId', deltas) <- case (decode msg :: Maybe StateUpdate) of
-            Just stateUpdate -> do
-              let
-                deviceState' =
-                  fromMaybe M.empty $
-                    M.lookup (deviceId stateUpdate) (deviceState deviceStore')
-                deltas =
-                  calculateDeltas deviceState' (stateValues stateUpdate)
+          (deviceId', deltas) <-
+            case decodeStateUpdate (devices deviceStore') msg of
+              Just stateUpdate -> do
+                let
+                  deviceState' =
+                    fromMaybe M.empty $
+                      M.lookup (deviceId stateUpdate) (deviceState deviceStore')
+                  deltas =
+                    calculateDeltas deviceState' (stateValues stateUpdate)
 
-              writeTVar
-                deviceStore
-                deviceStore' {
-                  deviceState =
-                    M.insert
-                     (deviceId stateUpdate)
-                     (M.fromList $ stateValues stateUpdate)
-                     (deviceState deviceStore')
-                  }
+                writeTVar
+                  deviceStore
+                  deviceStore' {
+                    deviceState =
+                      M.insert
+                       (deviceId stateUpdate)
+                       (M.fromList $ stateValues stateUpdate)
+                       (deviceState deviceStore')
+                    }
 
-              pure (deviceId stateUpdate, deltas)
+                pure (deviceId stateUpdate, deltas)
 
-            Nothing ->
-              -- ugly
-              pure ("", [])
+              Nothing ->
+                -- ugly
+                pure ("", [])
 
           when (not . null $ deltas) $
             writeTChan stateUpdatesChan (deviceId', deltas)
@@ -219,34 +216,66 @@ data StateUpdate = StateUpdate
   , stateValues :: [ (PropertyAddress, Value) ]
   } deriving (Eq, Show)
 
-instance FromJSON StateUpdate where
-  parseJSON = withObject "StateUpdate" $ \su -> do
-    device <- su .: "device"
-    deviceId <- device .: "ieeeAddr"
+decodeStateUpdate :: M.HashMap DeviceId Device -> ByteString -> Maybe StateUpdate
+decodeStateUpdate devices stateUpdateStr =
+  parseMaybe parseStateUpdate =<< decode stateUpdateStr
+  where
+    parseStateUpdate = withObject "StateUpdate" $ \su -> do
+      device <- su .: "device"
+      deviceId <- device .: "ieeeAddr"
 
-    let
-      prepend :: T.Text -> T.Text -> T.Text
-      prepend prefix key =
-        if T.length prefix > 0
-        then
-          prefix <> "." <> key
-        else
-          key
+      let
+        prepend :: T.Text -> T.Text -> T.Text
+        prepend prefix key =
+          if T.length prefix > 0
+          then
+            prefix <> "." <> key
+          else
+            key
 
-      stateValues prefix = foldMapWithKey $ \k v ->
-        case v of
-          Object o ->
-            let
-              keyTxt = toText k
-            in
-              if keyTxt /= "device" && keyTxt /= "update" then
-                stateValues (prepend prefix $ toText k) o
+        -- probably should make this a Device/Capability module lookup function(s)?
+        kindLens
+          :: (Applicative f, Contravariant f)
+          => T.Text
+          -> LensLike' f (M.HashMap DeviceId Device) Kind
+        kindLens k =
+          ix deviceId . capabilities . folded . filtered ((== k) . view property) . kind
+
+        normalizeState :: Value -> M.HashMap DeviceId Device -> Value
+        normalizeState v devices' =
+          case v of
+            String stateTxt
+              | devices' ^? kindLens "state" . valueOn == Just stateTxt ->
+                Bool True
+              | devices' ^? kindLens "state" . valueOff == Just stateTxt ->
+                Bool False
+              | otherwise ->
+                Bool False -- er I guess
+
+            -- will this happen?
+            Bool stateBool ->
+              Bool stateBool
+
+            _ ->
+              Bool False
+
+        stateValues prefix = foldMapWithKey $ \k v ->
+          case v of
+            Object o ->
+              let
+                keyTxt = toText k
+              in
+                if keyTxt /= "device" && keyTxt /= "update" then
+                  stateValues (prepend prefix $ toText k) o
+                else
+                  []
+            _ ->
+              if toText k == "state" then
+                [(prepend prefix $ toText k, (normalizeState v devices))]
               else
-                []
-          _ ->
-            [(prepend prefix $ toText k, v)]
+                [(prepend prefix $ toText k, v)]
 
-    pure $ StateUpdate deviceId $ stateValues "" su
+      pure $ StateUpdate deviceId $ stateValues "" su
 
 
 initZigbee2MQTTAdapter :: MQTTConfig -> IO ()

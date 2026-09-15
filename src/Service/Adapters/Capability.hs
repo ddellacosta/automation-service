@@ -8,6 +8,12 @@ module Service.Adapters.Capability
   , Kind(..)
   , NumericPreset(..)
   , Property
+  , _Binary
+  , _Composite
+  , _Enum
+  , _List
+  , _Numeric
+  , _Text
   , access
   , attachCapabilityKind
   , description
@@ -39,7 +45,7 @@ module Service.Adapters.Capability
   )
 where
 
-import Control.Lens (makeFieldsNoPrefix)
+import Control.Lens (makeClassyPrisms, makeFieldsNoPrefix)
 import Data.Aeson (Array, FromJSON(..), Object, (.:), (.:?), withObject)
 import Data.Aeson.Types (Parser, Value(..), parseEither)
 import Data.Bits ((.&.))
@@ -98,6 +104,7 @@ data Kind
   deriving (Eq, Show)
 
 makeFieldsNoPrefix ''Kind
+makeClassyPrisms ''Kind
 
 -- |
 -- | https://www.zigbee2mqtt.io/guide/usage/exposes.html#access
