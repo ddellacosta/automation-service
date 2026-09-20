@@ -46,7 +46,7 @@ module Service.Adapters.Capability
 where
 
 import Control.Lens (makeClassyPrisms, makeFieldsNoPrefix)
-import Data.Aeson (Array, FromJSON(..), Object, (.:), (.:?), withObject)
+import Data.Aeson (Array, FromJSON(..), Object, ToJSON(..), (.:), (.:?), defaultOptions, genericToEncoding, withObject)
 import Data.Aeson.Types (Parser, Value(..), parseEither)
 import Data.Bits ((.&.))
 import Data.Either (Either(..))
@@ -66,18 +66,24 @@ data NumericPreset = NumericPreset
   { _pName :: T.Text
   , _pValue :: Int
   , _pDescription :: T.Text
-  } deriving (Eq, Show)
+  } deriving (Eq, Generic, Show)
 
 makeFieldsNoPrefix ''NumericPreset
+
+instance ToJSON NumericPreset where
+  toEncoding = genericToEncoding defaultOptions
+
 
 data ItemType = ItemType
   { _itName :: T.Text
   , _itLabel :: T.Text
   , _itDescription :: Maybe T.Text
   , _itKind :: Kind
-  } deriving (Eq, Show)
+  } deriving (Eq, Generic, Show)
 
--- makeFieldsNoPrefix ''ItemType
+instance ToJSON ItemType where
+  toEncoding = genericToEncoding defaultOptions
+
 
 data Kind
   = Binary
@@ -101,7 +107,10 @@ data Kind
     , _presets :: [NumericPreset]
     }
   | Text
-  deriving (Eq, Show)
+  deriving (Eq, Generic, Show)
+
+instance ToJSON Kind where
+  toEncoding = genericToEncoding defaultOptions
 
 makeFieldsNoPrefix ''Kind
 makeClassyPrisms ''Kind
@@ -114,6 +123,9 @@ data Access
   | Writeable
   | Readable -- implies Reports as well for Zigbee2MQTT, but may not for Matter
   deriving (Eq, Generic, Show)
+
+instance ToJSON Access where
+  toEncoding = genericToEncoding defaultOptions
 
 instance Hashable Access
 
@@ -142,9 +154,12 @@ data Capability = Capability
   , _description :: Maybe T.Text
   , _kind :: Kind
   , _access :: HashSet Access
-  } deriving (Eq, Show)
+  } deriving (Eq, Generic, Show)
 
 makeFieldsNoPrefix ''Capability
+
+instance ToJSON Capability where
+  toEncoding = genericToEncoding defaultOptions
 
 type Capabilities = M.HashMap Property Capability
 
