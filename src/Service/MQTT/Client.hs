@@ -94,7 +94,7 @@ initMQTTClient msgCB (MQTTConfig {..}) = do
     -- etc. to help me this server (in the case of a self-signed cert).
     --
     clientCertificate cred' (certtypes, mHashSigs, dns) = do
-      putStrLn $ "Implement me -- certtypes: " <> show certtypes <> ", mHashSigs: " <> show mHashSigs <> ", DNs: " <> show dns
+      -- putStrLn $ "Implement me -- certtypes: " <> show certtypes <> ", mHashSigs: " <> show mHashSigs <> ", DNs: " <> show dns
       pure $ Just cred'
 
 
