@@ -10,14 +10,14 @@ module Service.Adapters.Device
   , modelId
   , capabilities
   )
-  where
+where
 
 import Control.Lens (makeFieldsNoPrefix)
 import Data.Aeson (FromJSON(..), ToJSON(..), (.:), (.:?), defaultOptions, genericToEncoding, withArray, withObject)
 import Data.Aeson.Types (parseFieldMaybe)
+import qualified Data.HashMap.Strict as M
 import qualified Data.Text as T
-import Data.Traversable (for)
-import Data.Vector (toList)
+import qualified Data.Vector as V
 import GHC.Generics (Generic)
 import Service.Adapters.Capability (Capabilities, parseCapabilities)
 
@@ -42,7 +42,7 @@ type DeviceId = T.Text
 -- this is just a convenience type to allow me to easily call `decode`
 -- on the message I get back from zigbee2mqtt/bridge/devices initially
 data Devices = Devices
-  { loadDevices :: [Device]
+  { loadDevices :: M.HashMap DeviceId Device
   } deriving (Eq, Generic, Show)
 
 instance FromJSON Device where
@@ -58,4 +58,12 @@ instance FromJSON Device where
 
 instance FromJSON Devices where
  parseJSON = withArray "Devices" $ \a ->
-    Devices <$> for (toList a) parseJSON
+    Devices <$>
+      V.foldM
+        (\dM d -> do
+            device <- parseJSON d
+            pure $
+              M.insert (_ieeeAddress device) device dM
+        )
+        M.empty
+        a

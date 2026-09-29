@@ -7,6 +7,7 @@ module Service.Adapters.Zigbee2MQTT
  )
 where
 
+import System.Random (randomRIO)
 import System.IO (BufferMode(..), hSetBuffering, stdout)
 import qualified Data.ByteString.Lazy.Char8 as LBS8
 
@@ -15,6 +16,8 @@ import Control.Lens (LensLike', (^.), (^?), filtered, folded, ix, view)
 import Control.Monad (when)
 import Service.Adapters.Capability (Kind, kind, property, valueOff, valueOn)
 import Service.Adapters.Device (Device(..), DeviceId, Devices(..), capabilities, ieeeAddress, name)
+import qualified Service.Adapters.Group as Group
+import Service.Adapters.Group (Group(..), GroupDevice(..), GroupId, Groups(..))
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (ToJSON(..), Value(..), (.:), decode, defaultOptions, encode, genericToEncoding, withObject)
@@ -37,7 +40,7 @@ import Network.MQTT.Topic (mkFilter, mkTopic)
 import Network.TLS (ClientHooks (..), ClientParams (..), Credentials (..), Shared (..), Supported (..), Version (..), credentialLoadX509, defaultParamsClient)
 import Network.TLS.Extra.Cipher (ciphersuite_default)
 import Network.URI (URI, parseURI)
-import Prelude (Bool(..), Eq, IO, Show, String, (.), ($), (<$>), (=<<), (<>), (*), (>), (==), (/=), (&&), filter, fst, not, null, otherwise, putStrLn, pure, show, snd)
+import Prelude (Bool(..), Double, Eq, Int, IO, Show, String, (.), ($), (<$>), (=<<), (<>), (*), (>), (==), (/=), (&&), (/), filter, fromIntegral, fst, not, null, otherwise, putStrLn, pure, show, snd)
 -- import Service.App (Logger)
 -- import qualified Service.App as App
 import Service.Env (LogLevel (..), MQTTConfig (..), Subscriptions)
@@ -56,6 +59,7 @@ type DeviceState = M.HashMap PropertyAddress Value
 data DeviceStore = DeviceStore
   { devices :: M.HashMap DeviceId Device
   , deviceState :: M.HashMap DeviceId DeviceState
+  , groups :: M.HashMap GroupId Group
   } deriving (Eq, Generic, Show)
 
 instance ToJSON DeviceStore where
@@ -131,12 +135,13 @@ initMQTTClient msgCB (MQTTConfig {..}) = do
 
 data DeviceMessage
   = DevicesUpdated
-  | Quiescent
+  | GroupsUpdated
   deriving (Eq, Show)
 
 -- move this into its own namespace so names don't collide
 data FrontendMessage
   = FDevicesUpdated
+  | FGroupsUpdated
   | FDeviceStateUpdated DeltaBatch -- maybe holds deltas?
   | FDeviceCommandReceived DeltaBatch
   deriving (Eq, Show)
@@ -162,28 +167,27 @@ mqttClientCallback deviceStore deviceUpdatesChan frontendUpdatesChan =
   MQTT.SimpleCallback $ \_mc topic msg _props -> do
     case topic of
       "zigbee2mqtt/bridge/devices" -> do
-        -- putStrLn $ "devices topic:" <> show topic
-        -- putStrLn $ "devices msg:" <> show msg
-        -- putStrLn $ "devices parsed msg:" <> show (decode msg :: Maybe Devices)
         for_ (decode msg :: Maybe Devices) $ \devices ->
-          let 
-            deviceMap =
-              M.fromList $
-                (\device -> (device ^. ieeeAddress, device)) <$> (loadDevices devices)
-          in
             atomically $ do
               deviceStore' <- readTVar deviceStore
               -- should we do some cleanup of the deviceStore here
               -- based on new state schema we pull? Remove
               -- non-existent devices/capabilities/now-disabled
               -- devices, etc.?
-              writeTVar deviceStore $ DeviceStore deviceMap (deviceState deviceStore')
+              writeTVar deviceStore $
+                DeviceStore (loadDevices devices) (deviceState deviceStore') (groups deviceStore')
               writeTChan deviceUpdatesChan DevicesUpdated
 
       "zigbee2mqtt/bridge/groups" -> do
-        pure ()
-        -- putStrLn $ "groups topic" <> show topic
-        -- putStrLn $ "groups msg:" <> show msg
+        -- putStrLn $ show msg
+        for_ (decode msg :: Maybe Groups) $ \groups ->
+          atomically $ do
+            deviceStore' <- readTVar deviceStore
+            -- ditto question from Devices above wrt cleanup
+            writeTVar deviceStore $
+              DeviceStore (devices deviceStore') (deviceState deviceStore') (loadGroups groups)
+            writeTChan deviceUpdatesChan GroupsUpdated
+
       _ -> do
         -- this needs to filter based on whether or not this is a
         -- legit device state update message
@@ -203,7 +207,8 @@ mqttClientCallback deviceStore deviceUpdatesChan frontendUpdatesChan =
                   deviceStore
                   deviceStore' {
                     deviceState =
-                      M.insert
+                      M.insertWith
+                       M.union
                        (deviceId stateUpdate)
                        (M.fromList $ stateValues stateUpdate)
                        (deviceState deviceStore')
@@ -330,7 +335,7 @@ deltasToState deviceStore (deviceId, deltas) =
 
 initZigbee2MQTTAdapter :: MQTTConfig -> IO ()
 initZigbee2MQTTAdapter mqttConfig = do
-  deviceStore <- newTVarIO $ DeviceStore M.empty M.empty
+  deviceStore <- newTVarIO $ DeviceStore M.empty M.empty M.empty
 
   deviceUpdatesChan <- newBroadcastTChanIO
   deviceUpdatesChanListener <- atomically $ dupTChan deviceUpdatesChan
@@ -362,6 +367,10 @@ initZigbee2MQTTAdapter mqttConfig = do
             atomically $ writeTChan frontendUpdatesChan FDevicesUpdated
             go
           
+          GroupsUpdated -> do
+            atomically $ writeTChan frontendUpdatesChan FGroupsUpdated
+            go
+
           _ -> go
     in
       go
@@ -382,6 +391,10 @@ initZigbee2MQTTAdapter mqttConfig = do
             pPrintLightBg "FDevicesUpdated"
             -- pPrintLightBg $ encodePretty deviceStore'
             -- LBS8.hPutStrLn stdout $ encode deviceStore'
+
+          FGroupsUpdated -> do
+            pPrintLightBg "FGroupsUpdated"
+            pPrintLightBg $ encodePretty (groups deviceStore')
 
           FDeviceStateUpdated (deviceId, deltas) -> do
             pPrintLightBg "FDeviceStateUpdated"
@@ -414,26 +427,32 @@ initZigbee2MQTTAdapter mqttConfig = do
   -- on the frontendUpdatesChanListener blocking loop above
   void $ liftIO $ async $
     let
-      go stage = do
+      go = do
         -- give this a good wait before we actually attempt to send
         -- anything so everything is ready to go
         threadDelay $ 10000 * 1000
 
-        when (stage == "init") $ do
-          let
-            basementBlackSigneDeltas =
-              ("0x001788010c52373e"
-              , [ ("state", Bool True)
-                , ("color.x", Number 0.123)
-                , ("color.y", Number 0.123)
-                , ("brightness", Number 125)
-                ]
-              )
-          atomically $ writeTChan frontendUpdatesChan $ FDeviceCommandReceived basementBlackSigneDeltas
+        colorXQnt <- randomRIO (0, 800) :: IO Int
+        colorYQnt <- randomRIO (0, 900) :: IO Int
 
-        go "run"
+        let
+          colorX = fromIntegral colorXQnt / 1000 :: Double
+          colorY = fromIntegral colorYQnt / 1000 :: Double
+          basementBlackSigneDeltas =
+            ("0x001788010c52373e"
+            , [ ("state", Bool True)
+              , ("color.x", toJSON colorX)
+              , ("color.y", toJSON colorY)
+              , ("brightness", Number 125)
+              ]
+            )
+
+        atomically $
+          writeTChan frontendUpdatesChan $
+            FDeviceCommandReceived basementBlackSigneDeltas
+        go
     in
-      go "init"
+      go
 
 
   threadDelay $ 1000 * 1000
