@@ -1,14 +1,13 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Service.Adapters.Group
-  ( Group(..)
-  , GroupDevice(..)
+  ( Endpoint(..)
+  , Group(..)
+  , GroupDevices
   , GroupId
   , Groups(..)
-  , ieeeAddress
   , id
   , devices
-  , endpoint
   , name
   )
 where
@@ -23,17 +22,14 @@ import GHC.Generics (Generic)
 import Prelude (Eq, Int, Show, ($), (<$>), (=<<), (/=), (&&), pure)
 import Service.Adapters.Device (DeviceId)
 
-data GroupDevice = GroupDevice
-  { _ieeeAddress :: T.Text
-  , _endpoint :: Int
-  } deriving (Eq, Generic, Show)
 
-makeFieldsNoPrefix ''GroupDevice
+newtype Endpoint = Endpoint Int
+  deriving (Eq, Generic, Show)
 
-instance ToJSON GroupDevice where
+instance ToJSON Endpoint where
   toEncoding = genericToEncoding defaultOptions
 
-type GroupDevices = M.HashMap DeviceId GroupDevice
+type GroupDevices = M.HashMap DeviceId Endpoint
 
 type GroupId = Int
 
@@ -52,7 +48,7 @@ decodeDevices (Array gds) =
          (Object gd) -> do
            ieeeAddress' <- gd .: "ieee_address"
            endpoint' <- gd .: "endpoint"
-           let gd' = GroupDevice ieeeAddress' endpoint'
+           let gd' = Endpoint endpoint'
            pure $ M.insert ieeeAddress' gd' gdM
 
          _ ->

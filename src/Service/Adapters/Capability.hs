@@ -91,7 +91,9 @@ data Kind
     , _valueOff :: T.Text
     , _valueToggle :: Maybe T.Text
     }
-  | Composite -- will these show up at all?
+  -- Will these show up at all? Only via list item types, never as a
+  -- top-level capability
+  | Composite 
   | Enum
     { _values :: [ T.Text ] }
   | List
@@ -206,7 +208,7 @@ parseKind capObj = \case
  "text" -> pure Text
 
 instance FromJSON ItemType where
-  parseJSON = withObject "Capability" $ \c -> do
+  parseJSON = withObject "ItemType" $ \c -> do
     name' <- c .: "name"
     label' <- c .: "label"
     description' <- c .:? "description"
@@ -244,6 +246,7 @@ attachCapabilityKind capObj capability =
 
       case mFeatures of
         Just features -> for (toList features) $ \c' -> do
+          -- this won't handle composites in the child?
           childCap <- parseJSON c'
           pure $ Capability
             ((_name capability) <> "-" <> (_name childCap))

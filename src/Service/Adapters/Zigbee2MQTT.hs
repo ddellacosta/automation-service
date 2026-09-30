@@ -7,18 +7,10 @@ module Service.Adapters.Zigbee2MQTT
  )
 where
 
-import System.Random (randomRIO)
-import System.IO (BufferMode(..), hSetBuffering, stdout)
-import qualified Data.ByteString.Lazy.Char8 as LBS8
-
 import Control.Applicative (Applicative)
-import Control.Lens (LensLike', (^.), (^?), filtered, folded, ix, view)
-import Control.Monad (when)
-import Service.Adapters.Capability (Kind, kind, property, valueOff, valueOn)
-import Service.Adapters.Device (Device(..), DeviceId, Devices(..), capabilities, ieeeAddress, name)
-import qualified Service.Adapters.Group as Group
-import Service.Adapters.Group (Group(..), GroupDevice(..), GroupId, Groups(..))
+import Control.Lens (LensLike', (^.), (^..), (^?), _Just, filtered, folded, has, ix, view)
 import Control.Monad (void)
+import Control.Monad (when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (ToJSON(..), Value(..), (.:), decode, defaultOptions, encode, genericToEncoding, withObject)
 import Data.Aeson.Encode.Pretty (encodePretty)
@@ -26,14 +18,16 @@ import Data.Aeson.Key (fromText, toText)
 import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.KeyMap (foldMapWithKey)
 import Data.Aeson.Types (parseMaybe)
+import qualified Data.ByteString.Lazy.Char8 as LBS8
 import Data.ByteString.Lazy (ByteString)
 import Data.Either (Either(..), fromRight)
-import Data.Foldable (fold, foldl', for_)
+import Data.Foldable (foldl', for_)
 import Data.Functor.Contravariant (Contravariant)
 import qualified Data.HashMap.Strict as M
-import Data.List (intersperse)
 import Data.Maybe (Maybe(..), fromMaybe, maybe, fromJust)
+import qualified Data.Text as T
 import Data.X509.CertificateStore (makeCertificateStore, readCertificateStore)
+import GHC.Generics (Generic)
 import Network.Connection (TLSSettings (..))
 import qualified Network.MQTT.Client as MQTT
 import Network.MQTT.Topic (mkFilter, mkTopic)
@@ -41,18 +35,17 @@ import Network.TLS (ClientHooks (..), ClientParams (..), Credentials (..), Share
 import Network.TLS.Extra.Cipher (ciphersuite_default)
 import Network.URI (URI, parseURI)
 import Prelude (Bool(..), Double, Eq, Int, IO, Show, String, (.), ($), (<$>), (=<<), (<>), (*), (>), (==), (/=), (&&), (/), filter, fromIntegral, fst, not, null, otherwise, putStrLn, pure, show, snd)
--- import Service.App (Logger)
--- import qualified Service.App as App
-import Service.Env (LogLevel (..), MQTTConfig (..), Subscriptions)
--- import Service.MQTT.Zigbee2MQTT as Zigbee2MQTT
+import qualified Service.Adapters.Capability as Cap
+import Service.Adapters.Capability (Capability, Kind, _Binary, kind, property, valueOff, valueOn)
+import Service.Adapters.Device (Device(..), DeviceId, Devices(..), capabilities, name)
+import Service.Adapters.Group (Group(..), GroupId, Groups(..))
+import Service.Env (MQTTConfig (..))
+import System.IO (stdout)
+import System.Random (randomRIO)
+import Text.Pretty.Simple (pPrintLightBg)
 import UnliftIO.Async (async)
 import UnliftIO.Concurrent (threadDelay)
-import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTChanIO, newTVarIO, readTChan, readTVar, readTVarIO, writeTChan, writeTVar)
-
-import GHC.Generics (Generic)
-
-import qualified Data.Text as T
-import Text.Pretty.Simple (pPrintLightBg)
+import UnliftIO.STM (TChan, TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO, readTChan, readTVar, readTVarIO, writeTChan, writeTVar)
 
 type DeviceState = M.HashMap PropertyAddress Value
 
@@ -79,8 +72,6 @@ uri = fromJust $ parseURI $ "mqtts://" <> (fst creds) <> ":" <> (snd creds) <> "
 
 initMQTTClient :: MQTT.MessageCallback -> MQTTConfig -> IO MQTT.MQTTClient
 initMQTTClient msgCB (MQTTConfig {..}) = do
-  -- hSetBuffering stdout (BlockBuffering Nothing)
-
   mCertStore <- maybe (pure Nothing) readCertificateStore _caCertPath
   eCreds <- case (_clientCertPath, _clientKeyPath) of
     (Just clientCertPath', Just clientKeyPath') ->
@@ -117,7 +108,7 @@ initMQTTClient msgCB (MQTTConfig {..}) = do
       }
 
     mkMQTTConfig clientParams = MQTT.mqttConfig
-      { MQTT._connID = "automation-service"
+      { MQTT._connID = "automation-service-dev"
       , MQTT._tlsSettings = TLSSettings clientParams
       , MQTT._msgCB = msgCB
       }
@@ -168,15 +159,15 @@ mqttClientCallback deviceStore deviceUpdatesChan frontendUpdatesChan =
     case topic of
       "zigbee2mqtt/bridge/devices" -> do
         for_ (decode msg :: Maybe Devices) $ \devices ->
-            atomically $ do
-              deviceStore' <- readTVar deviceStore
-              -- should we do some cleanup of the deviceStore here
-              -- based on new state schema we pull? Remove
-              -- non-existent devices/capabilities/now-disabled
-              -- devices, etc.?
-              writeTVar deviceStore $
-                DeviceStore (loadDevices devices) (deviceState deviceStore') (groups deviceStore')
-              writeTChan deviceUpdatesChan DevicesUpdated
+          atomically $ do
+            deviceStore' <- readTVar deviceStore
+            -- should we do some cleanup of the deviceStore here
+            -- based on new state schema we pull? Remove
+            -- non-existent devices/capabilities/now-disabled
+            -- devices, etc.?
+            writeTVar deviceStore $
+              DeviceStore (loadDevices devices) (deviceState deviceStore') (groups deviceStore')
+            writeTChan deviceUpdatesChan DevicesUpdated
 
       "zigbee2mqtt/bridge/groups" -> do
         -- putStrLn $ show msg
@@ -188,42 +179,33 @@ mqttClientCallback deviceStore deviceUpdatesChan frontendUpdatesChan =
               DeviceStore (devices deviceStore') (deviceState deviceStore') (loadGroups groups)
             writeTChan deviceUpdatesChan GroupsUpdated
 
-      _ -> do
+      _ ->
         -- this needs to filter based on whether or not this is a
         -- legit device state update message
         atomically $ do
           deviceStore' <- readTVar deviceStore
-          (deviceId', deltas) <-
-            case decodeStateUpdate (devices deviceStore') msg of
-              Just stateUpdate -> do
-                let
-                  deviceState' =
-                    fromMaybe M.empty $
-                      M.lookup (deviceId stateUpdate) (deviceState deviceStore')
-                  deltas =
-                    calculateDeltas deviceState' (stateValues stateUpdate)
+          for_ (decodeStateUpdate (devices deviceStore') msg) $ \stateUpdate -> do
+            let
+              deviceState' =
+                fromMaybe M.empty $
+                  M.lookup (deviceId stateUpdate) (deviceState deviceStore')
+              deltas =
+                calculateDeltas deviceState' (stateValues stateUpdate)
 
-                writeTVar
-                  deviceStore
-                  deviceStore' {
-                    deviceState =
-                      M.insertWith
-                       M.union
-                       (deviceId stateUpdate)
-                       (M.fromList $ stateValues stateUpdate)
-                       (deviceState deviceStore')
-                    }
+            writeTVar
+              deviceStore
+              deviceStore' {
+                deviceState =
+                  M.insertWith
+                   M.union
+                   (deviceId stateUpdate)
+                   (M.fromList $ stateValues stateUpdate)
+                   (deviceState deviceStore')
+                }
 
-                pure (deviceId stateUpdate, deltas)
-
-              Nothing ->
-                -- ugly
-                pure ("", [])
-
-          when (not . null $ deltas) $
-            writeTChan frontendUpdatesChan $ FDeviceStateUpdated (deviceId', deltas)
-        -- putStrLn $ "Other topic: " <> show topic
-        -- putStrLn $ "Other msg: " <> show msg
+            when (not . null $ deltas) $
+              writeTChan frontendUpdatesChan $
+                FDeviceStateUpdated (deviceId stateUpdate, deltas)
 
 
 type PropertyAddress = T.Text
@@ -233,14 +215,24 @@ data StateUpdate = StateUpdate
   , stateValues :: [ (PropertyAddress, Value) ]
   } deriving (Eq, Show)
 
--- probably should make this a Device/Capability module lookup function(s)?
-kindLens
-  :: (Applicative f, Contravariant f)
-  => DeviceId
-  -> T.Text
-  -> LensLike' f (M.HashMap DeviceId Device) Kind
-kindLens deviceId k =
-  ix deviceId . capabilities . folded . filtered ((== k) . view property) . kind
+
+normalizeState :: T.Text -> Value -> Maybe Device -> Value
+normalizeState k v mDevice =
+  case v of
+    String txt ->
+      case mDevice ^? _Just . capabilities . ix k . kind . _Binary of
+        Just (valueOn', valueOff', _toggle)
+          | txt == valueOn' -> Bool True
+          | txt == valueOff' -> Bool False
+
+        Nothing ->
+          v
+
+    Bool stateBool ->
+      Bool stateBool
+
+    _ ->
+      v
 
 decodeStateUpdate :: M.HashMap DeviceId Device -> ByteString -> Maybe StateUpdate
 decodeStateUpdate devices stateUpdateStr =
@@ -251,6 +243,8 @@ decodeStateUpdate devices stateUpdateStr =
       deviceId <- device .: "ieeeAddr"
 
       let
+        mDevice = devices ^? ix deviceId
+
         prepend :: T.Text -> T.Text -> T.Text
         prepend prefix key =
           if T.length prefix > 0
@@ -258,24 +252,6 @@ decodeStateUpdate devices stateUpdateStr =
             prefix <> "." <> key
           else
             key
-
-        normalizeState :: Value -> M.HashMap DeviceId Device -> Value
-        normalizeState v devices' =
-          case v of
-            String stateTxt
-              | devices' ^? kindLens deviceId "state" . valueOn == Just stateTxt ->
-                Bool True
-              | devices' ^? kindLens deviceId "state" . valueOff == Just stateTxt ->
-                Bool False
-              | otherwise ->
-                Bool False -- er I guess
-
-            -- will this happen?
-            Bool stateBool ->
-              Bool stateBool
-
-            _ ->
-              Bool False
 
         stateValues prefix = foldMapWithKey $ \k v ->
           case v of
@@ -288,34 +264,32 @@ decodeStateUpdate devices stateUpdateStr =
                 else
                   []
             _ ->
-              if toText k == "state" then
-                [(prepend prefix $ toText k, (normalizeState v devices))]
-              else
-                [(prepend prefix $ toText k, v)]
+              [(prepend prefix $ toText k, (normalizeState (toText k) v mDevice))]
 
       pure $ StateUpdate deviceId $ stateValues "" su
 
+denormalizeState :: T.Text -> Value -> Maybe Device -> Value
+denormalizeState k v mDevice =
+  case mDevice ^? _Just . capabilities . ix k . kind . _Binary of
+    Just (valueOn', valueOff', _toggle) ->
+      case v of
+        Bool True -> String valueOn'
+        Bool False -> String valueOff'
+        _ -> v
 
-denormalizeVal :: DeviceStore -> DeviceId -> T.Text -> Value -> Value
-denormalizeVal DeviceStore{ devices } deviceId propAddr val = 
-  case (propAddr, val) of
-    ("state", Bool True) ->
-      String $ devices ^. kindLens deviceId "state" . valueOn
-
-    ("state", Bool False) ->
-      String $ devices ^. kindLens deviceId "state" . valueOff
-
-    (_, _) ->
-      val
+    Nothing ->
+      v
 
 deltasToState :: DeviceStore -> DeltaBatch -> Value
-deltasToState deviceStore (deviceId, deltas) = 
+deltasToState DeviceStore{ devices } (deviceId, deltas) = 
   foldl' deltasToState' (Object KM.empty) deltas
   where
+    mDevice = devices ^? ix deviceId
+
     deltasToState' :: Value -> (PropertyAddress, Value) -> Value
     deltasToState' (Object obj) (propAddr, val) =
       let
-        denormalizedVal = denormalizeVal deviceStore deviceId propAddr val
+        denormalizedVal = denormalizeState propAddr val mDevice 
       in
         case T.breakOn "." propAddr of
           (onlyAddr, "") ->
@@ -331,6 +305,8 @@ deltasToState deviceStore (deviceId, deltas) =
                 (fromText firstAddr)
                 (deltasToState' childObj (T.drop 1 restAddr, denormalizedVal))
                 obj
+    -- we probably shouldn't get here but this discards any nested
+    -- value, kinda not so great
     deltasToState' val' (_propAddr, _val) = val'
 
 initZigbee2MQTTAdapter :: MQTTConfig -> IO ()
@@ -370,8 +346,6 @@ initZigbee2MQTTAdapter mqttConfig = do
           GroupsUpdated -> do
             atomically $ writeTChan frontendUpdatesChan FGroupsUpdated
             go
-
-          _ -> go
     in
       go
 
@@ -409,14 +383,15 @@ initZigbee2MQTTAdapter mqttConfig = do
             pPrintLightBg "FDeviceCommandReceived"
                 
             let
-              deviceName = (devices deviceStore') ^. ix deviceId . name
+              mDeviceName = (devices deviceStore') ^? ix deviceId . name
               stateUpdate = encode $ deltasToState deviceStore' (deviceId, deltas)
 
-            pPrintLightBg $ deviceName
+            pPrintLightBg $ mDeviceName
             pPrintLightBg $ stateUpdate 
 
-            for_ (mkTopic $ "zigbee2mqtt/" <> deviceName <> "/set") $ \topic ->
-              MQTT.publish mc2 topic stateUpdate False
+            for_ mDeviceName $ \deviceName ->
+              for_ (mkTopic $ "zigbee2mqtt/" <> deviceName <> "/set") $ \topic ->
+                MQTT.publish mc2 topic stateUpdate False
 
         go "run"
     in
@@ -427,7 +402,8 @@ initZigbee2MQTTAdapter mqttConfig = do
   -- on the frontendUpdatesChanListener blocking loop above
   void $ liftIO $ async $
     let
-      go = do
+      go :: Int -> IO ()
+      go which = do
         -- give this a good wait before we actually attempt to send
         -- anything so everything is ready to go
         threadDelay $ 10000 * 1000
@@ -438,21 +414,30 @@ initZigbee2MQTTAdapter mqttConfig = do
         let
           colorX = fromIntegral colorXQnt / 1000 :: Double
           colorY = fromIntegral colorYQnt / 1000 :: Double
-          basementBlackSigneDeltas =
-            ("0x001788010c52373e"
-            , [ ("state", Bool True)
-              , ("color.x", toJSON colorX)
-              , ("color.y", toJSON colorY)
-              , ("brightness", Number 125)
-              ]
-            )
+          basementBlackSigneDeltas
+            | which == 0 =
+              ("0x001788010c52373e"
+              , [ ("state", Bool False) ]
+              )
+            | which == 1 =
+              ("0x001788010c52373e"
+              , [ ("state", Bool True)
+                , ("color.x", toJSON colorX)
+                , ("color.y", toJSON colorY)
+                , ("brightness", Number 125)
+                ]
+              )
 
         atomically $
           writeTChan frontendUpdatesChan $
             FDeviceCommandReceived basementBlackSigneDeltas
-        go
+
+        if which == 0 then
+          go 1
+        else
+          go 0
     in
-      go
+      go 1
 
 
   threadDelay $ 1000 * 1000
