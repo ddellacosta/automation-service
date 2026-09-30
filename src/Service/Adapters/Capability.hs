@@ -2,12 +2,12 @@
 
 module Service.Adapters.Capability
   ( Access(..)
+  , Address
   , Capability(..)
   , Capabilities
   , ItemType(..)
   , Kind(..)
   , NumericPreset(..)
-  , Property
   , _Binary
   , _Composite
   , _Enum
@@ -22,14 +22,13 @@ module Service.Adapters.Capability
   , label
   , lengthMax
   , lengthMin
-  , name
   , pDescription
   , pName
   , pValue
   , parseCapabilities
+  , parseCapability
   , parseKind
   , presets
-  , property
   , readable
   , reports
   , toAccess
@@ -91,7 +90,9 @@ data Kind
     , _valueOff :: T.Text
     , _valueToggle :: Maybe T.Text
     }
-  | Composite -- will these show up at all?
+  -- Will these show up at all? Only via list item types, never as a
+  -- top-level capability
+  | Composite 
   | Enum
     { _values :: [ T.Text ] }
   | List
@@ -148,9 +149,7 @@ toAccess access =
   [(reports, Reports), (writeable, Writeable), (readable, Readable)]
 
 data Capability = Capability
-  { _name :: T.Text
-  , _label :: T.Text
-  , _property :: T.Text
+  { _label :: T.Text
   , _description :: Maybe T.Text
   , _kind :: Kind
   , _access :: HashSet Access
@@ -161,12 +160,12 @@ makeFieldsNoPrefix ''Capability
 instance ToJSON Capability where
   toEncoding = genericToEncoding defaultOptions
 
-type Capabilities = M.HashMap Property Capability
+type Capabilities = M.HashMap Address Capability
 
 --
--- Capability.property
+-- from capability property
 --
-type Property = T.Text
+type Address = T.Text
 
 instance FromJSON NumericPreset where
   parseJSON = withObject "NumericPreset" $ \np ->
@@ -206,7 +205,7 @@ parseKind capObj = \case
  "text" -> pure Text
 
 instance FromJSON ItemType where
-  parseJSON = withObject "Capability" $ \c -> do
+  parseJSON = withObject "ItemType" $ \c -> do
     name' <- c .: "name"
     label' <- c .: "label"
     description' <- c .:? "description"
@@ -218,25 +217,24 @@ instance FromJSON ItemType where
         description'
         kind'
 
-instance FromJSON Capability where
-  parseJSON = withObject "Capability" $ \c -> do
-    name' <- c .: "name"
-    label' <- c .: "label"
-    property' <- c .: "property"
-    description' <- c .:? "description"
-    kind' <- c .: "type"
-    kindParsed <- parseKind c kind'
-    access' <- c .: "access"
-    pure $
-      Capability
-        name'
-        label'
-        property'
-        description'
-        kindParsed
-        (toAccess access')
+parseCapability :: Value -> Parser (Address, Capability)
+parseCapability = withObject "Capability" $ \c -> do
+  property' <- c .: "property"
+  label' <- c .: "label"
+  description' <- c .:? "description"
+  kind' <- c .: "type"
+  kindParsed <- parseKind c kind'
+  access' <- c .: "access"
+  pure $
+    ( property'
+    , Capability
+      label'
+      description'
+      kindParsed
+      (toAccess access')
+    )
 
-attachCapabilityKind :: Value -> Capability -> Parser [Capability]
+attachCapabilityKind :: Value -> Capability -> Parser [(Address, Capability)]
 attachCapabilityKind capObj capability =
   case capObj of 
     (Object c) -> do
@@ -244,18 +242,19 @@ attachCapabilityKind capObj capability =
 
       case mFeatures of
         Just features -> for (toList features) $ \c' -> do
-          childCap <- parseJSON c'
-          pure $ Capability
-            ((_name capability) <> "-" <> (_name childCap))
-            ((_label capability) <> "-" <> (_label childCap))
-            ((_property capability) <> "." <> (_property childCap))
-            (_description capability) 
-            (_kind childCap)
-            (_access childCap)
+          -- this won't handle composites in the child?
+          (childAddr, childCap) <- parseCapability c'
+          pure $
+            ( childAddr
+            , Capability
+               ((_label capability) <> "-" <> (_label childCap))
+               (_description capability) 
+               (_kind childCap)
+               (_access childCap)
+            )
+        Nothing -> pure $ [ ("", capability) ]
 
-        Nothing -> pure $ [ capability ]
-
-    _ -> pure [capability]
+    _ -> pure [ ("", capability) ]
 
 parseCapabilities :: Maybe Array -> Parser Capabilities
 parseCapabilities mExposes = do
@@ -265,11 +264,19 @@ parseCapabilities mExposes = do
         Just exposes -> flip parseEither exposes $ \cs ->
           forAccumM M.empty (toList cs) $ \acc c' -> do
             let
-              (cap :: Either String Capability) = parseEither parseJSON c'
+              cap :: Either String (Address, Capability) = parseEither parseCapability c'
+
+              constructPath :: T.Text -> T.Text -> T.Text
+              constructPath parentAddr = \case
+                "" -> parentAddr
+                childAddr -> parentAddr <> "." <> childAddr
+
             case cap of
-              Right cap' -> do
+              Right (address, cap') -> do
                 caps <- attachCapabilityKind c' cap'
-                pure (foldl' (\acc' c -> M.insert (_property c) c acc') acc caps, ())
+                pure (foldl' (\acc' (childAddr, c) -> M.insert (constructPath address childAddr) c acc') acc caps, ())
+              -- this needs to be a bit smarter and dispatch different
+              -- on a real error
               Left _errorMsg -> do
                 mFeatures <- withObject "features" (\features -> features .:? "features") c'
                 caps <- parseCapabilities mFeatures
