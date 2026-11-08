@@ -14,7 +14,13 @@ import qualified Service.Env as Env
 import Service.Env (Config, Subscriptions, logLevel, mqttConfig)
 import Service.MQTT.Client (initMQTTClient, mqttClientCallback)
 import System.Log.FastLogger (TimedFastLogger, newTimedFastLogger)
-import UnliftIO.STM (TVar, readTVarIO)
+import UnliftIO.STM (TVar, atomically, dupTChan, newBroadcastTChanIO, newTVarIO, readTVarIO)
+
+import Service.Adapters.DeviceStore (DeviceStore(..))
+import qualified Service.Adapters as Adapters
+import qualified Service.Adapters.MQTT as AdapterMQTT
+import qualified Service.Adapters.ESPHome as ESPHome
+import qualified Service.Adapters.Zigbee2MQTT as ZigbeeAdapter
 
 configFilePath :: FilePath
 configFilePath = "config/config.dhall"
@@ -39,6 +45,29 @@ mkMQTTClient config logger subscriptions = do
     (mqttConfig', logLevelSet) = config ^. lensProduct mqttConfig logLevel
     mqttSubs = flip M.foldMapWithKey subscriptions' $ \topic _action ->
       [(toFilter topic, MQTT.subOptions)]
+
+  deviceStore <- newTVarIO $ DeviceStore M.empty M.empty M.empty
+
+  deviceUpdatesChan <- newBroadcastTChanIO
+  deviceUpdatesChanListener <- atomically $ dupTChan deviceUpdatesChan
+  frontendUpdatesChan <- newBroadcastTChanIO
+  frontendUpdatesChanListener <- atomically $ dupTChan frontendUpdatesChan
+
+  let
+    topicCallbacks =
+      ESPHome.topicCallbacks <> ZigbeeAdapter.topicCallbacks
+
+  mc2 <- AdapterMQTT.initMQTTClient
+    (AdapterMQTT.mqttClientCallback deviceStore deviceUpdatesChan frontendUpdatesChan topicCallbacks)
+    mqttConfig'
+
+  Adapters.initAdapters
+    mc2
+    deviceStore
+    deviceUpdatesChan
+    deviceUpdatesChanListener
+    frontendUpdatesChan
+    frontendUpdatesChanListener
 
   -- handle errors from not being able to connect, etc.?
   mc <- initMQTTClient (mqttClientCallback logLevelSet logger subscriptions) mqttConfig'
