@@ -83,9 +83,13 @@ library
   import:           shared
   hs-source-dirs:   src
   exposed-modules:
-      Service.Adapters.Capability
+      Service.Adapters
+    , Service.Adapters.Capability
     , Service.Adapters.Device
+    , Service.Adapters.DeviceStore
+    , Service.Adapters.ESPHome
     , Service.Adapters.Group
+    , Service.Adapters.MQTT
     , Service.Adapters.Zigbee2MQTT
     , Service.App
     , Service.App.Logger
